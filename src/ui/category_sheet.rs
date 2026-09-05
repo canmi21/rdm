@@ -26,7 +26,7 @@ const COLOR_EXAMPLES: &str = "#3b4252";
 /// The short rule, as the question mark's tooltip.
 const COLOR_RULE: &str = "Hex, rgb() or hsl(); press for the full guide";
 
-/// The full guide, unfolded under the field on a press: one line per shape, with examples.
+/// The full guide, in a window of its own on a press: one line per shape, with examples.
 const COLOR_GUIDE: [&str; 4] = [
 	"Hex: #3b4252, #3b4252ff, #abc, #abcf",
 	"rgb(59, 66, 82), rgba(59 66 82 / 0.5), rgb(23%, 26%, 32%)",
@@ -287,9 +287,8 @@ impl Rdm {
 		}
 	}
 
-	pub(crate) fn toggle_color_help(&mut self, cx: &mut Context<Self>) {
-		self.color_help = !self.color_help;
-		cx.notify();
+	pub(crate) fn show_color_guide(&mut self, cx: &mut Context<Self>) {
+		self.open_guide("Colors", &COLOR_GUIDE, cx);
 	}
 
 	pub(crate) fn toggle_ignore_space(&mut self, cx: &mut Context<Self>) {
@@ -922,23 +921,15 @@ impl Rdm {
 				Some(color) => div().size_3p5().rounded_full().bg(p.hue(color)),
 				None => div().size_3p5().rounded_full().border_1().border_color(p.border),
 			});
-		let guide = div()
-			.debug_selector(|| "color-guide".to_owned())
-			.flex()
-			.flex_col()
-			.gap_0p5()
-			.px_1()
-			.text_xs()
-			.text_color(p.muted)
-			.children(COLOR_GUIDE.iter().map(|line| div().child(*line)));
-		let row = div()
+		div()
 			.flex()
 			.items_center()
 			.gap_1()
 			.children(swatches)
 			.child(div().flex_1().min_w_0().ml_1().child(custom))
 			.child(preview)
-			// A question mark after the field: the rule on hover, the whole guide on a press.
+			// A question mark after the field: the rule on hover, the whole guide in a window of
+			// its own on a press, so the form does not move under the pointer.
 			.child(
 				div()
 					.id("color-help")
@@ -954,17 +945,13 @@ impl Rdm {
 					.cursor_pointer()
 					.group("color-help")
 					.tooltip(tooltip(COLOR_RULE))
-					.when(self.color_help, |s| s.bg(p.selection))
-					.on_click(cx.listener(|this, _, _, cx| this.toggle_color_help(cx)))
+					.on_click(cx.listener(|this, _, _, cx| this.show_color_guide(cx)))
 					.child(
-						icon(Icon::CircleQuestion, if self.color_help { p.text } else { p.muted })
+						icon(Icon::CircleQuestion, p.muted)
 							.size_4()
-							.when(!self.color_help, move |s| {
-								s.group_hover("color-help", move |s| s.text_color(p.text))
-							}),
+							.group_hover("color-help", move |s| s.text_color(p.text)),
 					),
-			);
-		div().flex().flex_col().gap_1p5().child(row).when(self.color_help, |s| s.child(guide))
+			)
 	}
 }
 

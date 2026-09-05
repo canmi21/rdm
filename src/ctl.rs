@@ -201,7 +201,7 @@ impl Rdm {
 			}
 			"custom" => self.open_custom_form(None, cx),
 			"advanced" => self.toggle_advanced(None, cx),
-			"colorhelp" => self.toggle_color_help(cx),
+			"colorhelp" => self.show_color_guide(cx),
 			"move" => {
 				let onto = rest.get(1).and_then(|word| word.parse::<u64>().ok());
 				let (Some(id), Some(onto)) = (id, onto) else {
