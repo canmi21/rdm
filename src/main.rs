@@ -4,7 +4,8 @@ mod download;
 mod ui;
 
 use gpui::{
-	App, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, prelude::*, px, size,
+	App, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
+	prelude::*, px, size,
 };
 use gpui_platform::application;
 
@@ -29,6 +30,8 @@ fn main() {
 		cx.open_window(
 			WindowOptions {
 				window_bounds: Some(WindowBounds::Windowed(bounds)),
+				// The desktop shows through the blur; the palette carries the alpha. See spec/ui.md.
+				window_background: WindowBackgroundAppearance::Blurred,
 				titlebar: Some(TitlebarOptions {
 					title: Some("rdm".into()),
 					appears_transparent: true,
