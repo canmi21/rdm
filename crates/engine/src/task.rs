@@ -32,6 +32,10 @@ pub struct Request {
 	pub file_name: Option<String>,
 	/// Only this part of the file, `start..end` with `end` None meaning to the file's end.
 	pub range: Option<(u64, Option<u64>)>,
+	/// Other addresses of the same file. Connections are spread across them, and a connection
+	/// that fails moves to the next; the first address is the one probed and the one whose
+	/// validator is trusted, so a mirror is checked by size alone.
+	pub mirrors: Vec<Url>,
 	pub settings: Settings,
 }
 
@@ -42,6 +46,7 @@ impl Request {
 			directory: directory.into(),
 			file_name: None,
 			range: None,
+			mirrors: Vec::new(),
 			settings: Settings::default(),
 		}
 	}
@@ -144,8 +149,11 @@ pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<F
 	handle.progress.done.store(plan.lock().unwrap().done(), Ordering::Relaxed);
 	handle.limit.set_rate(settings.speed_limit);
 
+	let mut sources = vec![probed.url.clone()];
+	sources.extend(request.mirrors.iter().cloned());
 	let result =
-		schedule(&settings, &probed, validator, plan.clone(), writer.clone(), handle, global).await;
+		schedule(&settings, &probed, &sources, validator, plan.clone(), writer.clone(), handle, global)
+			.await;
 	match result {
 		Ok(()) => {
 			let size = plan.lock().unwrap().span.len();
@@ -183,9 +191,11 @@ impl LenOrZero for Span {
 /// Connections come and go here until the plan is complete. One at a time on a server without
 /// ranges; otherwise up to `max`, each new one allowed once the last has proved itself by
 /// delivering a byte, and each taking an idle segment or cutting the largest remainder in two.
+#[allow(clippy::too_many_arguments)]
 async fn schedule(
 	settings: &Settings,
 	probed: &Probe,
+	sources: &[Url],
 	validator: Option<String>,
 	plan: Arc<Mutex<Plan>>,
 	writer: Writer,
@@ -241,12 +251,16 @@ async fn schedule(
 			let grew = grew.clone();
 			let base = plan.lock().unwrap().span.start;
 			let received = received.clone();
+			// Spread across the sources by segment, and on to the next source with each retry.
+			let source = &sources[(index + attempts[index] as usize) % sources.len()];
+			let primary = source == &probed.url;
 			let job = Job {
 				client,
-				url: probed.url.clone(),
+				url: source.clone(),
 				index,
 				plan: plan.clone(),
-				validator: validator.clone(),
+				validator: validator.clone().filter(|_| primary),
+				size: probed.size,
 				ranges: probed.ranges,
 				base,
 				writer: writer.clone(),
@@ -594,6 +608,35 @@ mod tests {
 			elapsed >= Duration::from_millis(1500) && elapsed < Duration::from_secs(5),
 			"{elapsed:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn a_mirror_takes_over_when_the_first_source_keeps_failing() {
+		let data = body(60_000);
+		let flaky = TestServer::start(
+			data.clone(),
+			Options { fail_after: Some(4096), etag: Some("\"a\"".into()), ..Options::default() },
+		);
+		let mirror =
+			TestServer::start(data.clone(), Options { etag: Some("\"b\"".into()), ..Options::default() });
+		let dir = scratch("mirror");
+		let mut req = request(&flaky, &dir, "/m.bin", Connections { min: 1, max: 1, auto: false });
+		req.mirrors = vec![mirror.url("/m.bin")];
+		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		assert_eq!(std::fs::read(&done.path).unwrap(), data);
+		assert!(
+			mirror.requests().iter().all(|r| r.if_range.is_none()),
+			"a mirror is not asked If-Range"
+		);
+		assert!(!mirror.requests().is_empty(), "the mirror was used");
+
+		// A mirror serving a different file is refused by its size.
+		let other = TestServer::start(body(61_000), Options::default());
+		let flaky =
+			TestServer::start(data.clone(), Options { fail_after: Some(4096), ..Options::default() });
+		let mut req = request(&flaky, &dir, "/n.bin", Connections { min: 1, max: 1, auto: false });
+		req.mirrors = vec![other.url("/n.bin")];
+		assert!(matches!(run(req, &handle(), Limiter::unlimited()).await, Err(Error::Changed)));
 	}
 
 	#[tokio::test]

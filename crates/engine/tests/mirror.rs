@@ -45,8 +45,8 @@ async fn fetch(
 
 /// 20 MB over plain HTTP from a test-file host that has served ranges for a decade.
 const HTTP_20MB: &str = "http://ipv4.download.thinkbroadband.com/20MB.zip";
-/// 100 MB over HTTPS.
-const HTTPS_100MB: &str = "https://speed.hetzner.de/100MB.bin";
+/// 100 MB over HTTPS, from OVH's speed-test files.
+const HTTPS_100MB: &str = "https://proof.ovh.net/files/100Mb.dat";
 
 #[tokio::test]
 #[ignore = "needs the network"]

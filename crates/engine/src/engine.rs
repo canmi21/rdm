@@ -21,7 +21,7 @@ use crate::verify::{self, Checksum};
 pub struct TaskId(pub u64);
 
 /// What the engine as a whole is told: how many downloads run at once, and a limit on their sum.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EngineSettings {
 	pub max_active: usize,
 	pub speed_limit: Option<u64>,
@@ -60,6 +60,16 @@ pub struct Snapshot {
 	pub connections: u64,
 	/// What `verify::kind` read from the finished file, if anything.
 	pub kind: Option<&'static str>,
+}
+
+impl Snapshot {
+	/// How long the rest will take at the current speed; None while nothing is known.
+	pub fn remaining(&self) -> Option<Duration> {
+		if self.speed == 0 || self.total == 0 || self.done >= self.total {
+			return None;
+		}
+		Some(Duration::from_secs((self.total - self.done) / self.speed))
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

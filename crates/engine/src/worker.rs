@@ -27,6 +27,9 @@ pub struct Job {
 	/// Sent as If-Range on any request that does not start at the file's first byte, so a
 	/// changed file comes back as 200 and is caught rather than spliced.
 	pub validator: Option<String>,
+	/// The file's size as the probe learnt it, checked against what a source declares so a
+	/// mirror serving a different file is refused rather than spliced.
+	pub size: Option<u64>,
 	/// The server honours ranges. Off, the request carries none and the answer must be the
 	/// whole file from the start.
 	pub ranges: bool,
@@ -80,14 +83,15 @@ pub async fn fetch(job: Job) -> Result<Outcome> {
 	if job.ranges {
 		match status {
 			StatusCode::PARTIAL_CONTENT => {
-				let start = response
-					.headers()
-					.get(CONTENT_RANGE)
-					.and_then(|v| v.to_str().ok())
+				// `bytes 1000-4999/5000`: the start must be what was asked for, and the total, when
+				// both sides know one, the file the probe saw.
+				let range = response.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok());
+				let start = range
 					.and_then(|v| v.strip_prefix("bytes "))
 					.and_then(|v| v.split('-').next())
 					.and_then(|v| v.parse::<u64>().ok());
-				if start != Some(position) {
+				let total = range.and_then(|v| v.rsplit('/').next()).and_then(|v| v.parse::<u64>().ok());
+				if start != Some(position) || matches!((total, job.size), (Some(t), Some(s)) if t != s) {
 					return Err(Error::Changed);
 				}
 			}

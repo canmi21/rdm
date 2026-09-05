@@ -179,3 +179,13 @@ the extension the server chose, and is reported in the snapshot for the window t
 with a single-connection one byte for byte, and checks a range against the slice of the whole.
 They are ignored by default and run with `--ignored`; each is bounded by a timeout so a mirror
 that is down fails the test rather than hanging it.
+
+## Mirrors are checked by size, the origin by its validator
+
+A request may name other addresses of the same file. Connections are spread across the
+sources by segment, and a connection that fails moves to the next source with each retry, so
+a mirror that dies mid-file costs a retry and not the download. Only the first address is
+probed, and only it is trusted with `If-Range`: a mirror carries its own ETag, and asking it
+about the origin's would make every mirror look like a changed file. A mirror is held to the
+size instead -- the total in its `Content-Range` must be the one the probe saw -- which is what
+aria2 does, and enough to refuse a mirror serving a different file before a byte of it lands.
