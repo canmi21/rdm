@@ -1,0 +1,15 @@
+[tasks.check]
+description = "Type-check the crate and its targets"
+run = "cargo check --all-targets"
+
+[tasks.lint]
+description = "Lint the crate, warnings denied"
+run = "cargo clippy --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Run the test suite"
+run = "cargo test"
+
+[tasks.verify]
+description = "Everything a change has to pass"
+depends = ["check", "lint", "test"]

@@ -1,0 +1,22 @@
+# Cargo walks up the filesystem and would otherwise treat this crate as a member of the
+# workspace this directory sits in. An empty table stops that walk.
+[workspace]
+
+[package]
+name = "rdm"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/canmi21/rdm"
+
+[[bin]]
+name = "rdm"
+path = "src/main.rs"
+
+[dependencies]
+
+# Formatting is rustfmt's and the linter must not report it; see rustfmt.toml.
+[lints.clippy]
+correctness = "deny"
+suspicious = "deny"
+complexity = "warn"
