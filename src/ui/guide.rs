@@ -12,9 +12,14 @@ use crate::ui::{backdrop, icon_button};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Guide {
 	pub title: &'static str,
-	/// What the guide is about, in one sentence under the title.
+	/// What the guide is about, in one sentence under the title -- one line of the card, so it
+	/// is read whole before the examples.
 	pub about: &'static str,
-	pub lines: &'static [&'static str],
+	/// One line per shape: its name, muted, and the examples in the text color. Two colors on
+	/// a line because a column of lines in one color reads as a block, not as a list.
+	pub lines: &'static [(&'static str, &'static str)],
+	/// The caveat at the end, muted: what to know, after what to type.
+	pub note: &'static str,
 }
 
 impl Rdm {
@@ -68,15 +73,16 @@ impl Rdm {
 							)),
 					)
 					.child(div().text_xs().child(guide.about))
-					.child(
-						div()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.text_xs()
-							.text_color(p.muted)
-							.children(guide.lines.iter().map(|line| div().child(*line))),
-					),
+					.child(div().flex().flex_col().gap_1().text_xs().children(guide.lines.iter().map(
+						|(name, examples)| {
+							div()
+								.flex()
+								.gap_2()
+								.child(div().w(px(32.0)).flex_none().text_color(p.muted).child(*name))
+								.child(*examples)
+						},
+					)))
+					.child(div().text_xs().text_color(p.muted).child(guide.note)),
 			),
 		)
 		.priority(3)

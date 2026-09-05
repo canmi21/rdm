@@ -16,13 +16,15 @@ const PATTERN_EXAMPLE: &str = r"^(?!.*\.mp4$).*$  // lookahead and lookbehind ar
 /// of what the field reads is behind the question mark beside it.
 const COLOR_EXAMPLES: &str = "#3b4252";
 
-/// The full guide, in a window of its own on a press: one line per shape, with examples.
-const COLOR_GUIDE: [&str; 4] = [
-	"Hex: #3b4252, #3b4252ff, #abc, #abcf",
-	"rgb(59, 66, 82), rgba(59 66 82 / 0.5), rgb(23%, 26%, 32%)",
-	"hsl(220, 16%, 28%), hsla(220 16% 28% / 1)",
-	"Alpha is read and dropped. Named colors are not read.",
+/// The full guide, laid over the form on a press: one line per shape, named, with examples.
+const COLOR_GUIDE: [(&str, &str); 3] = [
+	("Hex", "#3b4252, #3b4252ff, #abc, #abcf"),
+	("rgb", "rgb(59, 66, 82), rgba(59 66 82 / 0.5), rgb(23%, 26%, 32%)"),
+	("hsl", "hsl(220, 16%, 28%), hsla(220 16% 28% / 1)"),
 ];
+
+/// After the shapes: what the field does with what it does not keep.
+const COLOR_NOTE: &str = "Alpha is read and dropped. Named colors are not read.";
 
 impl Rdm {
 	/// The plus beside the Categories heading: the presets, or whatever face is already up.
@@ -279,8 +281,9 @@ impl Rdm {
 		self.show_guide(
 			crate::ui::guide::Guide {
 				title: "Colors",
-				about: "A color of your own goes in the field beside the swatches, written any of these ways; Enter or the dot after it makes it the category's.",
+				about: "Any of these forms works in the field beside the swatches.",
 				lines: &COLOR_GUIDE,
+				note: COLOR_NOTE,
 			},
 			cx,
 		);

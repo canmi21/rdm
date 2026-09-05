@@ -327,8 +327,8 @@ fills the rest of the line for a color of the user's own, and after it a dot. Th
 what this stack has constructors for and nothing more: hex in every common length, with or
 without the hash, and the CSS functions `rgb()`, `rgba()`, `hsl()` and `hsla()`, alpha read and
 dropped; its placeholder is one hex value, the way most people write one, and the rest of what
-it reads sits behind a question mark after the field: the one-line rule on hover, and on a
-press the whole guide -- every shape with examples, and that alpha is dropped and names are
+it reads sits behind a question mark after the field: "Read guidelines" on hover, a name like
+any other icon's rather than a rule squeezed into a tooltip, and on a press the whole guide -- every shape with examples, and that alpha is dropped and names are
 not read -- laid over the form with one button, OK, that takes it away and leaves the form as
 it was. A placeholder that listed every shape was a sentence in a box meant for a word; a guide
 unfolded under the line moved the form under the pointer; and a window of its own, tried next,

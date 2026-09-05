@@ -10,8 +10,9 @@ use crate::ui::text_input::TextInput;
 use crate::ui::theme::{Tint, format_hex, parse_color};
 use crate::ui::tooltip::tooltip;
 
-/// The short rule, as the question mark's tooltip.
-const COLOR_RULE: &str = "Hex, rgb() or hsl(); press for the full guide";
+/// The question mark's tooltip: an invitation, like every other icon's name, since the rule
+/// itself is in the guide it opens.
+const COLOR_RULE: &str = "Read guidelines";
 
 impl Rdm {
 	/// The fourteen glyphs a category may be drawn with, the chosen one lit.
