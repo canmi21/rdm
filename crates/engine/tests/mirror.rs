@@ -45,8 +45,9 @@ async fn fetch(
 
 /// 20 MB over plain HTTP from a test-file host that has served ranges for a decade.
 const HTTP_20MB: &str = "http://ipv4.download.thinkbroadband.com/20MB.zip";
-/// 100 MB over HTTPS, from OVH's speed-test files.
-const HTTPS_100MB: &str = "https://proof.ovh.net/files/100Mb.dat";
+/// A few megabytes over HTTPS from a mirror that has served ranges for years; fetched twice
+/// by its test, so kept modest.
+const HTTPS_FILE: &str = "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.9.5.tar.gz";
 
 #[tokio::test]
 #[ignore = "needs the network"]
@@ -60,8 +61,8 @@ async fn http_with_eight_connections_lands_every_byte() {
 #[tokio::test]
 #[ignore = "needs the network"]
 async fn https_split_and_single_give_the_same_bytes() {
-	let split = fetch(HTTPS_100MB, Connections { min: 4, max: 8, auto: false }, None).await;
-	let single = fetch(HTTPS_100MB, Connections { min: 1, max: 1, auto: false }, None).await;
+	let split = fetch(HTTPS_FILE, Connections { min: 4, max: 8, auto: false }, None).await;
+	let single = fetch(HTTPS_FILE, Connections { min: 1, max: 1, auto: false }, None).await;
 	assert_eq!(split.size, single.size);
 	assert_eq!(std::fs::read(&split.path).unwrap(), std::fs::read(&single.path).unwrap());
 }

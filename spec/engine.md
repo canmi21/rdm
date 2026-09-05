@@ -174,11 +174,14 @@ the extension the server chose, and is reported in the snapshot for the window t
 
 ## Three tests reach the network
 
-`tests/mirror.rs` downloads public test files that have been served with ranges for years --
-20 MB over plain HTTP, 100 MB over HTTPS -- with several connections, compares a split download
-with a single-connection one byte for byte, and checks a range against the slice of the whole.
-They are ignored by default and run with `--ignored`; each is bounded by a timeout so a mirror
-that is down fails the test rather than hanging it.
+`tests/mirror.rs` downloads public files that have been served with ranges for years -- 20 MB
+over plain HTTP from thinkbroadband's test files, a few megabytes over HTTPS from kernel.org's
+mirror -- with several connections, compares a split download with a single-connection one
+byte for byte, and checks a range against the slice of the whole. They are ignored by default
+and run with `--ignored`; each is bounded by a timeout so a mirror that is down fails the test
+rather than hanging it. Two hosts were tried and dropped before these: one had gone away, the
+other stopped answering after two 100 MB pulls, which is the nature of public mirrors and why
+these tests are not in the default run.
 
 ## Mirrors are checked by size, the origin by its validator
 
