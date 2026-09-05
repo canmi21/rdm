@@ -30,7 +30,8 @@ actions!(
 		Cut,
 		Copy,
 		Confirm,
-		Cancel
+		Cancel,
+		FocusNext
 	]
 );
 
@@ -55,6 +56,7 @@ pub fn key_bindings() -> Vec<gpui::KeyBinding> {
 		KeyBinding::new("cmd-right", End, context),
 		KeyBinding::new("enter", Confirm, context),
 		KeyBinding::new("escape", Cancel, context),
+		KeyBinding::new("tab", FocusNext, context),
 	]
 }
 
@@ -106,6 +108,10 @@ impl TextInput {
 
 	pub fn focus(&self) -> FocusHandle {
 		self.focus_handle.clone()
+	}
+
+	fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
+		window.focus_next(cx);
 	}
 
 	fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
@@ -602,6 +608,7 @@ impl Render for TextInput {
 			.flex()
 			.key_context("TextInput")
 			.track_focus(&self.focus_handle(cx))
+			.tab_stop(true)
 			.cursor(CursorStyle::IBeam)
 			.on_action(cx.listener(Self::backspace))
 			.on_action(cx.listener(Self::delete))
@@ -617,6 +624,7 @@ impl Render for TextInput {
 			.on_action(cx.listener(Self::copy))
 			.on_action(cx.listener(Self::confirm))
 			.on_action(cx.listener(Self::cancel))
+			.on_action(cx.listener(Self::focus_next))
 			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))

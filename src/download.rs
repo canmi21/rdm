@@ -29,42 +29,71 @@ impl Status {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-pub enum Kind {
-	Video,
-	Audio,
-	Document,
-	Archive,
-	Program,
-	Other,
+/// A user-shaped bucket: a name, an icon, and a pattern over the file name. The built-in set is
+/// seeded the same way, so there is one kind of category and the sidebar reads a list.
+#[derive(Clone, Debug)]
+pub struct Category {
+	pub id: u64,
+	pub name: String,
+	pub icon: crate::ui::icon::Icon,
+	/// As written; `regex` is its compiled form, or None for the catch-all.
+	pub pattern: String,
+	regex: Option<fancy_regex::Regex>,
 }
 
-impl Kind {
-	pub const ALL: [Kind; 6] =
-		[Kind::Video, Kind::Audio, Kind::Document, Kind::Archive, Kind::Program, Kind::Other];
+impl Category {
+	/// Compiles the pattern; an error is the pattern's own message, shown where it was typed.
+	pub fn new(
+		id: u64,
+		name: &str,
+		icon: crate::ui::icon::Icon,
+		pattern: &str,
+	) -> Result<Category, String> {
+		let regex = if pattern.is_empty() {
+			None
+		} else {
+			Some(fancy_regex::Regex::new(pattern).map_err(|e| e.to_string())?)
+		};
+		Ok(Category { id, name: name.to_owned(), icon, pattern: pattern.to_owned(), regex })
+	}
 
-	pub fn label(self) -> &'static str {
-		match self {
-			Kind::Video => "Video",
-			Kind::Audio => "Audio",
-			Kind::Document => "Documents",
-			Kind::Archive => "Archives",
-			Kind::Program => "Programs",
-			Kind::Other => "Other",
+	/// Matches the file name only: a URL's path is what the name came from, and a pattern over the
+	/// whole address would catch hosts as often as files.
+	pub fn matches(&self, download: &Download) -> bool {
+		match &self.regex {
+			Some(regex) => regex.is_match(&download.name).unwrap_or(false),
+			None => false,
 		}
 	}
 
-	pub fn from_name(name: &str) -> Kind {
-		let extension = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
-		match extension.as_str() {
-			"mp4" | "mkv" | "mov" | "webm" | "avi" => Kind::Video,
-			"mp3" | "flac" | "aac" | "wav" | "m4a" => Kind::Audio,
-			"pdf" | "epub" | "doc" | "docx" | "txt" | "md" => Kind::Document,
-			"zip" | "tar" | "gz" | "xz" | "7z" | "rar" => Kind::Archive,
-			"dmg" | "pkg" | "app" | "exe" | "msi" => Kind::Program,
-			_ => Kind::Other,
-		}
+	/// The starting set, roughly what a download folder holds. Other has no pattern and takes
+	/// whatever nothing else did.
+	pub fn defaults() -> Vec<Category> {
+		use crate::ui::icon::Icon;
+		let seed = [
+			("Video", Icon::Film, r"(?i)\.(mp4|mkv|mov|webm|avi)$"),
+			("Audio", Icon::Music, r"(?i)\.(mp3|flac|aac|wav|m4a)$"),
+			("Documents", Icon::FileText, r"(?i)\.(pdf|epub|docx?|txt|md)$"),
+			("Archives", Icon::Archive, r"(?i)\.(zip|tar|gz|xz|7z|rar)$"),
+			("Programs", Icon::Package, r"(?i)\.(dmg|pkg|app|exe|msi)$"),
+			("Other", Icon::File, ""),
+		];
+		seed
+			.iter()
+			.enumerate()
+			.map(|(i, (name, icon, pattern))| {
+				Category::new(i as u64 + 1, name, *icon, pattern).expect("a seed pattern compiles")
+			})
+			.collect()
 	}
+}
+
+/// The first category whose pattern matches, else the catch-all, else nothing.
+pub fn category_of<'a>(categories: &'a [Category], download: &Download) -> Option<&'a Category> {
+	categories
+		.iter()
+		.find(|c| c.matches(download))
+		.or_else(|| categories.iter().find(|c| c.regex.is_none()))
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -82,10 +111,6 @@ pub struct Download {
 }
 
 impl Download {
-	pub fn kind(&self) -> Kind {
-		Kind::from_name(&self.name)
-	}
-
 	pub fn progress(&self) -> f32 {
 		if self.size == 0 {
 			0.0
@@ -108,35 +133,33 @@ pub enum Filter {
 	Downloading,
 	Unfinished,
 	Completed,
-	Kind(Kind),
+	Category(u64),
 }
 
 impl Filter {
 	pub const STATES: [Filter; 4] =
 		[Filter::All, Filter::Downloading, Filter::Unfinished, Filter::Completed];
 
-	pub fn label(self) -> &'static str {
+	/// The state filters' names; a category's is the category's own.
+	pub fn label(self, categories: &[Category]) -> String {
 		match self {
-			Filter::All => "All",
-			Filter::Downloading => "Downloading",
-			Filter::Unfinished => "Unfinished",
-			Filter::Completed => "Completed",
-			Filter::Kind(kind) => kind.label(),
+			Filter::All => "All".to_owned(),
+			Filter::Downloading => "Downloading".to_owned(),
+			Filter::Unfinished => "Unfinished".to_owned(),
+			Filter::Completed => "Completed".to_owned(),
+			Filter::Category(id) => {
+				categories.iter().find(|c| c.id == id).map(|c| c.name.clone()).unwrap_or_default()
+			}
 		}
 	}
 
-	/// Every filter the sidebar offers, in its order.
-	pub fn all() -> impl Iterator<Item = Filter> {
-		Filter::STATES.into_iter().chain(Kind::ALL.into_iter().map(Filter::Kind))
-	}
-
-	pub fn matches(self, download: &Download) -> bool {
+	pub fn matches(self, download: &Download, categories: &[Category]) -> bool {
 		match self {
 			Filter::All => true,
 			Filter::Downloading => download.status == Status::Downloading,
 			Filter::Unfinished => download.status != Status::Completed,
 			Filter::Completed => download.status == Status::Completed,
-			Filter::Kind(kind) => download.kind() == kind,
+			Filter::Category(id) => category_of(categories, download).is_some_and(|c| c.id == id),
 		}
 	}
 }
@@ -267,4 +290,39 @@ pub fn sample() -> Vec<Download> {
 			Status::Downloading,
 		),
 	]
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::ui::icon::Icon;
+
+	fn named(name: &str) -> Download {
+		let mut d = sample().remove(0);
+		d.name = name.to_owned();
+		d
+	}
+
+	#[test]
+	fn the_first_matching_category_wins_and_other_takes_the_rest() {
+		let categories = Category::defaults();
+		assert_eq!(category_of(&categories, &named("talk.MP4")).unwrap().name, "Video");
+		assert_eq!(category_of(&categories, &named("notes.md")).unwrap().name, "Documents");
+		assert_eq!(category_of(&categories, &named("disk.iso")).unwrap().name, "Other");
+	}
+
+	#[test]
+	fn a_user_category_ahead_of_the_defaults_captures_first() {
+		let mut categories = Category::defaults();
+		categories.insert(0, Category::new(99, "Code", Icon::Code, r"\.(rs|py)$").unwrap());
+		assert_eq!(category_of(&categories, &named("main.rs")).unwrap().name, "Code");
+	}
+
+	#[test]
+	fn a_bad_pattern_is_an_error_with_the_engine_message_and_lookaround_is_allowed() {
+		assert!(Category::new(1, "x", Icon::File, "(").is_err());
+		let lookahead = Category::new(1, "Not video", Icon::File, r"^(?!.*\.mp4$).*$").unwrap();
+		assert!(lookahead.matches(&named("a.pdf")));
+		assert!(!lookahead.matches(&named("a.mp4")));
+	}
 }

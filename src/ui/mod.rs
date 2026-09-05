@@ -2,6 +2,7 @@
 //! bar -- and the windows it opens beside itself.
 
 mod add_dialog;
+mod category_sheet;
 pub mod download_window;
 pub mod icon;
 pub mod list;

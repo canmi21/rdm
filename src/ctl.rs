@@ -12,13 +12,15 @@ use serde::Serialize;
 
 use crate::app::{Rdm, SortKey, View};
 use crate::download::{Download, Filter, Status};
+use crate::ui::icon::Icon;
 
 /// Under the build directory, so it is per checkout and gone with `cargo clean`.
 pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
 
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
-	sort <added|name|size|progress|speed|status> [desc] | add <url>";
+	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
+	category <name> <icon> <pattern>";
 
 pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
 	let _ = std::fs::remove_file(SOCKET);
@@ -59,8 +61,17 @@ pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
 }
 
 #[derive(Serialize)]
+struct CategoryState {
+	id: u64,
+	name: String,
+	icon: &'static str,
+	pattern: String,
+}
+
+#[derive(Serialize)]
 struct State<'a> {
-	filter: &'static str,
+	filter: String,
+	categories: Vec<CategoryState>,
 	status: Option<&'static str>,
 	sort: SortKey,
 	ascending: bool,
@@ -86,7 +97,17 @@ impl Rdm {
 			.collect();
 		let settings = self.settings_open;
 		let state = State {
-			filter: self.filter.label(),
+			filter: self.filter.label(&self.categories),
+			categories: self
+				.categories
+				.iter()
+				.map(|c| CategoryState {
+					id: c.id,
+					name: c.name.clone(),
+					icon: c.icon.name(),
+					pattern: c.pattern.clone(),
+				})
+				.collect(),
 			status: self.status.map(Status::label),
 			sort: self.sort,
 			ascending: self.ascending,
@@ -128,10 +149,30 @@ impl Rdm {
 				}
 			}
 			"settings" => self.toggle_settings(!self.settings_open, cx),
-			"filter" => match Filter::all().find(|f| f.label().eq_ignore_ascii_case(&label)) {
-				Some(filter) => self.set_filter(filter, cx),
-				None => return failure("filter takes a sidebar label"),
-			},
+			"filter" => {
+				let states = Filter::STATES.into_iter();
+				let categories = self.categories.iter().map(|c| Filter::Category(c.id));
+				match states
+					.chain(categories)
+					.find(|f| f.label(&self.categories).eq_ignore_ascii_case(&label))
+				{
+					Some(filter) => self.set_filter(filter, cx),
+					None => return failure("filter takes a sidebar label"),
+				}
+			}
+			"category" => {
+				// category <name> <icon> <pattern...>: the name is one word here; the sheet takes any.
+				let (Some(name), Some(glyph)) = (rest.first(), rest.get(1)) else {
+					return failure("category takes <name> <icon> <pattern>");
+				};
+				let Some(glyph) = Icon::by_name(glyph) else {
+					return failure("icon is one of the category choices");
+				};
+				let pattern = rest[2..].join(" ");
+				if let Err(error) = self.add_category(name, glyph, &pattern, cx) {
+					return failure(&error);
+				}
+			}
 			"status" if label == "none" => {
 				self.status = None;
 				cx.notify();

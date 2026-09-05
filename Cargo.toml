@@ -19,6 +19,7 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 directories = "6"
 env_logger = "0.11"
+fancy-regex = "0.19"
 futures = "0.3"
 gpui = { package = "gpui-unofficial", version = "1" }
 # Without font-kit the macOS backend renders no text at all. See spec/framework.md.

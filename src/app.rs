@@ -11,9 +11,11 @@ use gpui::{
 
 use serde::Serialize;
 
-use crate::download::{self, Download, Filter, Status};
+use crate::config::{self, Config};
+use crate::download::{self, Category, Download, Filter, Status, category_of};
 use crate::state::{self, Frame, Paths, State};
 use crate::ui::download_window::DownloadWindow;
+use crate::ui::icon::Icon;
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{self, Palette};
 
@@ -67,8 +69,18 @@ pub struct Resize {
 	pub from_width: f32,
 }
 
+/// The category sheet while it is up: two fields and a chosen icon.
+pub struct CategoryForm {
+	pub name: Entity<TextInput>,
+	pub pattern: Entity<TextInput>,
+	pub icon: Icon,
+}
+
 pub struct Rdm {
 	pub(crate) downloads: Vec<Download>,
+	/// From config.json, in its order; written back when one is added.
+	pub(crate) categories: Vec<Category>,
+	pub(crate) category_form: Option<CategoryForm>,
 	pub(crate) filter: Filter,
 	/// A second cut within the sidebar's filter, from the chips above the list.
 	pub(crate) status: Option<Status>,
@@ -101,6 +113,7 @@ pub struct Rdm {
 impl Rdm {
 	pub fn new(
 		saved: State,
+		config: Config,
 		paths: Option<Paths>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
@@ -127,6 +140,8 @@ impl Rdm {
 		});
 		Self {
 			downloads: download::sample(),
+			categories: config.categories(),
+			category_form: None,
 			filter: Filter::All,
 			status: None,
 			filter_open: false,
@@ -154,7 +169,9 @@ impl Rdm {
 		let mut rows: Vec<&Download> = self
 			.downloads
 			.iter()
-			.filter(|d| self.filter.matches(d) && self.status.is_none_or(|s| d.status == s))
+			.filter(|d| {
+				self.filter.matches(d, &self.categories) && self.status.is_none_or(|s| d.status == s)
+			})
 			.collect();
 		rows.sort_by(|a, b| {
 			let order = match self.sort {
@@ -168,6 +185,47 @@ impl Rdm {
 			if self.ascending { order } else { order.reverse() }
 		});
 		rows
+	}
+
+	pub(crate) fn category_of(&self, download: &Download) -> Option<&Category> {
+		category_of(&self.categories, download)
+	}
+
+	pub(crate) fn category_icon(&self, download: &Download) -> Icon {
+		self.category_of(download).map_or(Icon::File, |c| c.icon)
+	}
+
+	/// A new category goes ahead of the defaults, so a specific rule wins over a broad one; the
+	/// catch-all stays last regardless.
+	pub(crate) fn add_category(
+		&mut self,
+		name: &str,
+		icon: Icon,
+		pattern: &str,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let name = name.trim();
+		if name.is_empty() {
+			return Err("a category needs a name".to_owned());
+		}
+		if pattern.trim().is_empty() {
+			return Err("a category needs a pattern".to_owned());
+		}
+		let id = self.categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+		let category = Category::new(id, name, icon, pattern.trim())?;
+		self.categories.insert(0, category);
+		self.save_config();
+		cx.notify();
+		Ok(())
+	}
+
+	/// Written at once, not debounced: a category is added once, and the file is the user's.
+	fn save_config(&self) {
+		if let Some(paths) = &self.paths
+			&& let Err(error) = config::save(&paths.config, &Config::from_categories(&self.categories))
+		{
+			eprintln!("could not write {}: {error:#}", paths.config.display());
+		}
 	}
 
 	pub(crate) fn selected(&self) -> Option<&Download> {
@@ -435,6 +493,7 @@ impl Render for Rdm {
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when_some(self.adding.clone(), |s, input| s.child(self.add_dialog(input, cx)))
 			.when(self.settings_open, |s| s.child(self.settings_sheet(cx)))
+			.when(self.category_form.is_some(), |s| s.child(self.category_sheet(cx)))
 	}
 }
 
@@ -451,14 +510,14 @@ fn child_window(cx: &App, title: &str, extent: gpui::Size<gpui::Pixels>) -> Wind
 // does without a window, a pointer or a display. See spec/workflow.md.
 #[cfg(test)]
 mod tests {
-	use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
+	use gpui::{Entity, EntityInputHandler, Modifiers, TestAppContext, VisualTestContext};
 
 	use super::*;
 
 	fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
 		let window = cx.update(|cx| {
 			cx.open_window(Default::default(), |window, cx| {
-				cx.new(|cx| Rdm::new(State::default(), None, window, cx))
+				cx.new(|cx| Rdm::new(State::default(), Config::seed(), None, window, cx))
 			})
 			.unwrap()
 		});
@@ -579,6 +638,40 @@ mod tests {
 		let viewport = cx.update(|w, _| w.viewport_size());
 		assert!(added.right() <= viewport.width, "the last column stays inside the window");
 		rdm.read_with(&cx, |rdm, _| assert!(rdm.resizing.is_some()));
+	}
+
+	#[gpui::test]
+	fn the_category_sheet_adds_a_rule_ahead_of_the_defaults(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		let (name, pattern) = rdm.read_with(&cx, |rdm, _| {
+			let form = rdm.category_form.as_ref().expect("the sheet is up");
+			(form.name.clone(), form.pattern.clone())
+		});
+		cx.update(|window, cx| {
+			name.update(cx, |input, cx| input.replace_text_in_range(None, "Code", window, cx));
+			pattern.update(cx, |input, cx| input.replace_text_in_range(None, "(", window, cx));
+		});
+		assert!(cx.debug_bounds("button:Add").is_some(), "the button is drawn while disabled");
+		click(&mut cx, "button:Add");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_form.is_some(), "a pattern that does not compile is not added")
+		});
+		cx.update(|window, cx| {
+			pattern.update(cx, |input, cx| {
+				input.replace_text_in_range(Some(0..1), r"(?i)\.(rs|py)$", window, cx)
+			});
+		});
+		click(&mut cx, "icon:terminal");
+		click(&mut cx, "button:Add");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_form.is_none());
+			let first = &rdm.categories[0];
+			assert_eq!((first.name.as_str(), first.icon), ("Code", Icon::Terminal));
+			let rows = rdm.shown();
+			assert!(rows.iter().all(|d| rdm.category_of(d).is_some()));
+		});
+		assert!(cx.debug_bounds("filter:Code").is_some(), "the sidebar lists the new category");
 	}
 
 	#[gpui::test]

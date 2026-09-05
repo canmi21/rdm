@@ -130,6 +130,32 @@ window draws its first frame inside `open_window`, that frame reads the main vie
 view is still being updated by the click -- which panics. Opening is therefore deferred to after
 the update, in `Rdm::open_download`.
 
+## Categories are rules the user writes
+
+The sidebar's categories are one kind of thing: a name, an icon and a regular expression over
+the file name, and the built-in six -- Video, Audio, Documents, Archives, Programs, Other -- are
+seeded as instances of it rather than being a separate hard-coded list. A download belongs to the
+first category whose pattern matches its name, and to Other, which has no pattern, when none does.
+A new category goes in ahead of the defaults, so a specific rule the user wrote wins over a broad
+one that came with the application.
+
+The pattern is matched against the file name and not the address: a name is what the user sees
+in the list, and a pattern over the whole URL would catch hosts as often as files. The engine is
+`fancy-regex`, chosen over the plain `regex` crate for look-around and backreferences -- "not a
+video" is `^(?!.*\.mp4$)` and cannot be written without them -- at the cost of a backtracking
+engine, which for patterns over file names is no cost anyone will measure.
+
+The plus beside the Categories heading opens a sheet, the same shape as Add URL: a name, an icon
+from a short list, a pattern, and under the pattern a line that says what it would do right now --
+the engine's own error while it does not compile, or how many of the current downloads it catches
+while it does. A rule is checked before it exists. The icon list is twelve Lucide glyphs, the
+defaults' six and six more file shapes; the whole set would be a picker nobody finishes
+scrolling, and any icon the source names is fetched by the icon task like the rest.
+
+Categories are read from `config.json` and written back when one is added; see
+[state.md](state.md) for the file. Editing and removing one from the window are not built yet;
+the file is the way, for now.
+
 ## What is deliberately not there yet
 
 The rows are sample data advanced by a timer so the list moves; there is no transfer engine,

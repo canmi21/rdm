@@ -201,7 +201,7 @@ impl Rdm {
 			.items_center()
 			.h(px(26.0))
 			.px_2()
-			.child(icon(Icon::for_kind(download.kind()), p.muted).size_3p5())
+			.child(icon(self.category_icon(download), p.muted).size_3p5())
 			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child(download.name.clone()))
 			.child(
 				cell(Column::Size).text_color(p.muted).child(div().truncate().child(size_cell(download))),
@@ -232,7 +232,7 @@ impl Rdm {
 			.h(px(22.0))
 			.px_2()
 			.text_xs()
-			.child(icon(Icon::for_kind(download.kind()), p.muted).size_3())
+			.child(icon(self.category_icon(download), p.muted).size_3())
 			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
 			.child(div().w(px(96.0)).flex_none().child(progress_bar(p, download, tint)))
 			.child(
@@ -259,7 +259,7 @@ impl Rdm {
 					.items_center()
 					.rounded_sm()
 					.bg(p.panel)
-					.child(icon(Icon::for_kind(download.kind()), p.muted).size_8()),
+					.child(icon(self.category_icon(download), p.muted).size_8()),
 			)
 			.child(div().truncate().text_xs().child(download.name.clone()))
 			.child(progress_bar(p, download, tint))

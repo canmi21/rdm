@@ -67,7 +67,11 @@ impl Render for DownloadWindow {
 		frame
 			.child(field(p.muted, "URL", download.url.clone()))
 			.child(field(p.muted, "Size", format_bytes(download.size)))
-			.child(field(p.muted, "Type", download.kind().label().to_owned()))
+			.child(field(
+				p.muted,
+				"Category",
+				self.rdm.read(cx).category_of(&download).map_or_else(String::new, |c| c.name.clone()),
+			))
 			.child(
 				div()
 					.flex()

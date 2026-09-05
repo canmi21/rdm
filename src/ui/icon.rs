@@ -1,8 +1,8 @@
 use gpui::{Hsla, Svg, prelude::*, svg};
 
-use crate::download::{Filter, Kind, Status};
+use crate::download::{Filter, Status};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
 	Plus,
 	Pause,
@@ -29,6 +29,12 @@ pub enum Icon {
 	CircleDashed,
 	Funnel,
 	X,
+	Code,
+	Image,
+	BookOpen,
+	Disc,
+	Database,
+	Terminal,
 }
 
 impl Icon {
@@ -59,27 +65,63 @@ impl Icon {
 			Icon::CircleDashed => "icons/circle-dashed.svg",
 			Icon::Funnel => "icons/funnel.svg",
 			Icon::X => "icons/x.svg",
+			Icon::Code => "icons/code.svg",
+			Icon::Image => "icons/image.svg",
+			Icon::BookOpen => "icons/book-open.svg",
+			Icon::Disc => "icons/disc.svg",
+			Icon::Database => "icons/database.svg",
+			Icon::Terminal => "icons/terminal.svg",
 		}
 	}
 
-	pub fn for_kind(kind: Kind) -> Icon {
-		match kind {
-			Kind::Video => Icon::Film,
-			Kind::Audio => Icon::Music,
-			Kind::Document => Icon::FileText,
-			Kind::Archive => Icon::Archive,
-			Kind::Program => Icon::Package,
-			Kind::Other => Icon::File,
+	/// What a category may be drawn with: the defaults' icons and a few more file shapes. A short
+	/// list on purpose; the whole of Lucide would be a picker nobody finishes scrolling.
+	pub const CATEGORY_CHOICES: [Icon; 12] = [
+		Icon::Film,
+		Icon::Music,
+		Icon::FileText,
+		Icon::Archive,
+		Icon::Package,
+		Icon::File,
+		Icon::Code,
+		Icon::Image,
+		Icon::BookOpen,
+		Icon::Disc,
+		Icon::Database,
+		Icon::Terminal,
+	];
+
+	/// The icon's name, for the picker's accessibility label and the control socket.
+	pub fn name(self) -> &'static str {
+		match self {
+			Icon::Film => "film",
+			Icon::Music => "music",
+			Icon::FileText => "file-text",
+			Icon::Archive => "archive",
+			Icon::Package => "package",
+			Icon::File => "file",
+			Icon::Code => "code",
+			Icon::Image => "image",
+			Icon::BookOpen => "book-open",
+			Icon::Disc => "disc",
+			Icon::Database => "database",
+			Icon::Terminal => "terminal",
+			other => other.path().trim_start_matches("icons/").trim_end_matches(".svg"),
 		}
 	}
 
+	pub fn by_name(name: &str) -> Option<Icon> {
+		Icon::CATEGORY_CHOICES.into_iter().find(|i| i.name() == name)
+	}
+
+	/// The state filters' icons; a category carries its own.
 	pub fn for_filter(filter: Filter) -> Icon {
 		match filter {
 			Filter::All => Icon::List,
 			Filter::Downloading => Icon::ArrowDown,
 			Filter::Unfinished => Icon::CircleDashed,
 			Filter::Completed => Icon::CircleCheck,
-			Filter::Kind(kind) => Icon::for_kind(kind),
+			Filter::Category(_) => Icon::File,
 		}
 	}
 

@@ -1776,6 +1776,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fancy-regex"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "476de73bddf2ef8490aa4ee8f1cf40b430bf1d56c48c22080e5186952cd580e6"
+dependencies = [
+ "bit-set 0.8.0",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4668,6 +4679,7 @@ dependencies = [
  "chrono",
  "directories",
  "env_logger",
+ "fancy-regex",
  "futures",
  "gpui-platform-gpui-unofficial",
  "gpui-unofficial",

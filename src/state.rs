@@ -19,6 +19,8 @@ pub const VERSION: u64 = 1;
 pub struct Paths {
 	/// `state.json`: the window's memory, small, rewritten whole.
 	pub state: PathBuf,
+	/// `config.json`: what the user shaped and may edit by hand -- the categories, later the settings.
+	pub config: PathBuf,
 	/// `internal.sqlite`: the downloads themselves, once they persist; rows, appended and updated.
 	// TODO: opened by the store that does not exist yet; named now so the two files are decided together.
 	#[expect(dead_code)]
@@ -30,7 +32,11 @@ impl Paths {
 		let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)?;
 		// Linux has a directory for state as distinct from data; the others fold them together.
 		let root = dirs.state_dir().unwrap_or_else(|| dirs.data_local_dir()).to_path_buf();
-		Some(Paths { state: root.join("state.json"), database: root.join("internal.sqlite") })
+		Some(Paths {
+			state: root.join("state.json"),
+			config: dirs.config_dir().join("config.json"),
+			database: root.join("internal.sqlite"),
+		})
 	}
 }
 
@@ -80,20 +86,28 @@ impl Frame {
 	}
 }
 
-/// Reads the file, bringing an older version up to the current one step by step. A file from a
-/// newer version is refused rather than guessed at: it will be read correctly by the build that
-/// wrote it, and overwriting it here would lose what that build knew.
-pub fn parse(text: &str) -> Result<State> {
-	let mut value: Value = serde_json::from_str(text).context("state.json is not JSON")?;
-	let version =
-		value.get("version").and_then(Value::as_u64).context("state.json has no integer version")?;
-	if version > VERSION {
-		bail!("state.json is version {version}, newer than this build's {VERSION}");
+/// Reads a versioned file, bringing an older version up to `current` one step at a time through
+/// `migrate`. A file from a newer version is refused rather than guessed at: it will be read
+/// correctly by the build that wrote it, and overwriting it here would lose what that build knew.
+/// A file with no integer version is refused the same way. Shared by state.json and config.json.
+pub fn parse_versioned<T: serde::de::DeserializeOwned>(
+	text: &str,
+	current: u64,
+	migrate: fn(u64, Value) -> Result<Value>,
+) -> Result<T> {
+	let mut value: Value = serde_json::from_str(text).context("not JSON")?;
+	let version = value.get("version").and_then(Value::as_u64).context("no integer version")?;
+	if version > current {
+		bail!("version {version} is newer than this build's {current}");
 	}
-	for step in version..VERSION {
+	for step in version..current {
 		value = migrate(step, value)?;
 	}
 	Ok(serde_json::from_value(value)?)
+}
+
+pub fn parse(text: &str) -> Result<State> {
+	parse_versioned(text, VERSION, migrate)
 }
 
 /// One step, from `from` to `from + 1`. Each breaking change adds an arm and bumps VERSION; the
@@ -114,15 +128,19 @@ pub fn load(path: &Path) -> State {
 }
 
 /// Written whole, to a sibling and then renamed over the old file, so a crash mid-write leaves
-/// the previous state rather than half of the new one.
-pub fn save(path: &Path, state: &State) -> Result<()> {
+/// the previous file rather than half of the new one.
+pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 	if let Some(parent) = path.parent() {
 		std::fs::create_dir_all(parent)?;
 	}
 	let temporary = path.with_extension("json.tmp");
-	std::fs::write(&temporary, serde_json::to_string_pretty(state)?)?;
+	std::fs::write(&temporary, serde_json::to_string_pretty(value)?)?;
 	std::fs::rename(&temporary, path)?;
 	Ok(())
+}
+
+pub fn save(path: &Path, state: &State) -> Result<()> {
+	write_json(path, state)
 }
 
 #[cfg(test)]
