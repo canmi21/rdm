@@ -76,7 +76,7 @@ impl Icon {
 			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::Funnel => "lucide/funnel.svg",
 			Icon::X => "lucide/x.svg",
-			Icon::Code => "lucide/code.svg",
+			Icon::Code => "lucide/file-braces.svg",
 			Icon::Image => "lucide/image.svg",
 			Icon::BookOpen => "lucide/book-open.svg",
 			Icon::Disc => "lucide/disc.svg",
@@ -126,7 +126,7 @@ impl Icon {
 			Icon::Archive => "archive",
 			Icon::Package => "package",
 			Icon::File => "file",
-			Icon::Code => "code",
+			Icon::Code => "file-braces",
 			Icon::Image => "image",
 			Icon::BookOpen => "book-open",
 			Icon::Disc => "disc",
@@ -141,6 +141,8 @@ impl Icon {
 	}
 
 	pub fn by_name(name: &str) -> Option<Icon> {
+		// The name a config.json written before the glyph changed still reads as the same icon.
+		let name = if name == "code" { "file-braces" } else { name };
 		Icon::CATEGORY_CHOICES.into_iter().find(|i| i.name() == name)
 	}
 
