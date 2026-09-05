@@ -4,8 +4,7 @@ use gpui::{
 };
 
 use crate::app::{Rdm, SortKey, View};
-use crate::download::{Download, Status, format_bytes, format_speed};
-use crate::ui::chip;
+use crate::download::{Download, Status, format_added, format_bytes, format_speed};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
 
@@ -14,16 +13,15 @@ const SIZE_W: f32 = 104.0;
 const PROGRESS_W: f32 = 150.0;
 const SPEED_W: f32 = 84.0;
 const STATUS_W: f32 = 104.0;
+const ADDED_W: f32 = 108.0;
 
-const COLUMNS: [(SortKey, &str, f32); 4] = [
+const COLUMNS: [(SortKey, &str, f32); 5] = [
 	(SortKey::Size, "Size", SIZE_W),
 	(SortKey::Progress, "Progress", PROGRESS_W),
 	(SortKey::Speed, "Speed", SPEED_W),
 	(SortKey::Status, "Status", STATUS_W),
+	(SortKey::Added, "Added", ADDED_W),
 ];
-
-const CHIPS: [Status; 5] =
-	[Status::Downloading, Status::Queued, Status::Paused, Status::Completed, Status::Failed];
 
 impl Rdm {
 	pub(crate) fn render_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -43,7 +41,6 @@ impl Rdm {
 			.flex_col()
 			.flex_1()
 			.min_h_0()
-			.child(self.filter_strip(cx))
 			.when(self.view == View::Detailed, |s| s.child(self.header(cx)))
 			.child(
 				div()
@@ -71,28 +68,6 @@ impl Rdm {
 			)
 	}
 
-	/// Status chips: a second cut inside whatever the sidebar selected, one at a time.
-	fn filter_strip(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
-		let chips: Vec<_> = CHIPS
-			.iter()
-			.map(|status| {
-				let status = *status;
-				let count =
-					self.downloads.iter().filter(|d| self.filter.matches(d) && d.status == status).count();
-				chip(
-					p,
-					SharedString::from(format!("chip:{}", status.label())),
-					format!("{} {count}", status.label()),
-					self.status == Some(status),
-					cx.listener(move |this, _, _, cx| this.toggle_status(status, cx)),
-				)
-				.debug_selector(|| format!("chip:{}", status.label()))
-			})
-			.collect();
-		div().flex().items_center().gap_1().px_3().pt_2().pb_1().children(chips)
-	}
-
 	/// Column titles that sort. The ordered column carries a chevron for the direction.
 	fn header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
@@ -105,6 +80,7 @@ impl Rdm {
 			.items_center()
 			.gap_3()
 			.mx_1p5()
+			.mt_1()
 			.px_2()
 			.py_0p5()
 			.text_xs()
@@ -184,6 +160,9 @@ impl Rdm {
 			))
 			.child(cell(SPEED_W).text_color(p.muted).child(speed_cell(download)))
 			.child(cell(STATUS_W).child(status_label(download, tint)))
+			.child(
+				cell(ADDED_W).text_color(p.muted).whitespace_nowrap().child(format_added(download.added)),
+			)
 	}
 
 	fn compact(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {

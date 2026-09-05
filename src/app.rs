@@ -29,8 +29,7 @@ impl View {
 	pub const ALL: [View; 3] = [View::Detailed, View::Compact, View::Grid];
 }
 
-/// A column the table can be ordered by. `Added` is the order downloads arrived in and the
-/// default; it has no column of its own.
+/// A column the table can be ordered by. `Added` is the default: the order downloads arrived in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum SortKey {
 	Added,
@@ -99,7 +98,7 @@ impl Rdm {
 			.collect();
 		rows.sort_by(|a, b| {
 			let order = match self.sort {
-				SortKey::Added => a.id.cmp(&b.id),
+				SortKey::Added => a.added.cmp(&b.added),
 				SortKey::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
 				SortKey::Size => a.size.cmp(&b.size),
 				SortKey::Progress => a.progress().partial_cmp(&b.progress()).unwrap_or(Ordering::Equal),
@@ -158,6 +157,7 @@ impl Rdm {
 			received: 0,
 			speed: 0,
 			status: Status::Queued,
+			added: chrono::Local::now(),
 		});
 		self.selected = Some(id);
 		cx.notify();
@@ -275,16 +275,14 @@ impl Render for Rdm {
 			.text_color(p.text)
 			.child(self.render_toolbar(cx))
 			.child(
-				div().flex().flex_1().min_h_0().child(self.render_sidebar(cx)).child(
-					div()
-						.flex()
-						.flex_col()
-						.flex_1()
-						.min_w_0()
-						.child(self.render_list(cx))
-						.child(self.render_status_bar(cx)),
-				),
+				div()
+					.flex()
+					.flex_1()
+					.min_h_0()
+					.child(self.render_sidebar(cx))
+					.child(div().flex().flex_col().flex_1().min_w_0().child(self.render_list(cx))),
 			)
+			.child(self.render_status_bar(cx))
 	}
 }
 

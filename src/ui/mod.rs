@@ -5,7 +5,7 @@ pub mod download_window;
 pub mod icon;
 mod list;
 pub mod settings_window;
-mod sidebar;
+pub mod sidebar;
 mod status_bar;
 pub mod theme;
 pub mod toolbar;

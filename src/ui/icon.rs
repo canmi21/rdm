@@ -1,6 +1,6 @@
 use gpui::{Hsla, Svg, prelude::*, svg};
 
-use crate::download::{Kind, Status};
+use crate::download::{Filter, Kind, Status};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Icon {
@@ -26,6 +26,8 @@ pub enum Icon {
 	ChevronDown,
 	Settings,
 	ExternalLink,
+	List,
+	CircleDashed,
 }
 
 impl Icon {
@@ -53,6 +55,8 @@ impl Icon {
 			Icon::ChevronDown => "icons/chevron-down.svg",
 			Icon::Settings => "icons/settings.svg",
 			Icon::ExternalLink => "icons/external-link.svg",
+			Icon::List => "icons/list.svg",
+			Icon::CircleDashed => "icons/circle-dashed.svg",
 		}
 	}
 
@@ -64,6 +68,16 @@ impl Icon {
 			Kind::Archive => Icon::Archive,
 			Kind::Program => Icon::Package,
 			Kind::Other => Icon::File,
+		}
+	}
+
+	pub fn for_filter(filter: Filter) -> Icon {
+		match filter {
+			Filter::All => Icon::List,
+			Filter::Downloading => Icon::ArrowDown,
+			Filter::Unfinished => Icon::CircleDashed,
+			Filter::Completed => Icon::CircleCheck,
+			Filter::Kind(kind) => Icon::for_kind(kind),
 		}
 	}
 

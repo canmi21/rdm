@@ -3,8 +3,8 @@
 ## What it is modelled on
 
 A download manager's window has a settled shape, and rdm keeps to it rather than inventing one:
-a sidebar of filters on the left, the list in the middle, actions along the top and one thin
-status line along the bottom. Neat Download Manager is the reference for what goes where; Zed is the reference for how tightly. The
+a sidebar of filters on the left, each with its icon, the list in the middle, actions along the
+top and one thin status line along the bottom. Neat Download Manager is the reference for what goes where; Zed is the reference for how tightly. The
 parts are separate modules under `src/ui/` named for what they are -- toolbar, sidebar, list,
 detail -- so a reader looking for one finds it by name.
 
@@ -34,11 +34,12 @@ three lines on what a row says in one, and the density asked for here is an edit
 launcher's. The other two trade completeness for density or for a glance.
 
 **The table's header sorts.** Clicking a column title orders by it; clicking it again flips the
-direction, marked by a chevron. The default order is arrival, which has no column and so shows
-no chevron. Above the header a row of status chips cuts within whatever the sidebar selected --
-one at a time, and clicking the lit chip clears it, so there is no "all" chip to keep in step.
-The sidebar answers "which downloads", the chips answer "in what state", and neither duplicates
-the other.
+direction, marked by a chevron. The default order is the Added column, ascending. In the status
+bar a row of status chips cuts within whatever the sidebar selected -- one at a time, and clicking
+the lit chip clears it, so there is no "all" chip to keep in step. They sat above the list first
+and moved down so the list is the first thing under the toolbar; a filter is consulted less often
+than the rows are read. The sidebar answers "which downloads", the chips answer "in what state",
+and neither duplicates the other.
 
 The view, sort and chip are not yet remembered across launches; that waits on there being any
 persistence at all.
@@ -83,8 +84,11 @@ closes only itself.
 
 The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
 was in the way whenever nothing was selected. The status bar it became is an editor's: one line
-saying what is happening -- how many downloads, how many active, the combined speed -- and never
-what is selected.
+across the whole window, split where the sidebar is. Under the sidebar it holds what belongs to
+the application -- the Settings gear. Under the list it holds what belongs to the list: the
+status chips, a summary of how many and how fast, the selected download as a link to its window,
+and the view switch. The toolbar is left with actions on the selection and nothing else, which is
+what a toolbar is for; a view switch is not an action and was moved off it.
 
 Two facts about GPUI decided the shape of the code. A secondary window's view holds an
 `Entity<Rdm>` and observes it rather than copying anything, so there is one list and any number

@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use chrono::{DateTime, Local};
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -77,6 +78,7 @@ pub struct Download {
 	/// Bytes per second, zero unless downloading.
 	pub speed: u64,
 	pub status: Status,
+	pub added: DateTime<Local>,
 }
 
 impl Download {
@@ -154,6 +156,10 @@ pub fn format_speed(bytes_per_second: u64) -> String {
 	format!("{}/s", format_bytes(bytes_per_second))
 }
 
+pub fn format_added(added: DateTime<Local>) -> String {
+	added.format("%b %-d, %H:%M").to_string()
+}
+
 pub fn format_duration(duration: Duration) -> String {
 	let seconds = duration.as_secs();
 	match seconds {
@@ -166,7 +172,8 @@ pub fn format_duration(duration: Duration) -> String {
 // TODO: stands in for a persistent store and a transfer engine, neither of which exists yet.
 // The rows are shaped like real ones so the UI can be built against them.
 pub fn sample() -> Vec<Download> {
-	let entry = |id, name: &str, url: &str, size, received, speed, status| Download {
+	let now = Local::now();
+	let entry = |id: u64, name: &str, url: &str, size, received, speed, status| Download {
 		id,
 		name: name.to_owned(),
 		url: url.to_owned(),
@@ -174,6 +181,8 @@ pub fn sample() -> Vec<Download> {
 		received,
 		speed,
 		status,
+		// Spread over the past days so the Added column has something to order by.
+		added: now - chrono::Duration::hours(id as i64 * 7),
 	};
 	vec![
 		entry(
