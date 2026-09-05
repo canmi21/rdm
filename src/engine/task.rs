@@ -493,7 +493,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn a_cancelled_download_resumes_from_its_plan_in_a_later_run() {
-		// Slow enough that the cancel at 60 ms lands mid-file even on a busy machine.
+		// Slow enough that the cancel, sent once bytes have landed, comes before the end.
 		let data = body(400_000);
 		let server = TestServer::start(
 			data.clone(),
@@ -507,8 +507,16 @@ mod tests {
 		let req = request(&server, &dir, "/res.bin", Connections { min: 2, max: 2, auto: false });
 		let h = Handle::new();
 		let cancel = h.cancel.clone();
+		let progress = h.progress.clone();
+		// Cancel once something is on disk, not at a moment on the clock: on a busy runner the
+		// probe and the connections alone took longer than any moment chosen, and the cancel
+		// landed before the first byte. The worker marks the plan before it reports, so a
+		// report of bytes means the plan has them.
 		tokio::spawn(async move {
-			tokio::time::sleep(Duration::from_millis(60)).await;
+			let deadline = Instant::now() + Duration::from_secs(20);
+			while progress.done.load(Ordering::Relaxed) == 0 && Instant::now() < deadline {
+				tokio::time::sleep(Duration::from_millis(2)).await;
+			}
 			cancel.cancel();
 		});
 		let first = run(req.clone(), &h, Limiter::unlimited()).await;
