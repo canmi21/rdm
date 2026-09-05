@@ -981,15 +981,12 @@ mod tests {
 	use gpui::{Entity, EntityInputHandler, Modifiers, TestAppContext, VisualTestContext};
 
 	use super::*;
+	use crate::testing::scratch;
 
 	/// Somewhere under the temp directory, so a test that really downloads writes there and not
 	/// into the repository -- which one did, and three commits carried its files.
 	fn scratch_paths(name: &str) -> Paths {
-		// Numbered, since tests run at once and two clearing the same directory collide.
-		static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-		let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-		let dir = std::env::temp_dir().join(format!("rdm-app-{}-{name}-{n}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
+		let dir = scratch(name);
 		std::fs::create_dir_all(dir.join("downloads")).unwrap();
 		Paths {
 			state: dir.join("state.json"),
@@ -1526,9 +1523,7 @@ mod tests {
 	fn the_rows_come_back_from_the_store_and_the_unfinished_are_queued_again(
 		cx: &mut TestAppContext,
 	) {
-		let dir = std::env::temp_dir().join(format!("rdm-app-store-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
+		let dir = scratch("app-store");
 		let paths = || Paths {
 			state: dir.join("state.json"),
 			config: dir.join("config.json"),
@@ -1583,8 +1578,7 @@ mod tests {
 	fn a_plan_left_in_the_folder_comes_in_as_a_paused_row(cx: &mut TestAppContext) {
 		use crate::engine::control::{self, Control};
 		use crate::engine::{Plan, Span};
-		let dir = std::env::temp_dir().join(format!("rdm-app-stray-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
+		let dir = scratch("app-stray");
 		let downloads = dir.join("downloads");
 		std::fs::create_dir_all(&downloads).unwrap();
 		let paths = || Paths {

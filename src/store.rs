@@ -126,9 +126,7 @@ mod tests {
 	use super::*;
 
 	fn scratch(name: &str) -> std::path::PathBuf {
-		let dir = std::env::temp_dir().join(format!("rdm-store-{}-{name}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
-		dir.join("internal.sqlite")
+		crate::testing::scratch(name).join("internal.sqlite")
 	}
 
 	fn row(id: u64, status: Status) -> Download {
@@ -177,7 +175,6 @@ mod tests {
 	#[test]
 	fn a_newer_database_is_refused() {
 		let path = scratch("newer");
-		std::fs::create_dir_all(path.parent().unwrap()).unwrap();
 		{
 			let connection = Connection::open(&path).unwrap();
 			connection.pragma_update(None, "user_version", 99).unwrap();

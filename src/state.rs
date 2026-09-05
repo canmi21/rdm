@@ -183,7 +183,7 @@ mod tests {
 
 	#[test]
 	fn what_is_saved_is_read_back() {
-		let dir = std::env::temp_dir().join(format!("rdm-state-{}", std::process::id()));
+		let dir = crate::testing::scratch("state");
 		let path = dir.join("state.json");
 		let state = State {
 			window: Some(Frame { x: 1.0, y: 2.0, width: 3.0, height: 4.0 }),

@@ -401,13 +401,7 @@ mod tests {
 	use super::*;
 	use crate::engine::settings::Connections;
 	use crate::engine::testing::{Options, TestServer};
-
-	fn scratch(name: &str) -> PathBuf {
-		let dir = std::env::temp_dir().join(format!("rdm-engine-{}-{name}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		dir
-	}
+	use crate::testing::scratch;
 
 	fn body(len: usize) -> Vec<u8> {
 		(0..len).map(|i| (i % 253) as u8).collect()

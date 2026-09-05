@@ -3,18 +3,11 @@
 //! take seconds; `cargo test -- --ignored` runs them. Each is bounded, so a mirror that is down
 //! fails the test rather than hanging it.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::engine::{self, Connections, Limiter, Request, Settings};
+use crate::testing::scratch;
 use reqwest::Url;
-
-fn scratch(name: &str) -> PathBuf {
-	let dir = std::env::temp_dir().join(format!("rdm-mirror-{}-{name}", std::process::id()));
-	let _ = std::fs::remove_dir_all(&dir);
-	std::fs::create_dir_all(&dir).unwrap();
-	dir
-}
 
 fn handle() -> engine::Handle {
 	engine::Handle::new()

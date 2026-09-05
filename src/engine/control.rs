@@ -148,9 +148,7 @@ mod tests {
 	use crate::engine::segments::Span;
 
 	fn scratch(name: &str) -> PathBuf {
-		let dir = std::env::temp_dir().join(format!("rdm-control-{}-{name}", std::process::id()));
-		std::fs::create_dir_all(&dir).unwrap();
-		dir.join("movie.mkv")
+		crate::testing::scratch(name).join("movie.mkv")
 	}
 
 	#[test]
@@ -176,9 +174,7 @@ mod tests {
 
 	#[test]
 	fn plans_left_in_a_folder_are_found_when_they_can_be_continued() {
-		let dir = std::env::temp_dir().join(format!("rdm-control-find-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
+		let dir = crate::testing::scratch("control-find");
 		let plan = |done: u64| {
 			let mut plan = Plan::split(Span::new(0, 100), 2, 1);
 			plan.segments[0].done = done;

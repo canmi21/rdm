@@ -100,9 +100,7 @@ mod tests {
 	use super::*;
 
 	fn scratch(name: &str, content: &[u8]) -> std::path::PathBuf {
-		let dir = std::env::temp_dir().join(format!("rdm-verify-{}", std::process::id()));
-		std::fs::create_dir_all(&dir).unwrap();
-		let path = dir.join(name);
+		let path = crate::testing::scratch("verify").join(name);
 		std::fs::write(&path, content).unwrap();
 		path
 	}

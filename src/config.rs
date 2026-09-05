@@ -215,10 +215,7 @@ pub fn save(path: &Path, config: &Config) -> Result<()> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	fn scratch(name: &str) -> std::path::PathBuf {
-		std::env::temp_dir().join(format!("rdm-config-{}-{name}", std::process::id()))
-	}
+	use crate::testing::scratch;
 
 	#[test]
 	fn a_missing_file_is_seeded_with_the_defaults_and_written() {

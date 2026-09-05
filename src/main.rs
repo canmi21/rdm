@@ -8,6 +8,8 @@ mod engine;
 mod identity;
 mod state;
 mod store;
+#[cfg(test)]
+mod testing;
 mod ui;
 mod watch;
 

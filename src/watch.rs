@@ -99,9 +99,7 @@ mod tests {
 
 	#[test]
 	fn a_burst_of_changes_is_one_signal_and_quiet_is_none() {
-		let dir = std::env::temp_dir().join(format!("rdm-watch-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
+		let dir = crate::testing::scratch("watch");
 		let watcher = Watcher::new(&dir).unwrap();
 		// The platform needs a moment to start delivering.
 		thread::sleep(Duration::from_millis(300));
