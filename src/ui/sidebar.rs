@@ -94,9 +94,11 @@ impl Rdm {
 		};
 		let count = self.downloads.iter().filter(|d| filter.matches(d, &self.categories)).count();
 		let selector = label.clone();
-		// The icon is grey until the row is chosen or hovered, then its own hue; the svg cannot
-		// inherit a hover color, so it watches the row through a group.
+		// The icon wears its own hue always when the sidebar is set to be colorful, else only
+		// while the row is chosen or hovered; the svg cannot inherit a hover color, so it watches
+		// the row through a group. The window's inactive grey is in the hue already.
 		let tint = p.hue(filter.color(&self.categories));
+		let lit = active || self.preferences.colorful_sidebar;
 		div()
 			.id(SharedString::from(format!("filter:{label}")))
 			.role(Role::Tab)
@@ -115,9 +117,9 @@ impl Rdm {
 			.when(!active, move |s| s.hover(move |s| s.bg(p.hover)))
 			.on_click(cx.listener(move |this, _, _, cx| this.set_filter(filter, cx)))
 			.child(
-				icon(glyph, if active { tint } else { p.muted })
+				icon(glyph, if lit { tint } else { p.muted })
 					.size_3p5()
-					.when(!active, move |s| s.group_hover("filter-row", move |s| s.text_color(tint))),
+					.when(!lit, move |s| s.group_hover("filter-row", move |s| s.text_color(tint))),
 			)
 			.child(div().flex_1().child(label))
 			.child(div().text_xs().text_color(p.muted).child(count.to_string()))

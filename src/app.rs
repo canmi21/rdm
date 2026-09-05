@@ -11,7 +11,7 @@ use gpui::{
 
 use serde::Serialize;
 
-use crate::config::{self, Config};
+use crate::config::{self, Config, Preferences};
 use crate::download::{self, Category, Combine, Download, Filter, Status, categories_of};
 use crate::engine::{self, Engine, Event, TaskId};
 use crate::state::{self, Frame, Paths, State};
@@ -132,6 +132,8 @@ pub struct Rdm {
 	watcher: Option<crate::watch::Watcher>,
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
+	/// The switches from config.json, written back when one is flipped.
+	pub(crate) preferences: Preferences,
 	pub(crate) category_sheet: Option<CategorySheet>,
 	/// A few lines of guidance laid over whatever sheet is up, until OK is pressed.
 	pub(crate) guide: Option<crate::ui::guide::Guide>,
@@ -231,6 +233,7 @@ impl Rdm {
 			events,
 			store,
 			watcher,
+			preferences: config.settings.clone(),
 			categories: config.categories(),
 			category_sheet: None,
 			guide: None,
@@ -500,10 +503,17 @@ impl Rdm {
 	/// Written at once, not debounced: a category is added once, and the file is the user's.
 	fn save_config(&self) {
 		if let Some(paths) = &self.paths
-			&& let Err(error) = config::save(&paths.config, &Config::from_categories(&self.categories))
+			&& let Err(error) =
+				config::save(&paths.config, &Config::from_parts(&self.categories, &self.preferences))
 		{
 			eprintln!("could not write {}: {error:#}", paths.config.display());
 		}
+	}
+
+	pub(crate) fn set_colorful_sidebar(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.colorful_sidebar = on;
+		self.save_config();
+		cx.notify();
 	}
 
 	pub(crate) fn selected(&self) -> Option<&Download> {
@@ -1690,6 +1700,17 @@ mod tests {
 		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, None, "nor does a row take it"));
 		press(&mut cx, false);
 		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, Some(3)));
+	}
+
+	#[gpui::test]
+	fn the_colorful_sidebar_switch_flips_the_preference(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_sidebar, "on to start with"));
+		click(&mut cx, "button:Settings");
+		click(&mut cx, "setting:Always use colorful sidebar");
+		rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.colorful_sidebar));
+		click(&mut cx, "setting:Always use colorful sidebar");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_sidebar));
 	}
 
 	#[gpui::test]

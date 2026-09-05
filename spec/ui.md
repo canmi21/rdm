@@ -77,6 +77,15 @@ Programs red, Disk images navy -- with a custom rule handed the next hue in a fi
 nobody has to pick. Any of them can be changed to a named hue or one the user writes; the
 color is a number on the category, so a written one is the same kind of thing as a named one.
 
+**In the sidebar the hues are always on, unless asked otherwise.** "Always use colorful
+sidebar", on to start with, has every sidebar icon wear its hue all the time; off, an icon is
+grey until its row is chosen or hovered and then its own hue. Both readings are right -- a
+column of colors at rest is a legend to one eye and a rainbow to another -- so it is a switch,
+the first row of Settings with something behind it, kept in config.json with the categories
+since it is the user's. The list's type icons wear their hues either way, since there the
+color says which bucket a file fell into. And either way the window's inactive grey wins: a
+background window gives up its hues.
+
 **The window is blurred, and only the sidebar lets it show.** `WindowBackgroundAppearance::Blurred`
 asks macOS for the blur behind a native window, but a native window is not transparent: Finder's
 content is opaque and its sidebar is a *material*, mostly opaque with a hint of the desktop's

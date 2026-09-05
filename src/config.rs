@@ -20,6 +20,30 @@ pub struct Config {
 	pub version: u64,
 	#[serde(default)]
 	pub categories: Vec<CategoryConfig>,
+	/// What the settings sheet offers; absent in a file from before it did, and then the
+	/// defaults.
+	#[serde(default)]
+	pub settings: Preferences,
+}
+
+/// The switches a user sets, as the file spells them. Every field has a default, so a file that
+/// predates a switch reads as if the switch had been left alone.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Preferences {
+	/// The sidebar's icons keep their hues always rather than only when chosen or hovered. On
+	/// to start with; the window's inactive grey overrides it either way.
+	#[serde(default = "yes")]
+	pub colorful_sidebar: bool,
+}
+
+fn yes() -> bool {
+	true
+}
+
+impl Default for Preferences {
+	fn default() -> Self {
+		Preferences { colorful_sidebar: true }
+	}
 }
 
 /// A category as the file spells it. A custom rule carries its pattern as written and its
@@ -57,6 +81,7 @@ impl Config {
 		Config {
 			version: VERSION,
 			categories: Category::defaults().iter().map(CategoryConfig::from).collect(),
+			settings: Preferences::default(),
 		}
 	}
 
@@ -118,8 +143,12 @@ impl Config {
 			.collect()
 	}
 
-	pub fn from_categories(categories: &[Category]) -> Config {
-		Config { version: VERSION, categories: categories.iter().map(CategoryConfig::from).collect() }
+	pub fn from_parts(categories: &[Category], settings: &Preferences) -> Config {
+		Config {
+			version: VERSION,
+			categories: categories.iter().map(CategoryConfig::from).collect(),
+			settings: settings.clone(),
+		}
 	}
 }
 
@@ -233,7 +262,7 @@ mod tests {
 		assert!(audio.contains(&"opus".to_owned()), "the built-in list has grown under it");
 		assert_eq!(audio.last().map(String::as_str), Some("xyz"), "what it had beyond is kept");
 		assert!(categories[2].preset.is_none(), "a custom rule stays a custom rule");
-		let written = Config::from_categories(&categories);
+		let written = Config::from_parts(&categories, &Preferences::default());
 		assert_eq!(written.categories[0].added, ["xyz"]);
 		assert_eq!(written.categories[0].pattern, "", "a preset's pattern is not written");
 		assert_eq!(written.categories[0].color.as_deref(), Some("#aabbcc"));
@@ -241,6 +270,16 @@ mod tests {
 		assert!(written.categories[2].color.is_some(), "a custom rule always writes its color");
 		assert_eq!(written.categories[1].preset.as_deref(), Some("Audio"));
 		assert_eq!(parse(&serde_json::to_string(&written).unwrap()).unwrap(), written);
+	}
+
+	#[test]
+	fn a_switch_missing_from_the_file_reads_as_its_default_and_a_set_one_holds() {
+		let old = parse(r#"{ "version": 1, "categories": [] }"#).unwrap();
+		assert!(old.settings.colorful_sidebar, "a file from before the switch");
+		let off = parse(r#"{ "version": 1, "settings": { "colorful_sidebar": false } }"#).unwrap();
+		assert!(!off.settings.colorful_sidebar);
+		let text = serde_json::to_string(&off).unwrap();
+		assert_eq!(parse(&text).unwrap().settings, off.settings);
 	}
 
 	#[test]

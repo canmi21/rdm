@@ -26,7 +26,8 @@ Three files, because three kinds of writing:
   half of the new one. It is written on change and not at quit, because a forced quit gives no
   moment to write in, and losing a drag's worth of change is the most that can be lost.
 - **`config.json`**, in the platform's *configuration* directory rather than its state directory,
-  is the user's: the categories, and later the settings. It is seeded with the built-in
+  is the user's: the categories, and the switches the settings sheet offers, each with a default
+  so a file from before a switch reads as if it had been left alone. It is seeded with the built-in
   categories the first time the application starts and finds no file, so a user who wants to
   change the defaults finds them written down rather than baked in, and it is otherwise only
   written when the application itself changes it -- adding a category, switching a preset,
