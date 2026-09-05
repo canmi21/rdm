@@ -73,6 +73,9 @@ pub struct TextInput {
 	marked_range: Option<Range<usize>>,
 	last_layout: Option<ShapedLine>,
 	last_bounds: Option<Bounds<Pixels>>,
+	/// How far the line is shifted left so the cursor stays in view: a one-line field scrolls
+	/// under its cursor, the way every native field does, rather than wrapping or eliding.
+	pub scroll: Pixels,
 	is_selecting: bool,
 	/// Enter was pressed; the owning window decides what that means.
 	on_confirm: Option<OnConfirm>,
@@ -90,6 +93,7 @@ impl TextInput {
 			marked_range: None,
 			last_layout: None,
 			last_bounds: None,
+			scroll: px(0.0),
 			is_selecting: false,
 			on_confirm: None,
 			on_cancel: None,
@@ -262,7 +266,7 @@ impl TextInput {
 		if position.y > bounds.bottom() {
 			return self.content.len();
 		}
-		line.closest_index_for_x(position.x - bounds.left())
+		line.closest_index_for_x(position.x - bounds.left() + self.scroll)
 	}
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -440,8 +444,8 @@ impl EntityInputHandler for TextInput {
 		let last_layout = self.last_layout.as_ref()?;
 		let range = self.range_from_utf16(&range_utf16);
 		Some(Bounds::from_corners(
-			point(bounds.left() + last_layout.x_for_index(range.start), bounds.top()),
-			point(bounds.left() + last_layout.x_for_index(range.end), bounds.bottom()),
+			point(bounds.left() - self.scroll + last_layout.x_for_index(range.start), bounds.top()),
+			point(bounds.left() - self.scroll + last_layout.x_for_index(range.end), bounds.bottom()),
 		))
 	}
 
@@ -468,6 +472,7 @@ struct PrepaintState {
 	line: Option<ShapedLine>,
 	cursor: Option<PaintQuad>,
 	selection: Option<PaintQuad>,
+	scroll: Pixels,
 }
 
 impl IntoElement for TextElement {
@@ -554,12 +559,24 @@ impl gpui::Element for TextElement {
 		let font_size = style.font_size.to_pixels(window.rem_size());
 		let line = window.text_system().shape_line(display_text, font_size, &runs, None);
 		let cursor_pos = line.x_for_index(cursor);
+		// The line scrolls under the cursor: shifted left just enough to keep the cursor inside
+		// the field, back right when it moves toward the start, never past the line's end.
+		let visible = bounds.size.width;
+		let mut scroll = input.scroll;
+		if cursor_pos - scroll > visible - px(2.0) {
+			scroll = cursor_pos - visible + px(2.0);
+		}
+		if cursor_pos < scroll {
+			scroll = cursor_pos;
+		}
+		scroll = scroll.min((line.width - visible).max(px(0.0))).max(px(0.0));
+		let left = bounds.left() - scroll;
 		let (selection, cursor) = if selected_range.is_empty() {
 			(
 				None,
 				Some(fill(
 					Bounds::new(
-						point(bounds.left() + cursor_pos, bounds.top()),
+						point(left + cursor_pos, bounds.top()),
 						size(px(1.5), bounds.bottom() - bounds.top()),
 					),
 					p.accent,
@@ -569,15 +586,16 @@ impl gpui::Element for TextElement {
 			(
 				Some(fill(
 					Bounds::from_corners(
-						point(bounds.left() + line.x_for_index(selected_range.start), bounds.top()),
-						point(bounds.left() + line.x_for_index(selected_range.end), bounds.bottom()),
+						point(left + line.x_for_index(selected_range.start), bounds.top()),
+						point(left + line.x_for_index(selected_range.end), bounds.bottom()),
 					),
 					p.selection,
 				)),
 				None,
 			)
 		};
-		PrepaintState { line: Some(line), cursor, selection }
+		self.input.update(cx, |input, _| input.scroll = scroll);
+		PrepaintState { line: Some(line), cursor, selection, scroll }
 	}
 
 	fn paint(
@@ -592,16 +610,29 @@ impl gpui::Element for TextElement {
 	) {
 		let focus_handle = self.input.read(cx).focus_handle.clone();
 		window.handle_input(&focus_handle, ElementInputHandler::new(bounds, self.input.clone()), cx);
-		if let Some(selection) = prepaint.selection.take() {
-			window.paint_quad(selection)
-		}
+		// Whatever scrolled out of the field is clipped, not drawn over the neighbours.
+		let scroll = prepaint.scroll;
 		let line = prepaint.line.take().expect("prepaint shaped the line");
-		line.paint(bounds.origin, window.line_height(), gpui::TextAlign::Left, None, window, cx).ok();
-		if focus_handle.is_focused(window)
-			&& let Some(cursor) = prepaint.cursor.take()
-		{
-			window.paint_quad(cursor);
-		}
+		let selection = prepaint.selection.take();
+		let cursor = prepaint.cursor.take().filter(|_| focus_handle.is_focused(window));
+		window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+			if let Some(selection) = selection {
+				window.paint_quad(selection)
+			}
+			line
+				.paint(
+					point(bounds.left() - scroll, bounds.top()),
+					window.line_height(),
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				)
+				.ok();
+			if let Some(cursor) = cursor {
+				window.paint_quad(cursor);
+			}
+		});
 		self.input.update(cx, |input, _cx| {
 			input.last_layout = Some(line);
 			input.last_bounds = Some(bounds);
@@ -670,6 +701,26 @@ mod tests {
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 		let input = window.root(&mut cx).unwrap();
 		(input, cx)
+	}
+
+	#[gpui::test]
+	fn a_long_line_scrolls_under_the_cursor_and_back(cx: &mut TestAppContext) {
+		let (input, mut cx) = field(cx);
+		let long = "https://example.org/".to_owned() + &"segment/".repeat(40) + "file.bin";
+		cx.update(|window, cx| {
+			window.focus(&input.read(cx).focus(), cx);
+			input.update(cx, |input, cx| input.replace_text_in_range(None, &long, window, cx));
+		});
+		cx.update(|window, _| window.refresh());
+		cx.run_until_parked();
+		let scrolled = input.read_with(&cx, |input, _| input.scroll);
+		assert!(scrolled > px(0.0), "the cursor at the end pulled the line left: {scrolled:?}");
+		cx.update(|window, cx| {
+			input.update(cx, |input, cx| input.move_to(0, cx));
+			window.refresh();
+		});
+		cx.run_until_parked();
+		assert_eq!(input.read_with(&cx, |input, _| input.scroll), px(0.0), "home scrolls back");
 	}
 
 	#[gpui::test]
