@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-#MISE description="Fetch the Lucide icons the source names into assets/icons: `icons [--check]`"
+#MISE description="Fetch the Lucide icons the source names into assets/lucide: `icons [--check]`"
 """The icons are not committed; the list of them is, in `src/ui/icon.rs`, and this fetches it.
 
-Every `icons/*.svg` path in `Icon::path` is one file to fetch from Lucide at the release pinned
-below, plus the licence. Files already on disk are skipped, so the build tasks depend on this
+Every `lucide/*.svg` path in `Icon::path` is one file to fetch from Lucide at the release pinned
+below, plus the licence. The directory is named for the set because its files are the set's,
+unchanged, under the set's licence: vendored content, named for the vendor. Files already on disk are skipped, so the build tasks depend on this
 and pay nothing after the first run. The reasoning is in spec/icons.md.
 
 `--check` reports what is missing without fetching, for a run with no network.
@@ -26,7 +27,7 @@ RAW = f"https://raw.githubusercontent.com/lucide-icons/lucide/{LUCIDE}"
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "ui" / "icon.rs"
 ASSETS = ROOT / "assets"
-PATH = re.compile(r'"(icons/[a-z0-9-]+\.svg)"')
+PATH = re.compile(r'"(lucide/[a-z0-9-]+\.svg)"')
 
 
 def declared() -> list[str]:
@@ -46,8 +47,9 @@ def fetch(url: str, target: pathlib.Path) -> None:
 
 def main(argv: list[str]) -> int:
 	check = "--check" in argv
-	wanted = [(f"{RAW}/{path}", ASSETS / path) for path in declared()]
-	wanted.append((f"{RAW}/LICENSE", ASSETS / "icons" / "LICENSE"))
+	# Upstream keeps them under icons/; here they sit under lucide/.
+	wanted = [(f"{RAW}/icons/{path.split('/', 1)[1]}", ASSETS / path) for path in declared()]
+	wanted.append((f"{RAW}/LICENSE", ASSETS / "lucide" / "LICENSE"))
 	missing = [(url, target) for url, target in wanted if not target.is_file()]
 	if check:
 		for _, target in missing:

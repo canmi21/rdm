@@ -13,9 +13,12 @@ color a parameter of `ui::icon::icon` turns that silent failure into a type erro
 
 ## Declared in the source, fetched by a task
 
-The files are not committed. `assets/icons/` is ignored, and `mise run icons` fetches whatever
-the source names that is not yet on disk. The declaration is the `Icon::path` match in
-`src/ui/icon.rs`: every `"icons/<name>.svg"` string there is one file to fetch, and the task
+The files are not committed. `assets/lucide/` is ignored, and `mise run icons` fetches whatever
+the source names that is not yet on disk. The directory is named for the set, against the
+usual rule that vendor names stay at the binding edge, because its contents are the set's files
+unchanged under the set's licence: vendored content is named for its vendor, the way a
+`vendor/` directory is. The declaration is the `Icon::path` match in `src/ui/icon.rs`: every
+`"lucide/<name>.svg"` string there is one file to fetch, and the task
 reads the list out of the source rather than from a manifest beside it, because a manifest would
 be a second copy of the same list and would drift from the first.
 

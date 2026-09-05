@@ -5,7 +5,8 @@ use std::borrow::Cow;
 use anyhow::Result;
 use gpui::{AssetSource, SharedString};
 
-/// Lucide icons under assets/icons, ISC licensed; the licence sits beside them.
+/// Lucide icons under assets/lucide, ISC licensed; the licence sits beside them. The app's own
+/// artwork sits above them and is not what the window draws: the bundle task renders it.
 #[derive(rust_embed::Embed)]
 #[folder = "assets"]
 pub struct Assets;
@@ -26,8 +27,8 @@ mod tests {
 
 	#[test]
 	fn icons_are_embedded() {
-		let listed = Assets.list("icons/").unwrap();
-		assert!(listed.iter().any(|p| p.as_ref() == "icons/plus.svg"), "{listed:?}");
-		assert!(Assets.load("icons/plus.svg").unwrap().is_some());
+		let listed = Assets.list("lucide/").unwrap();
+		assert!(listed.iter().any(|p| p.as_ref() == "lucide/plus.svg"), "{listed:?}");
+		assert!(Assets.load("lucide/plus.svg").unwrap().is_some());
 	}
 }

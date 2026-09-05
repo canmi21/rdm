@@ -2,7 +2,9 @@
 
 ## The icon is drawn on Apple's grid, not edge to edge
 
-`assets/icon/rdm.png` is the artwork as Icon Composer exported it -- 1024 square, the system's
+`assets/icon.png` is the artwork as Icon Composer exported it -- beside it, `icon.svg` and
+`arrow-only.svg` are the vector sources it was drawn from, committed so the artwork can be
+redrawn, and read by nothing -- -- 1024 square, the system's
 rounded corners already cut, no margin -- re-encoded from 16 to 8 bits a channel, which halves
 it to under the megabyte jj will snapshot without being asked and loses nothing an icon shows. macOS does not draw an icon that way. Its template is a
 1024 canvas on which the icon *shape* is 824 wide and centred, leaving 100 of transparent margin a
