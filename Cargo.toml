@@ -1,6 +1,14 @@
 # Cargo walks up the filesystem and would otherwise treat this crate as a member of the
-# workspace this directory sits in. An empty table stops that walk.
+# workspace this directory sits in; declaring one here stops that walk. The engine is a crate of
+# its own because it is a library with no window in it: it has its own tests, its own
+# dependencies, and nothing in it is dead while the window has not yet been wired to it.
 [workspace]
+members = ["crates/engine"]
+
+[workspace.lints.clippy]
+correctness = "deny"
+suspicious = "deny"
+complexity = "warn"
 
 [package]
 name = "rdm"
@@ -28,12 +36,11 @@ rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
+rdm-engine = { path = "crates/engine" }
 
 # Formatting is rustfmt's and the linter must not report it; see rustfmt.toml.
-[lints.clippy]
-correctness = "deny"
-suspicious = "deny"
-complexity = "warn"
+[lints]
+workspace = true
 
 [profile.dev]
 opt-level = 2

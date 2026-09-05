@@ -3,17 +3,17 @@
 [tasks.check]
 description = "Type-check the crate and its targets"
 depends = ["icons"]
-run = "cargo check --all-targets"
+run = "cargo check --workspace --all-targets"
 
 [tasks.lint]
 description = "Lint the crate, warnings denied"
 depends = ["icons"]
-run = "cargo clippy --all-targets -- -D warnings"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
 
 [tasks.test]
 description = "Run the test suite"
 depends = ["icons"]
-run = "cargo test"
+run = "cargo test --workspace"
 
 [tasks.verify]
 description = "Everything a change has to pass"

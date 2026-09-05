@@ -1,0 +1,34 @@
+[package]
+name = "rdm-engine"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+description = "The transfer engine behind rdm: probing, segmented writing, resuming and pacing HTTP downloads."
+
+[lib]
+name = "engine"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+futures = "0.3"
+httpdate = "1"
+infer = "0.22"
+md-5 = "0.11"
+percent-encoding = "2"
+# Downloads are streamed and written as they arrive, so the body is a stream, not a buffer. The
+# default TLS is rustls, which needs no system library to build.
+reqwest = { version = "0.13", features = ["stream", "http2", "socks", "system-proxy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+thiserror = "2"
+# The engine owns its runtime: the window's executor is gpui's, and the two meet only through
+# channels. See spec/engine.md.
+tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros", "io-util"] }
+tokio-util = "0.7"
+url = "2"
+
+[lints]
+workspace = true
