@@ -64,6 +64,9 @@ fn main() {
 			.open_window(
 				WindowOptions {
 					window_bounds: Some(window_bounds),
+					// What a Linux desktop matches the window to its .desktop entry by; the same three
+					// words as the bundle identifier. See spec/packaging.md.
+					app_id: Some(identity::BUNDLE_ID.to_owned()),
 					// The desktop shows through the blur; the palette carries the alpha. See spec/ui.md.
 					window_background: WindowBackgroundAppearance::Blurred,
 					titlebar: Some(TitlebarOptions {

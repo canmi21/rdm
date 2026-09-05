@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=rdm
+Comment=A refined download manager
+Exec=rdm
+Icon=rdm
+Terminal=false
+Categories=Network;FileTransfer;
+# The window's app id, so the desktop matches the running window to this entry. The same
+# three words as src/identity.rs's BUNDLE_ID, which main.rs hands to GPUI.
+StartupWMClass=app.canmi.rdm

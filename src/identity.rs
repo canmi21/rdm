@@ -6,9 +6,9 @@ pub const QUALIFIER: &str = "app";
 pub const ORGANIZATION: &str = "canmi";
 pub const APPLICATION: &str = "rdm";
 
-/// What `Info.plist` carries. Read by the bundle task out of this source, not by Rust code, which
-/// is why the compiler sees it unused; it also names the state directory through the three words.
-#[cfg_attr(not(test), expect(dead_code))]
+/// What `Info.plist` carries, read by the bundle task out of this source; what the window is
+/// named to a Linux desktop, handed to GPUI as its app id; and the three words that name the
+/// state directory.
 pub const BUNDLE_ID: &str = "app.canmi.rdm";
 
 #[cfg(test)]

@@ -1,9 +1,12 @@
 #!/usr/bin/env swift
-//MISE description="Render the macOS icon set from assets/icon.png into target/icon/rdm.icns"
+//MISE description="Render the icon variants from assets/icon.png: the icns under target/, the ico and 512 png under assets/"
 // The artwork is edge to edge and already has the system's rounded corners. macOS draws an icon
 // on a 1024 canvas with the shape 824 wide and centred, so the artwork is scaled to 824 and the
 // rest is transparent; drawn edge to edge it would sit oversized beside every other icon in the
-// Dock. Each size in the set is rendered from the 1024 result. See spec/packaging.md.
+// Dock. Each size in the set is rendered from the 1024 result. Windows and Linux draw an icon
+// edge to edge, so their variants -- a .ico of the sizes Windows asks for, and one 512 png --
+// are rendered flat; those two are committed beside the artwork, since the runners that build
+// for those systems have neither this toolchain nor a need to. See spec/packaging.md.
 import AppKit
 import Foundation
 
@@ -22,24 +25,49 @@ guard let artwork = NSImage(contentsOf: source) else {
 let canvas = 1024.0
 let shape = 824.0
 
-func render(_ pixels: Int) -> CGImage {
+/// The artwork on a square of `pixels`, inset to Apple's grid or filling the square.
+func render(_ pixels: Int, inset apple: Bool = true) -> CGImage {
 	let scale = Double(pixels) / canvas
 	let context = CGContext(
 		data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
 		space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
 	)!
 	context.interpolationQuality = .high
-	let inset = (canvas - shape) / 2 * scale
-	let rect = CGRect(x: inset, y: inset, width: shape * scale, height: shape * scale)
+	let inset = apple ? (canvas - shape) / 2 * scale : 0
+	let side = apple ? shape * scale : Double(pixels)
+	let rect = CGRect(x: inset, y: inset, width: side, height: side)
 	var proposed = rect
 	let cg = artwork.cgImage(forProposedRect: &proposed, context: nil, hints: nil)!
 	context.draw(cg, in: rect)
 	return context.makeImage()!
 }
 
+func png(_ image: CGImage) -> Data {
+	NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])!
+}
+
 func write(_ image: CGImage, to url: URL) {
-	let rep = NSBitmapImageRep(cgImage: image)
-	try! rep.representation(using: .png, properties: [:])!.write(to: url)
+	try! png(image).write(to: url)
+}
+
+/// A .ico is a directory of images; each here is a PNG, which Windows has read since Vista.
+/// The header is an ICONDIR and one ICONDIRENTRY per image, little-endian, then the images.
+func ico(sizes: [Int]) -> Data {
+	let images = sizes.map { png(render($0, inset: false)) }
+	var out = Data()
+	func u16(_ v: Int) { out.append(contentsOf: [UInt8(v & 0xff), UInt8(v >> 8)]) }
+	func u32(_ v: Int) { for i in 0..<4 { out.append(UInt8((v >> (8 * i)) & 0xff)) } }
+	u16(0); u16(1); u16(sizes.count)
+	var offset = 6 + 16 * sizes.count
+	for (size, image) in zip(sizes, images) {
+		// A side of 256 is written as 0: the field is a byte, and 0 means 256 by convention.
+		out.append(UInt8(size == 256 ? 0 : size)); out.append(UInt8(size == 256 ? 0 : size))
+		out.append(0); out.append(0)
+		u16(1); u16(32); u32(image.count); u32(offset)
+		offset += image.count
+	}
+	for image in images { out.append(image) }
+	return out
 }
 
 // The names iconutil expects, size then scale.
@@ -48,6 +76,10 @@ for (points, scale) in [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), 
 	write(render(points * scale), to: iconset.appendingPathComponent(name))
 }
 write(render(1024), to: out.appendingPathComponent("rdm-1024.png"))
+
+// The flat variants, committed: Windows asks for these sizes; a desktop's largest slot is 512.
+try! ico(sizes: [16, 24, 32, 48, 64, 128, 256]).write(to: root.appendingPathComponent("assets/icon.ico"))
+write(render(512, inset: false), to: root.appendingPathComponent("assets/icon-512.png"))
 
 let iconutil = Process()
 iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")

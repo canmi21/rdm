@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 #MISE description="Build the release binary and wrap it as target/bundle/rdm.app"
 """The .app is a folder with a shape: the binary under Contents/MacOS, the icon under
-Contents/Resources, and an Info.plist naming both. The bundle identifier is read out of
-src/identity.rs so it has one home. See spec/packaging.md.
+Contents/Resources, and an Info.plist naming both. The plist is pkgs/macos/Info.plist with
+its placeholders filled: the version out of Cargo.toml, the build number out of the CI run
+that ordered the build (0 by hand), the bundle identifier out of src/identity.rs, so each has
+one home. See spec/packaging.md.
 """
 
+import os
 import pathlib
-import plistlib
 import re
 import shutil
 import subprocess
@@ -39,27 +41,17 @@ def main() -> int:
 	(contents / "Resources").mkdir()
 	shutil.copy2(binary, contents / "MacOS" / NAME)
 	shutil.copy2(icns, contents / "Resources" / f"{NAME}.icns")
-	info = {
-		"CFBundleName": NAME,
-		"CFBundleDisplayName": NAME,
-		"CFBundleIdentifier": bundle_id,
-		"CFBundleVersion": version,
-		"CFBundleShortVersionString": version,
-		"CFBundleExecutable": NAME,
-		"CFBundleIconFile": f"{NAME}.icns",
-		"CFBundlePackageType": "APPL",
-		"CFBundleInfoDictionaryVersion": "6.0",
-		"LSMinimumSystemVersion": "13.0",
-		"NSHighResolutionCapable": True,
-		"NSPrincipalClass": "NSApplication",
-	}
-	with open(contents / "Info.plist", "wb") as f:
-		plistlib.dump(info, f)
+	build = os.environ.get("GITHUB_RUN_NUMBER", "0")
+	template = (ROOT / "pkgs" / "macos" / "Info.plist").read_text()
+	filled = template.replace("{{VERSION}}", version).replace("{{BUILD}}", build).replace("{{BUNDLE_ID}}", bundle_id)
+	if "{{" in filled:
+		raise SystemExit("error: a placeholder in pkgs/macos/Info.plist was not filled")
+	(contents / "Info.plist").write_text(filled)
 	(contents / "PkgInfo").write_text("APPL????")
 	# Ad hoc signature: unsigned binaries are refused by newer macOS even when run locally.
 	subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True, capture_output=True)
 	size = sum(f.stat().st_size for f in app.rglob("*") if f.is_file())
-	print(f"{app.relative_to(ROOT)}  {size / 1_000_000:.1f} MB  ({bundle_id} {version})")
+	print(f"{app.relative_to(ROOT)}  {size / 1_000_000:.1f} MB  ({bundle_id} {version} build {build})")
 	return 0
 
 
