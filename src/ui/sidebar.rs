@@ -4,7 +4,8 @@ use gpui::{
 };
 
 use crate::app::{DraggedCategory, Rdm};
-use crate::download::{Category, Filter};
+use crate::category::Category;
+use crate::download::Filter;
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::icon_button;
 use crate::ui::theme::Palette;

@@ -8,7 +8,7 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::download::{Category, Overrides, extensions_of_pattern};
+use crate::category::{Category, Overrides, extensions_of_pattern};
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
 use crate::ui::theme::{format_hex, parse_color};

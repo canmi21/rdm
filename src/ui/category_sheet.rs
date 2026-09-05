@@ -7,7 +7,7 @@
 use gpui::{Context, IntoElement, Role, SharedString, Window, deferred, div, prelude::*, px};
 
 use crate::app::{CategoryForm, CategorySheet, PresetForm, Rdm};
-use crate::download::{Category, Combine, pattern_for_rule};
+use crate::category::{Category, Combine, pattern_for_rule};
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{Palette, Tint, format_hex, parse_color};

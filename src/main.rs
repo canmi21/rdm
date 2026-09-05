@@ -1,5 +1,6 @@
 mod app;
 mod assets;
+mod category;
 mod config;
 #[cfg(debug_assertions)]
 mod ctl;

@@ -11,8 +11,9 @@ use gpui::{
 
 use serde::Serialize;
 
+use crate::category::{self, Category, Combine, Overrides, categories_of};
 use crate::config::{self, Config, Preferences};
-use crate::download::{self, Category, Combine, Download, Filter, Status, categories_of};
+use crate::download::{Download, Filter, Status};
 use crate::engine::{self, Engine, Event, TaskId};
 use crate::state::{self, Frame, Paths, State};
 use crate::store::Store;
@@ -417,7 +418,7 @@ impl Rdm {
 			self.save_config();
 			cx.notify();
 		} else if let Some(preset) =
-			Category::from_preset(self.next_category_id(), name, download::Overrides::default())
+			Category::from_preset(self.next_category_id(), name, Overrides::default())
 		{
 			self.insert_category(preset, cx);
 		}
@@ -446,7 +447,7 @@ impl Rdm {
 
 	/// `rs, py` typed into a preset's editor: each switched on, whether built in or new.
 	pub(crate) fn add_preset_extensions(&mut self, id: u64, text: &str, cx: &mut Context<Self>) {
-		for extension in download::split_extensions(text) {
+		for extension in category::split_extensions(text) {
 			self.set_preset_extension(id, &extension, true, cx);
 		}
 	}
