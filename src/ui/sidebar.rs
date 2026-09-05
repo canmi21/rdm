@@ -94,11 +94,13 @@ impl Rdm {
 		};
 		let count = self.downloads.iter().filter(|d| filter.matches(d, &self.categories)).count();
 		let selector = label.clone();
-		// The icon wears its own hue always when the sidebar is set to be colorful, else only
-		// while the row is chosen or hovered; the svg cannot inherit a hover color, so it watches
-		// the row through a group. The window's inactive grey is in the hue already.
+		// A category's icon wears its own hue always when the categories are set to be colorful;
+		// otherwise, and for the state filters above them always, only while the row is chosen
+		// or hovered. The svg cannot inherit a hover color, so it watches the row through a
+		// group. The window's inactive grey is in the hue already.
 		let tint = p.hue(filter.color(&self.categories));
-		let lit = active || self.preferences.colorful_sidebar;
+		let colorful = self.preferences.colorful_categories && matches!(filter, Filter::Category(_));
+		let lit = active || colorful;
 		div()
 			.id(SharedString::from(format!("filter:{label}")))
 			.role(Role::Tab)

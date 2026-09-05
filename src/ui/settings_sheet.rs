@@ -39,7 +39,7 @@ impl Rdm {
 					.child(div().text_color(p.muted).child(value))
 			});
 		// The one switch with something behind it: a track with a knob, lit while on.
-		let colorful = self.preferences.colorful_sidebar;
+		let colorful = self.preferences.colorful_categories;
 		let switch = div()
 			.flex()
 			.justify_between()
@@ -47,14 +47,14 @@ impl Rdm {
 			.py_1p5()
 			.border_b_1()
 			.border_color(p.border)
-			.child("Always use colorful sidebar")
+			.child("Always use colorful categories")
 			.child(
 				div()
-					.id("colorful-sidebar")
+					.id("colorful-categories")
 					.role(gpui::Role::CheckBox)
-					.aria_label("Always use colorful sidebar")
+					.aria_label("Always use colorful categories")
 					.aria_toggled(if colorful { gpui::Toggled::True } else { gpui::Toggled::False })
-					.debug_selector(|| "setting:Always use colorful sidebar".to_owned())
+					.debug_selector(|| "setting:Always use colorful categories".to_owned())
 					.flex()
 					.items_center()
 					.w(px(30.0))
@@ -65,7 +65,7 @@ impl Rdm {
 					.bg(if colorful { p.accent } else { p.track })
 					.when(!colorful, |s| s.justify_start())
 					.when(colorful, |s| s.justify_end())
-					.on_click(cx.listener(move |this, _, _, cx| this.set_colorful_sidebar(!colorful, cx)))
+					.on_click(cx.listener(move |this, _, _, cx| this.set_colorful_categories(!colorful, cx)))
 					.child(div().size(px(14.0)).rounded_full().bg(p.text)),
 			);
 		deferred(

@@ -510,8 +510,8 @@ impl Rdm {
 		}
 	}
 
-	pub(crate) fn set_colorful_sidebar(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.colorful_sidebar = on;
+	pub(crate) fn set_colorful_categories(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.colorful_categories = on;
 		self.save_config();
 		cx.notify();
 	}
@@ -1703,14 +1703,14 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn the_colorful_sidebar_switch_flips_the_preference(cx: &mut TestAppContext) {
+	fn the_colorful_categories_switch_flips_the_preference(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
-		rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_sidebar, "on to start with"));
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories, "on to start with"));
 		click(&mut cx, "button:Settings");
-		click(&mut cx, "setting:Always use colorful sidebar");
-		rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.colorful_sidebar));
-		click(&mut cx, "setting:Always use colorful sidebar");
-		rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_sidebar));
+		click(&mut cx, "setting:Always use colorful categories");
+		rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.colorful_categories));
+		click(&mut cx, "setting:Always use colorful categories");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories));
 	}
 
 	#[gpui::test]

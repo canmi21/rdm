@@ -30,10 +30,11 @@ pub struct Config {
 /// predates a switch reads as if the switch had been left alone.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Preferences {
-	/// The sidebar's icons keep their hues always rather than only when chosen or hovered. On
-	/// to start with; the window's inactive grey overrides it either way.
+	/// The sidebar's category icons keep their hues always rather than only when chosen or
+	/// hovered; the state filters above them are not covered. On to start with; the window's
+	/// inactive grey overrides it either way.
 	#[serde(default = "yes")]
-	pub colorful_sidebar: bool,
+	pub colorful_categories: bool,
 }
 
 fn yes() -> bool {
@@ -42,7 +43,7 @@ fn yes() -> bool {
 
 impl Default for Preferences {
 	fn default() -> Self {
-		Preferences { colorful_sidebar: true }
+		Preferences { colorful_categories: true }
 	}
 }
 
@@ -275,9 +276,9 @@ mod tests {
 	#[test]
 	fn a_switch_missing_from_the_file_reads_as_its_default_and_a_set_one_holds() {
 		let old = parse(r#"{ "version": 1, "categories": [] }"#).unwrap();
-		assert!(old.settings.colorful_sidebar, "a file from before the switch");
-		let off = parse(r#"{ "version": 1, "settings": { "colorful_sidebar": false } }"#).unwrap();
-		assert!(!off.settings.colorful_sidebar);
+		assert!(old.settings.colorful_categories, "a file from before the switch");
+		let off = parse(r#"{ "version": 1, "settings": { "colorful_categories": false } }"#).unwrap();
+		assert!(!off.settings.colorful_categories);
 		let text = serde_json::to_string(&off).unwrap();
 		assert_eq!(parse(&text).unwrap().settings, off.settings);
 	}
