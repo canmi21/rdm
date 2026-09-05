@@ -4,6 +4,7 @@ mod config;
 #[cfg(debug_assertions)]
 mod ctl;
 mod download;
+mod engine;
 mod identity;
 mod state;
 mod ui;

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
-use crate::segments::Plan;
+use crate::engine::error::{Error, Result};
+use crate::engine::segments::Plan;
 
 /// Bumped only when a file written before can no longer be read as it is; see spec/state.md
 /// for the rule.
@@ -95,7 +95,7 @@ pub fn remove(target: &Path) {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::segments::Span;
+	use crate::engine::segments::Span;
 
 	fn scratch(name: &str) -> PathBuf {
 		let dir = std::env::temp_dir().join(format!("rdm-control-{}-{name}", std::process::id()));

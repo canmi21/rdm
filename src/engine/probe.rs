@@ -11,7 +11,7 @@ use reqwest::header::{
 };
 use reqwest::{Client, StatusCode, Url};
 
-use crate::error::{Error, Result};
+use crate::engine::error::{Error, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Probe {
@@ -122,10 +122,10 @@ pub fn safe_name(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::testing::{Options, TestServer};
+	use crate::engine::testing::{Options, TestServer};
 
 	fn client() -> Client {
-		crate::client::build(&crate::Settings::default(), false).unwrap()
+		crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap()
 	}
 
 	#[tokio::test]

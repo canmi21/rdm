@@ -7,7 +7,7 @@ use std::path::Path;
 use md5::Md5;
 use sha2::{Digest, Sha256, Sha512};
 
-use crate::error::{Error, Result};
+use crate::engine::error::{Error, Result};
 
 /// A digest the user expects, as hex. Compared without regard to case.
 #[derive(Clone, Debug, PartialEq, Eq)]

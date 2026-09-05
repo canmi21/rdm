@@ -1,9 +1,8 @@
 # Cargo walks up the filesystem and would otherwise treat this crate as a member of the
-# workspace this directory sits in; declaring one here stops that walk. The engine is a crate of
-# its own because it is a library with no window in it: it has its own tests, its own
-# dependencies, and nothing in it is dead while the window has not yet been wired to it.
+# workspace this directory sits in; declaring one here stops that walk. One package for now; the
+# engine lives in src/engine as a module that nothing outside reaches into, so it can become a
+# crate of its own the day something else needs it.
 [workspace]
-members = ["crates/engine"]
 
 # What every package in this repository shares: one version, one edition, one licence, one home.
 # A package names them with `.workspace = true` rather than repeating them, so a bump is one edit.
@@ -44,7 +43,18 @@ rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
-rdm-engine = { path = "crates/engine" }
+
+# See spec/engine.md.
+bytes = "1"
+infer = "0.22"
+md-5 = "0.11"
+percent-encoding = "2"
+reqwest = { version = "0.13", features = ["stream", "http2", "socks", "system-proxy"] }
+sha2 = "0.11"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros", "io-util"] }
+tokio-util = "0.7"
+url = "2"
 
 # Formatting is rustfmt's and the linter must not report it; see rustfmt.toml.
 [lints]
@@ -66,6 +76,8 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
-# The headless tests draw into gpui's test platform; see spec/workflow.md.
+# The headless tests draw into gpui's test platform; see spec/workflow.md. Paused time lets the
+# engine's limiter tests measure seconds of waiting in no time at all.
 [dev-dependencies]
 gpui = { version = "1", package = "gpui-unofficial", features = ["test-support"] }
+tokio = { version = "1", features = ["test-util"] }

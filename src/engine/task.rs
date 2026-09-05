@@ -14,14 +14,14 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::control::{self, Control};
-use crate::error::{Error, Result};
-use crate::limiter::Limiter;
-use crate::probe::{Probe, probe};
-use crate::segments::{Plan, Span};
-use crate::settings::Settings;
-use crate::worker::{Job, Outcome, fetch};
-use crate::writer::Writer;
+use crate::engine::control::{self, Control};
+use crate::engine::error::{Error, Result};
+use crate::engine::limiter::Limiter;
+use crate::engine::probe::{Probe, probe};
+use crate::engine::segments::{Plan, Span};
+use crate::engine::settings::Settings;
+use crate::engine::worker::{Job, Outcome, fetch};
+use crate::engine::writer::Writer;
 
 /// What to download and where. The name is the server's unless given; the range is the whole
 /// file unless given.
@@ -83,7 +83,7 @@ pub struct Handle {
 pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<Finished> {
 	let settings =
 		Settings { connections: request.settings.connections.clamped(), ..request.settings.clone() };
-	let single = crate::client::build(&settings, false)?;
+	let single = crate::engine::client::build(&settings, false)?;
 	let probed = probe(&single, request.url.clone()).await?;
 	if let (Some(size), Some(limit)) = (probed.size, settings.max_size)
 		&& size > limit
@@ -246,7 +246,7 @@ async fn schedule(
 			}
 			active.push(index);
 			let split = max > 1;
-			let client = crate::client::build(settings, split)?;
+			let client = crate::engine::client::build(settings, split)?;
 			let allowed = allowed.clone();
 			let grew = grew.clone();
 			let base = plan.lock().unwrap().span.start;
@@ -361,8 +361,8 @@ pub fn discard(directory: &Path, file_name: &str) {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::settings::Connections;
-	use crate::testing::{Options, TestServer};
+	use crate::engine::settings::Connections;
+	use crate::engine::testing::{Options, TestServer};
 
 	fn scratch(name: &str) -> PathBuf {
 		let dir = std::env::temp_dir().join(format!("rdm-task-{}-{name}", std::process::id()));

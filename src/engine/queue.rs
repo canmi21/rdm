@@ -12,10 +12,10 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
-use crate::error::{Error, Result};
-use crate::limiter::Limiter;
-use crate::task::{self, Finished, Handle, Progress, Request};
-use crate::verify::{self, Checksum};
+use crate::engine::error::{Error, Result};
+use crate::engine::limiter::Limiter;
+use crate::engine::task::{self, Finished, Handle, Progress, Request};
+use crate::engine::verify::{self, Checksum};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TaskId(pub u64);
@@ -368,8 +368,8 @@ fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::settings::Connections;
-	use crate::testing::{Options, TestServer};
+	use crate::engine::settings::Connections;
+	use crate::engine::testing::{Options, TestServer};
 
 	fn scratch(name: &str) -> PathBuf {
 		let dir = std::env::temp_dir().join(format!("rdm-engine-{}-{name}", std::process::id()));
@@ -446,11 +446,11 @@ mod tests {
 		let paused = engine.snapshot(id).unwrap();
 		assert_eq!(paused.status, Status::Paused);
 		assert!(paused.done > 0 && paused.done < 400_000);
-		assert!(crate::control::control_path(&dir.join("p.bin")).exists());
+		assert!(crate::engine::control::control_path(&dir.join("p.bin")).exists());
 		engine.resume(id);
 		wait_for(&events, |e| matches!(e, Event::Completed(i, _) if *i == id));
 		assert_eq!(std::fs::read(dir.join("p.bin")).unwrap(), data);
-		assert!(!crate::control::control_path(&dir.join("p.bin")).exists());
+		assert!(!crate::engine::control::control_path(&dir.join("p.bin")).exists());
 	}
 
 	#[test]
@@ -476,8 +476,8 @@ mod tests {
 		// The files go once the download has stopped, a moment after the event.
 		let gone = (0..100).any(|_| {
 			std::thread::sleep(Duration::from_millis(20));
-			!crate::control::part_path(&dir.join("r.bin")).exists()
-				&& !crate::control::control_path(&dir.join("r.bin")).exists()
+			!crate::engine::control::part_path(&dir.join("r.bin")).exists()
+				&& !crate::engine::control::control_path(&dir.join("r.bin")).exists()
 		});
 		assert!(gone, "the partial file and the plan are gone");
 

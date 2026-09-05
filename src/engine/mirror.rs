@@ -1,12 +1,12 @@
-//! Against a real network: public test files that have been stable for years, over HTTP and
-//! HTTPS, large enough to be split. Ignored by default, since they need the network and take
-//! seconds; `cargo test -p rdm-engine -- --ignored` runs them. Each is bounded, so a mirror
-//! that is down fails the test rather than hanging it.
+//! Against a real network: public files that have been served with ranges for years, over HTTP
+//! and HTTPS, large enough to be split. Ignored by default, since they need the network and
+//! take seconds; `cargo test -- --ignored` runs them. Each is bounded, so a mirror that is down
+//! fails the test rather than hanging it.
 
 use std::path::PathBuf;
 use std::time::Duration;
 
-use engine::{Connections, Limiter, Request, Settings};
+use crate::engine::{self, Connections, Limiter, Request, Settings};
 use reqwest::Url;
 use tokio_util::sync::CancellationToken;
 

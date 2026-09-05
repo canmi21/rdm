@@ -2845,12 +2845,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
-name = "httpdate"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
 name = "hybrid-array"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5015,6 +5009,7 @@ name = "rdm"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bytes",
  "chrono",
  "directories",
  "env_logger",
@@ -5022,31 +5017,18 @@ dependencies = [
  "futures",
  "gpui-platform-gpui-unofficial",
  "gpui-unofficial",
- "rdm-engine",
- "rust-embed",
- "serde",
- "serde_json",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "rdm-engine"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "bytes",
- "futures",
- "httpdate",
  "infer",
  "md-5 0.11.0",
  "percent-encoding",
  "reqwest",
+ "rust-embed",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "unicode-segmentation",
  "url",
 ]
 

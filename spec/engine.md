@@ -1,14 +1,16 @@
 # The transfer engine
 
-## A crate of its own, with a runtime of its own
+## A module of its own, with a runtime of its own
 
-The engine is `crates/engine`, the package `rdm-engine`, the library `engine`. It is a crate
-rather than a module for three reasons that all point the same way. It is a library: an API
-over addresses, files and bytes, with no window in it, and it should be usable by a command-line
-front end or a test with nothing of gpui linked. It has its own dependencies -- reqwest, tokio
--- that the window has no use for, and a crate boundary is where Cargo lets them stop. And while
-the window is still drawn from mock rows, every function in it would be dead code to the binary;
-a crate's public surface is not dead, and the lint stays honest without an allow.
+The engine is `src/engine`, one module of the one package, and nothing outside it reaches past
+`engine::`: the window sees `Engine`, `Request`, `Settings`, the events and the snapshots, and
+none of the pieces under them. It is a module rather than a crate because nothing else needs
+the library yet, and a boundary that is kept -- one entry point, no window in it, its own tests
+-- is what makes it a crate the day something does: the directory moves, `crate::engine::`
+becomes `crate::`, and that is the whole of the work. It was a crate for a week; the split
+bought nothing while there was one user, and cost a second `Cargo.toml` to keep in step. Until
+the window is wired to it, the module allows dead code at its root, since every item in it is
+unreached from the binary; the allow goes with the wiring.
 
 **It owns a tokio runtime.** reqwest is the HTTP client of the Rust ecosystem, and it runs on
 tokio; gpui runs on an executor of its own. Zed meets the same fact and answers it the same way
@@ -38,7 +40,7 @@ spend more on setup than transfer. This is what "automatic" multi-connection mea
 non-automatic mode cuts the span into `max` equal pieces at the start, and single-connection is
 `max = 1`.
 
-The planner is pure arithmetic in `segments.rs`, tested without a network. It is also what is
+The planner is pure arithmetic in `engine/segments.rs`, tested without a network. It is also what is
 serialised beside a partial file so that a download survives the process; the file's shape is
 the planner's, and the reasons above are why it can be.
 
@@ -76,7 +78,7 @@ path and a server does not get to choose where on the disk it lands.
 
 ## Tests run against a server of their own
 
-`testing.rs` is an HTTP/1.1 server on std threads, in the test build only, serving one body
+`engine/testing.rs` is an HTTP/1.1 server on std threads, in the test build only, serving one body
 with whatever misbehaviour a test asks for: no ranges, ranges advertised and ignored, a wrong
 status, a redirect, a chunked body with no length, a connection dropped part way through, bytes
 doled out slowly. It logs every request so a test can say what the engine did -- which ranges
@@ -174,7 +176,7 @@ the extension the server chose, and is reported in the snapshot for the window t
 
 ## Three tests reach the network
 
-`tests/mirror.rs` downloads public files that have been served with ranges for years -- 20 MB
+`engine/mirror.rs`, in the test build only, downloads public files that have been served with ranges for years -- 20 MB
 over plain HTTP from thinkbroadband's test files, a few megabytes over HTTPS from kernel.org's
 mirror -- with several connections, compares a split download with a single-connection one
 byte for byte, and checks a range against the slice of the whole. They are ignored by default

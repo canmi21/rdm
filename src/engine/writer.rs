@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 
-use crate::control::part_path;
-use crate::error::{Error, Result};
+use crate::engine::control::part_path;
+use crate::engine::error::{Error, Result};
 
 /// The partial file, shared by every connection of one download.
 #[derive(Clone)]

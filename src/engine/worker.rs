@@ -12,10 +12,10 @@ use reqwest::header::{CONTENT_RANGE, IF_RANGE, RANGE};
 use reqwest::{Client, StatusCode, Url};
 use tokio_util::sync::CancellationToken;
 
-use crate::error::{Error, Result};
-use crate::limiter::Limiter;
-use crate::segments::Plan;
-use crate::writer::Writer;
+use crate::engine::error::{Error, Result};
+use crate::engine::limiter::Limiter;
+use crate::engine::segments::Plan;
+use crate::engine::writer::Writer;
 
 /// Everything a connection needs, handed to it whole.
 pub struct Job {

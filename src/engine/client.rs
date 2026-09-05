@@ -4,8 +4,8 @@
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
-use crate::error::{Error, Result};
-use crate::settings::{HttpVersion, Settings};
+use crate::engine::error::{Error, Result};
+use crate::engine::settings::{HttpVersion, Settings};
 
 /// A client for one connection. `split` says the download has several, which forces HTTP/1.1
 /// whatever the setting says.
