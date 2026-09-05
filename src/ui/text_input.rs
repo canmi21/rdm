@@ -29,7 +29,8 @@ actions!(
 		Paste,
 		Cut,
 		Copy,
-		Confirm
+		Confirm,
+		Cancel
 	]
 );
 
@@ -53,11 +54,13 @@ pub fn key_bindings() -> Vec<gpui::KeyBinding> {
 		KeyBinding::new("cmd-left", Home, context),
 		KeyBinding::new("cmd-right", End, context),
 		KeyBinding::new("enter", Confirm, context),
+		KeyBinding::new("escape", Cancel, context),
 	]
 }
 
 /// What Enter does, decided by whoever owns the field.
 type OnConfirm = Box<dyn Fn(&str, &mut Window, &mut App)>;
+type OnCancel = Box<dyn Fn(&mut Window, &mut App)>;
 
 pub struct TextInput {
 	focus_handle: FocusHandle,
@@ -71,6 +74,7 @@ pub struct TextInput {
 	is_selecting: bool,
 	/// Enter was pressed; the owning window decides what that means.
 	on_confirm: Option<OnConfirm>,
+	on_cancel: Option<OnCancel>,
 }
 
 impl TextInput {
@@ -86,12 +90,28 @@ impl TextInput {
 			last_bounds: None,
 			is_selecting: false,
 			on_confirm: None,
+			on_cancel: None,
 		}
 	}
 
 	pub fn on_confirm(mut self, f: impl Fn(&str, &mut Window, &mut App) + 'static) -> Self {
 		self.on_confirm = Some(Box::new(f));
 		self
+	}
+
+	pub fn on_cancel(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+		self.on_cancel = Some(Box::new(f));
+		self
+	}
+
+	pub fn focus(&self) -> FocusHandle {
+		self.focus_handle.clone()
+	}
+
+	fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
+		if let Some(on_cancel) = self.on_cancel.as_ref() {
+			on_cancel(window, cx);
+		}
 	}
 
 	fn confirm(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
@@ -270,6 +290,21 @@ impl TextInput {
 		utf16_offset
 	}
 
+	/// A range that slices the content safely: inside it, ordered, and on character boundaries.
+	/// The input method's offsets arrive in UTF-16 and are converted, so this is a guard for the
+	/// arithmetic around them rather than for the conversion.
+	fn clamped(&self, range: Range<usize>) -> Range<usize> {
+		let floor = |mut i: usize| {
+			i = i.min(self.content.len());
+			while !self.content.is_char_boundary(i) {
+				i -= 1;
+			}
+			i
+		};
+		let (start, end) = (floor(range.start), floor(range.end));
+		start.min(end)..end.max(start)
+	}
+
 	fn range_to_utf16(&self, range: &Range<usize>) -> Range<usize> {
 		self.offset_to_utf16(range.start)..self.offset_to_utf16(range.end)
 	}
@@ -304,7 +339,7 @@ impl EntityInputHandler for TextInput {
 		_window: &mut Window,
 		_cx: &mut Context<Self>,
 	) -> Option<String> {
-		let range = self.range_from_utf16(&range_utf16);
+		let range = self.clamped(self.range_from_utf16(&range_utf16));
 		actual_range.replace(self.range_to_utf16(&range));
 		Some(self.content[range].to_string())
 	}
@@ -369,11 +404,15 @@ impl EntityInputHandler for TextInput {
 			(self.content[0..range.start].to_owned() + new_text + &self.content[range.end..]).into();
 		self.marked_range =
 			if new_text.is_empty() { None } else { Some(range.start..range.start + new_text.len()) };
+		// The selection the input method asks for is relative to the text it just inserted. Zed's
+		// example added `range.end` to the end offset, which put the selection past the content as
+		// soon as a composition replaced anything, and the next replacement sliced out of bounds.
 		self.selected_range = new_selected_range_utf16
 			.as_ref()
 			.map(|range_utf16| self.range_from_utf16(range_utf16))
-			.map(|new_range| new_range.start + range.start..new_range.end + range.end)
+			.map(|new_range| range.start + new_range.start..range.start + new_range.end)
 			.unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
+		self.selected_range = self.clamped(self.selected_range.clone());
 		cx.notify();
 	}
 
@@ -577,6 +616,7 @@ impl Render for TextInput {
 			.on_action(cx.listener(Self::cut))
 			.on_action(cx.listener(Self::copy))
 			.on_action(cx.listener(Self::confirm))
+			.on_action(cx.listener(Self::cancel))
 			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -596,5 +636,59 @@ impl Render for TextInput {
 impl Focusable for TextInput {
 	fn focus_handle(&self, _: &App) -> FocusHandle {
 		self.focus_handle.clone()
+	}
+}
+
+// The input method's path: marked text that is replaced and re-marked as a composition goes on,
+// then committed. Every offset it hands over is UTF-16 and relative to what it inserted.
+#[cfg(test)]
+mod tests {
+	use gpui::{TestAppContext, VisualTestContext};
+
+	use super::*;
+
+	fn field(cx: &mut TestAppContext) -> (Entity<TextInput>, VisualTestContext) {
+		let window = cx.update(|cx| {
+			cx.open_window(Default::default(), |_, cx| cx.new(|cx| TextInput::new("", cx))).unwrap()
+		});
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+		let input = window.root(&mut cx).unwrap();
+		(input, cx)
+	}
+
+	#[gpui::test]
+	fn a_composition_replaces_its_own_marked_text_and_commits(cx: &mut TestAppContext) {
+		let (input, mut cx) = field(cx);
+		cx.update(|window, cx| {
+			input.update(cx, |input, cx| {
+				input.replace_text_in_range(None, "url ", window, cx);
+				// Pinyin as it is typed: each keystroke re-marks the whole composition.
+				input.replace_and_mark_text_in_range(None, "n", Some(0..1), window, cx);
+				input.replace_and_mark_text_in_range(None, "ni", Some(0..2), window, cx);
+				input.replace_and_mark_text_in_range(None, "ni h", Some(0..4), window, cx);
+				// Committed: two characters, three bytes each, replacing the marked run.
+				input.replace_text_in_range(None, "你好", window, cx);
+				assert_eq!(input.content.as_ref(), "url 你好");
+				assert_eq!(input.selected_range, 10..10);
+				assert!(input.marked_range.is_none());
+				// Typing on after the commit lands after the characters, not inside one.
+				input.replace_text_in_range(None, "!", window, cx);
+				assert_eq!(input.content.as_ref(), "url 你好!");
+			});
+		});
+	}
+
+	#[gpui::test]
+	fn offsets_past_the_content_are_clamped_rather_than_sliced(cx: &mut TestAppContext) {
+		let (input, mut cx) = field(cx);
+		cx.update(|window, cx| {
+			input.update(cx, |input, cx| {
+				input.replace_text_in_range(None, "好", window, cx);
+				input.replace_and_mark_text_in_range(Some(0..1), "a", Some(5..9), window, cx);
+				// The commit replaces the marked run, whatever selection was asked for past the end.
+				input.replace_text_in_range(None, "b", window, cx);
+				assert_eq!(input.content.as_ref(), "b");
+			});
+		});
 	}
 }

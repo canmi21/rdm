@@ -37,7 +37,7 @@ impl Rdm {
 				Icon::Plus,
 				"Add URL",
 				true,
-				cx.listener(|this, _, _, cx| this.open_add(cx)),
+				cx.listener(|this, _, window, cx| this.open_add(window, cx)),
 			))
 			.child(button(
 				p,

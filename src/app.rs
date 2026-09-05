@@ -5,16 +5,16 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui::{
-	App, Bounds, Context, IntoElement, Render, Task, TitlebarOptions, Window, WindowBounds,
+	App, Bounds, Context, Entity, IntoElement, Render, Task, TitlebarOptions, Window, WindowBounds,
 	WindowHandle, WindowOptions, div, prelude::*, px, size,
 };
 
 use serde::Serialize;
 
 use crate::download::{self, Download, Filter, Status};
-use crate::ui::add_window::AddWindow;
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::settings_window::SettingsWindow;
+use crate::ui::text_input::TextInput;
 use crate::ui::theme::{self, Palette};
 
 /// How the list is drawn. Detailed is the default because it is the one that shows progress,
@@ -87,7 +87,8 @@ pub struct Rdm {
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
 	pub(crate) settings: Option<WindowHandle<SettingsWindow>>,
-	pub(crate) adding: Option<WindowHandle<AddWindow>>,
+	/// The Add URL sheet's field while the sheet is up.
+	pub(crate) adding: Option<Entity<TextInput>>,
 	_tick: Task<()>,
 }
 
@@ -263,23 +264,6 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// The Add URL buttons open a window with a field; a second press brings it forward.
-	pub(crate) fn open_add(&mut self, cx: &mut Context<Self>) {
-		if let Some(handle) = &self.adding
-			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
-		{
-			return;
-		}
-		let rdm = cx.entity();
-		cx.defer(move |cx| {
-			let options = child_window(cx, "Add URL", size(px(420.0), px(132.0)));
-			let view = rdm.clone();
-			let handle =
-				cx.open_window(options, |window, cx| cx.new(|cx| AddWindow::new(view, window, cx))).ok();
-			rdm.update(cx, |this, _| this.adding = handle);
-		});
-	}
-
 	pub(crate) fn pause_selected(&mut self, cx: &mut Context<Self>) {
 		if let Some(id) = self.selected {
 			self.pause(id, cx);
@@ -401,6 +385,7 @@ impl Render for Rdm {
 			)
 			.child(self.render_status_bar(cx))
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
+			.when_some(self.adding.clone(), |s, input| s.child(self.add_dialog(input, cx)))
 	}
 }
 

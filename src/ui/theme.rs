@@ -18,6 +18,8 @@ pub struct Palette {
 	pub success: Hsla,
 	pub warning: Hsla,
 	pub failure: Hsla,
+	/// Laid over the window while a sheet is up.
+	pub dim: Hsla,
 }
 
 // Polar night, snow storm, frost and aurora, as Nord names them.
@@ -60,5 +62,6 @@ pub fn palette(active: bool) -> Palette {
 		success: hue(NORD14),
 		warning: hue(NORD12),
 		failure: hue(NORD11),
+		dim: glass(NORD0, 0.55),
 	}
 }

@@ -127,8 +127,10 @@ the update, in `Rdm::open_download`.
 ## What is deliberately not there yet
 
 The rows are sample data advanced by a timer so the list moves; there is no transfer engine,
-no persistence, and the Settings window is labels with nothing behind them. Add URL opens a
-window with one field, as a native application asks for an address, and queues what is typed
-under the address's last path segment; the engine will resolve the real name and size. The mock
+no persistence, and the Settings window is labels with nothing behind them. Add URL is the one
+thing that is not a window: a sheet inside the main window, one field over the dimmed list, tried
+this way to see how it reads against the windows everything else opens. It queues what is typed
+under the address's last path segment; the engine will resolve the real name and size. Enter
+adds, Escape or a click outside closes. The mock
 rows that download loop back to zero when they fill, so there is always movement to look at. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
 built behind.

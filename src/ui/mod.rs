@@ -1,7 +1,7 @@
 //! The window, split into the pieces a reader would look for: toolbar, sidebar, list, status
 //! bar -- and the windows it opens beside itself.
 
-pub mod add_window;
+mod add_dialog;
 pub mod download_window;
 pub mod icon;
 pub mod list;
