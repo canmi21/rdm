@@ -33,8 +33,10 @@ a download manager is open for. It is a table rather than a card list because a 
 three lines on what a row says in one, and the density asked for here is an editor's, not a
 launcher's. The other two trade completeness for density or for a glance.
 
-**The table's header sorts, and its columns are dragged to width.** Titles read left-aligned, as labels
-do, over cells whose numbers read right-aligned, as numbers do. Clicking a title orders by it
+**The table's header sorts, and its columns are dragged to width.** The name's title reads left, as its cells
+do; every other title reads right, over its numbers, and the chevron's slot sits on the side the
+text is not aligned to -- after the name, before a number's title -- so a title's edge is its
+column's edge and the mark hangs inward from it. Clicking a title orders by it
 ascending, a second click descending, and a third lets go, back to the default: newest first, by
 Added, which shows no chevron because nothing has been asked for. The chevron sits in a slot every
 title reserves, so ordering by another column does not push its neighbours over -- it did, and
@@ -133,28 +135,32 @@ the update, in `Rdm::open_download`.
 ## Categories are rules the user writes
 
 The sidebar's categories are one kind of thing: a name, an icon and a regular expression over
-the file name, and the built-in six -- Video, Audio, Documents, Archives, Programs, Other -- are
-seeded as instances of it rather than being a separate hard-coded list. A download belongs to the
-first category whose pattern matches its name, and to Other, which has no pattern, when none does.
-A new category goes in ahead of the defaults, so a specific rule the user wrote wins over a broad
-one that came with the application.
+the file name. Nine presets -- Video, Audio, Images, Documents, Ebooks, Code, Archives, Programs,
+Disk images -- are seeded into `config.json` on the first launch, followed by Other, which has no
+pattern and takes whatever nothing else did.
 
-The pattern is matched against the file name and not the address: a name is what the user sees
-in the list, and a pattern over the whole URL would catch hosts as often as files. The engine is
-`fancy-regex`, chosen over the plain `regex` crate for look-around and backreferences -- "not a
-video" is `^(?!.*\.mp4$)` and cannot be written without them -- at the cost of a backtracking
-engine, which for patterns over file names is no cost anyone will measure.
+**A file is in every category that matches it.** Two rules that both describe a file put it in
+both, so there is nothing to order and no priority to drag; the row's icon is the first match's,
+or the filtered category's own while one is filtered. The pattern is matched against the file
+name and not the address: a name is what the user sees in the list, and a pattern over the whole
+URL would catch hosts as often as files. The engine is `fancy-regex`, chosen over the plain
+`regex` crate for look-around and backreferences -- "not a video" is `^(?!.*\.mp4$)` and cannot
+be written without them -- at the cost of a backtracking engine, which for patterns over file
+names is no cost anyone will measure.
 
-The plus beside the Categories heading opens a sheet, the same shape as Add URL: a name, an icon
-from a short list, a pattern, and under the pattern a line that says what it would do right now --
-the engine's own error while it does not compile, or how many of the current downloads it catches
-while it does. A rule is checked before it exists. The icon list is twelve Lucide glyphs, the
-defaults' six and six more file shapes; the whole set would be a picker nobody finishes
-scrolling, and any icon the source names is fetched by the icon task like the rest.
+The plus beside the Categories heading opens a sheet in three parts. **Presets** are switches:
+one press adds a preset to the sidebar, another removes it. **Custom** is a name, one of twelve
+Lucide icons, and the extensions the category stands for, typed as `rs, py`; the application
+spells them as the anchored, case-insensitive pattern that actually runs, so nobody has to know
+what a regular expression is to make a category. **Advanced** unfolds that pattern for editing,
+prefilled from the extensions, for the rule that extensions cannot say. Under it, a line reports
+what the rule would do right now -- the engine's own error while it does not compile, or how many
+of the current downloads it catches -- so a rule is checked before it exists. The icon list is
+twelve glyphs; the whole of Lucide would be a picker nobody finishes scrolling.
 
-Categories are read from `config.json` and written back when one is added; see
-[state.md](state.md) for the file. Editing and removing one from the window are not built yet;
-the file is the way, for now.
+Categories are read from `config.json` and written back when one is added or a preset removed;
+see [state.md](state.md). Editing or removing a custom one from the window is not built; the
+file is the way, for now.
 
 ## What is deliberately not there yet
 

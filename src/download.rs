@@ -66,34 +66,73 @@ impl Category {
 		}
 	}
 
-	/// The starting set, roughly what a download folder holds. Other has no pattern and takes
-	/// whatever nothing else did.
-	pub fn defaults() -> Vec<Category> {
+	/// The presets a user picks from: a name, an icon and the extensions it stands for. The seed
+	/// is all of them plus Other; a user who wants fewer removes them, and one who wants more
+	/// writes a custom one.
+	pub const PRESETS: [(&'static str, crate::ui::icon::Icon, &'static str); 9] = {
 		use crate::ui::icon::Icon;
-		let seed = [
-			("Video", Icon::Film, r"(?i)\.(mp4|mkv|mov|webm|avi)$"),
-			("Audio", Icon::Music, r"(?i)\.(mp3|flac|aac|wav|m4a)$"),
-			("Documents", Icon::FileText, r"(?i)\.(pdf|epub|docx?|txt|md)$"),
-			("Archives", Icon::Archive, r"(?i)\.(zip|tar|gz|xz|7z|rar)$"),
-			("Programs", Icon::Package, r"(?i)\.(dmg|pkg|app|exe|msi)$"),
-			("Other", Icon::File, ""),
-		];
-		seed
+		[
+			("Video", Icon::Film, "mp4 mkv mov webm avi"),
+			("Audio", Icon::Music, "mp3 flac aac wav m4a ogg"),
+			("Images", Icon::Image, "jpg jpeg png gif webp svg heic"),
+			("Documents", Icon::FileText, "pdf doc docx txt md pptx xlsx"),
+			("Ebooks", Icon::BookOpen, "epub mobi azw3"),
+			("Code", Icon::Code, "rs py ts js go c h cpp java json toml yaml"),
+			("Archives", Icon::Archive, "zip tar gz xz 7z rar"),
+			("Programs", Icon::Package, "dmg pkg app exe msi deb rpm"),
+			("Disk images", Icon::Disc, "iso img"),
+		]
+	};
+
+	pub fn preset(name: &str) -> Option<Category> {
+		let (name, icon, extensions) = Category::PRESETS.iter().find(|(n, _, _)| *n == name)?;
+		Category::new(0, name, *icon, &pattern_for_extensions(extensions)).ok()
+	}
+
+	pub fn defaults() -> Vec<Category> {
+		let mut all: Vec<Category> = Category::PRESETS
 			.iter()
 			.enumerate()
-			.map(|(i, (name, icon, pattern))| {
-				Category::new(i as u64 + 1, name, *icon, pattern).expect("a seed pattern compiles")
+			.map(|(i, (name, icon, extensions))| {
+				Category::new(i as u64 + 1, name, *icon, &pattern_for_extensions(extensions))
+					.expect("a preset compiles")
 			})
-			.collect()
+			.collect();
+		all.push(
+			Category::new(all.len() as u64 + 1, "Other", crate::ui::icon::Icon::File, "")
+				.expect("empty is fine"),
+		);
+		all
+	}
+
+	pub fn is_catch_all(&self) -> bool {
+		self.regex.is_none()
 	}
 }
 
-/// The first category whose pattern matches, else the catch-all, else nothing.
-pub fn category_of<'a>(categories: &'a [Category], download: &Download) -> Option<&'a Category> {
-	categories
-		.iter()
-		.find(|c| c.matches(download))
-		.or_else(|| categories.iter().find(|c| c.regex.is_none()))
+/// `rs, py` or `rs py` becomes `(?i)\.(rs|py)$`: what a user means by "these file types", spelled
+/// as the regular expression the category actually runs.
+pub fn pattern_for_extensions(extensions: &str) -> String {
+	let list: Vec<String> = extensions
+		.split(|c: char| c == ',' || c.is_whitespace())
+		.map(|e| e.trim().trim_start_matches('.'))
+		.filter(|e| !e.is_empty())
+		.map(fancy_regex::escape)
+		.map(|e| e.into_owned())
+		.collect();
+	if list.is_empty() { String::new() } else { format!(r"(?i)\.({})$", list.join("|")) }
+}
+
+/// Every category whose pattern matches, in the sidebar's order; the catch-all alone when none
+/// does. A file that two rules describe is in both, which is what makes an order between rules
+/// unnecessary.
+pub fn categories_of<'a>(categories: &'a [Category], download: &Download) -> Vec<&'a Category> {
+	let matched: Vec<&Category> = categories.iter().filter(|c| c.matches(download)).collect();
+	if matched.is_empty() {
+		categories.iter().filter(|c| c.is_catch_all()).take(1).collect()
+	} else {
+		matched
+	}
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -159,7 +198,7 @@ impl Filter {
 			Filter::Downloading => download.status == Status::Downloading,
 			Filter::Unfinished => download.status != Status::Completed,
 			Filter::Completed => download.status == Status::Completed,
-			Filter::Category(id) => category_of(categories, download).is_some_and(|c| c.id == id),
+			Filter::Category(id) => categories_of(categories, download).iter().any(|c| c.id == id),
 		}
 	}
 }
@@ -304,18 +343,22 @@ mod tests {
 	}
 
 	#[test]
-	fn the_first_matching_category_wins_and_other_takes_the_rest() {
-		let categories = Category::defaults();
-		assert_eq!(category_of(&categories, &named("talk.MP4")).unwrap().name, "Video");
-		assert_eq!(category_of(&categories, &named("notes.md")).unwrap().name, "Documents");
-		assert_eq!(category_of(&categories, &named("disk.iso")).unwrap().name, "Other");
+	fn a_file_is_in_every_category_that_matches_and_other_takes_the_rest() {
+		let mut categories = Category::defaults();
+		categories.push(Category::new(99, "Ubuntu", Icon::Disc, "(?i)^ubuntu").unwrap());
+		let names = |name: &str| -> Vec<String> {
+			categories_of(&categories, &named(name)).iter().map(|c| c.name.clone()).collect()
+		};
+		assert_eq!(names("talk.MP4"), ["Video"]);
+		assert_eq!(names("ubuntu-26.04.iso"), ["Disk images", "Ubuntu"]);
+		assert_eq!(names("notes.unknown"), ["Other"]);
 	}
 
 	#[test]
-	fn a_user_category_ahead_of_the_defaults_captures_first() {
-		let mut categories = Category::defaults();
-		categories.insert(0, Category::new(99, "Code", Icon::Code, r"\.(rs|py)$").unwrap());
-		assert_eq!(category_of(&categories, &named("main.rs")).unwrap().name, "Code");
+	fn extensions_become_one_anchored_case_insensitive_pattern() {
+		assert_eq!(pattern_for_extensions("rs, py .ts"), r"(?i)\.(rs|py|ts)$");
+		assert_eq!(pattern_for_extensions("c++"), r"(?i)\.(c\+\+)$");
+		assert_eq!(pattern_for_extensions(" , "), "");
 	}
 
 	#[test]

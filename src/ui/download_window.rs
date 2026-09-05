@@ -70,7 +70,14 @@ impl Render for DownloadWindow {
 			.child(field(
 				p.muted,
 				"Category",
-				self.rdm.read(cx).category_of(&download).map_or_else(String::new, |c| c.name.clone()),
+				self
+					.rdm
+					.read(cx)
+					.categories_of(&download)
+					.iter()
+					.map(|c| c.name.as_str())
+					.collect::<Vec<_>>()
+					.join(", "),
 			))
 			.child(
 				div()

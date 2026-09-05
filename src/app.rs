@@ -12,7 +12,7 @@ use gpui::{
 use serde::Serialize;
 
 use crate::config::{self, Config};
-use crate::download::{self, Category, Download, Filter, Status, category_of};
+use crate::download::{self, Category, Download, Filter, Status, categories_of};
 use crate::state::{self, Frame, Paths, State};
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::icon::Icon;
@@ -69,11 +69,14 @@ pub struct Resize {
 	pub from_width: f32,
 }
 
-/// The category sheet while it is up: two fields and a chosen icon.
+/// The category sheet while it is up. The pattern field is what runs; until Advanced is opened it
+/// is derived from the extensions and never seen.
 pub struct CategoryForm {
 	pub name: Entity<TextInput>,
+	pub extensions: Entity<TextInput>,
 	pub pattern: Entity<TextInput>,
 	pub icon: Icon,
+	pub advanced: bool,
 }
 
 pub struct Rdm {
@@ -187,16 +190,23 @@ impl Rdm {
 		rows
 	}
 
-	pub(crate) fn category_of(&self, download: &Download) -> Option<&Category> {
-		category_of(&self.categories, download)
+	pub(crate) fn categories_of(&self, download: &Download) -> Vec<&Category> {
+		categories_of(&self.categories, download)
 	}
 
+	/// The icon a row shows: the filtered category's when one is filtered and matches, else the
+	/// first that matches, else a plain file.
 	pub(crate) fn category_icon(&self, download: &Download) -> Icon {
-		self.category_of(download).map_or(Icon::File, |c| c.icon)
+		let matched = self.categories_of(download);
+		if let Filter::Category(id) = self.filter
+			&& let Some(c) = matched.iter().find(|c| c.id == id)
+		{
+			return c.icon;
+		}
+		matched.first().map_or(Icon::File, |c| c.icon)
 	}
 
-	/// A new category goes ahead of the defaults, so a specific rule wins over a broad one; the
-	/// catch-all stays last regardless.
+	/// A new category goes before the catch-all, which stays last so it reads as the remainder.
 	pub(crate) fn add_category(
 		&mut self,
 		name: &str,
@@ -211,12 +221,32 @@ impl Rdm {
 		if pattern.trim().is_empty() {
 			return Err("a category needs a pattern".to_owned());
 		}
+		if self.categories.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
+			return Err(format!("there is already a category called {name}"));
+		}
 		let id = self.categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
 		let category = Category::new(id, name, icon, pattern.trim())?;
-		self.categories.insert(0, category);
+		let at =
+			self.categories.iter().position(Category::is_catch_all).unwrap_or(self.categories.len());
+		self.categories.insert(at, category);
 		self.save_config();
 		cx.notify();
 		Ok(())
+	}
+
+	/// A preset is added when absent and removed when present, so the sheet's preset row is a
+	/// switch for what the sidebar shows.
+	pub(crate) fn toggle_preset(&mut self, name: &str, cx: &mut Context<Self>) {
+		if let Some(at) = self.categories.iter().position(|c| c.name == name) {
+			let removed = self.categories.remove(at);
+			if self.filter == Filter::Category(removed.id) {
+				self.filter = Filter::All;
+			}
+			self.save_config();
+			cx.notify();
+		} else if let Some(preset) = Category::preset(name) {
+			let _ = self.add_category(&preset.name, preset.icon, &preset.pattern, cx);
+		}
 	}
 
 	/// Written at once, not debounced: a category is added once, and the file is the user's.
@@ -641,37 +671,67 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn the_category_sheet_adds_a_rule_ahead_of_the_defaults(cx: &mut TestAppContext) {
+	fn the_category_sheet_adds_a_custom_rule_and_advanced_exposes_the_pattern(
+		cx: &mut TestAppContext,
+	) {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "button:New category");
-		let (name, pattern) = rdm.read_with(&cx, |rdm, _| {
+		let (name, extensions, pattern) = rdm.read_with(&cx, |rdm, _| {
 			let form = rdm.category_form.as_ref().expect("the sheet is up");
-			(form.name.clone(), form.pattern.clone())
+			(form.name.clone(), form.extensions.clone(), form.pattern.clone())
 		});
 		cx.update(|window, cx| {
-			name.update(cx, |input, cx| input.replace_text_in_range(None, "Code", window, cx));
+			name.update(cx, |input, cx| input.replace_text_in_range(None, "Rust", window, cx));
+			extensions.update(cx, |input, cx| input.replace_text_in_range(None, "rs, rlib", window, cx));
+		});
+		click(&mut cx, "button:Advanced");
+		let derived = pattern.read_with(&cx, |input, _| input.content.to_string());
+		assert_eq!(
+			derived, r"(?i)\.(rs|rlib)$",
+			"opening Advanced fills the pattern from the extensions"
+		);
+		cx.update(|window, cx| {
 			pattern.update(cx, |input, cx| input.replace_text_in_range(None, "(", window, cx));
 		});
-		assert!(cx.debug_bounds("button:Add").is_some(), "the button is drawn while disabled");
+		let card = cx.debug_bounds("category-sheet").unwrap();
+		let add = cx.debug_bounds("button:Add").unwrap();
+		assert!(
+			card.contains(&add.center()),
+			"the Add button stays inside the card however long the report"
+		);
 		click(&mut cx, "button:Add");
 		rdm.read_with(&cx, |rdm, _| {
 			assert!(rdm.category_form.is_some(), "a pattern that does not compile is not added")
 		});
 		cx.update(|window, cx| {
 			pattern.update(cx, |input, cx| {
-				input.replace_text_in_range(Some(0..1), r"(?i)\.(rs|py)$", window, cx)
+				let end = input.content.len();
+				input.replace_text_in_range(Some(end - 1..end), "", window, cx)
 			});
 		});
 		click(&mut cx, "icon:terminal");
 		click(&mut cx, "button:Add");
 		rdm.read_with(&cx, |rdm, _| {
 			assert!(rdm.category_form.is_none());
-			let first = &rdm.categories[0];
-			assert_eq!((first.name.as_str(), first.icon), ("Code", Icon::Terminal));
-			let rows = rdm.shown();
-			assert!(rows.iter().all(|d| rdm.category_of(d).is_some()));
+			let rust = rdm.categories.iter().find(|c| c.name == "Rust").expect("added");
+			assert_eq!(rust.icon, Icon::Terminal);
+			assert!(rdm.categories.last().unwrap().is_catch_all(), "Other stays last");
 		});
-		assert!(cx.debug_bounds("filter:Code").is_some(), "the sidebar lists the new category");
+		assert!(cx.debug_bounds("filter:Rust").is_some(), "the sidebar lists the new category");
+	}
+
+	#[gpui::test]
+	fn a_preset_row_toggles_the_category_in_and_out(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		let before = rdm.read_with(&cx, |rdm, _| rdm.categories.len());
+		click(&mut cx, "preset:Ebooks");
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.categories.len(), before - 1));
+		click(&mut cx, "preset:Ebooks");
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(rdm.categories.len(), before);
+			assert!(rdm.categories.last().unwrap().is_catch_all());
+		});
 	}
 
 	#[gpui::test]

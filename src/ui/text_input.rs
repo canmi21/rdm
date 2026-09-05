@@ -106,6 +106,14 @@ impl TextInput {
 		self
 	}
 
+	/// Replaces the whole text and puts the cursor at its end.
+	pub fn set_content(&mut self, text: &str, cx: &mut Context<Self>) {
+		self.content = text.to_owned().into();
+		self.selected_range = self.content.len()..self.content.len();
+		self.marked_range = None;
+		cx.notify();
+	}
+
 	pub fn focus(&self) -> FocusHandle {
 		self.focus_handle.clone()
 	}

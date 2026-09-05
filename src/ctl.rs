@@ -20,7 +20,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
-	category <name> <icon> <pattern>";
+	category <name> <icon> <pattern> | preset <name>";
 
 pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
 	let _ = std::fs::remove_file(SOCKET);
@@ -160,6 +160,7 @@ impl Rdm {
 					None => return failure("filter takes a sidebar label"),
 				}
 			}
+			"preset" if !label.is_empty() => self.toggle_preset(&label, cx),
 			"category" => {
 				// category <name> <icon> <pattern...>: the name is one word here; the sheet takes any.
 				let (Some(name), Some(glyph)) = (rest.first(), rest.get(1)) else {

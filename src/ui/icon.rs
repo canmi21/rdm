@@ -35,6 +35,7 @@ pub enum Icon {
 	Disc,
 	Database,
 	Terminal,
+	ChevronRight,
 }
 
 impl Icon {
@@ -71,6 +72,7 @@ impl Icon {
 			Icon::Disc => "icons/disc.svg",
 			Icon::Database => "icons/database.svg",
 			Icon::Terminal => "icons/terminal.svg",
+			Icon::ChevronRight => "icons/chevron-right.svg",
 		}
 	}
 

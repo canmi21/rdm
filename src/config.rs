@@ -122,7 +122,7 @@ mod tests {
 		let dir = scratch("seed");
 		let path = dir.join("config.json");
 		let config = load_or_seed(&path);
-		assert_eq!(config.categories.len(), 6);
+		assert_eq!(config.categories.len(), Category::PRESETS.len() + 1, "every preset, then Other");
 		assert_eq!(config.categories[0].name, "Video");
 		assert_eq!(parse(&std::fs::read_to_string(&path).unwrap()).unwrap(), config);
 		std::fs::remove_dir_all(dir).ok();
