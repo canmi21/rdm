@@ -94,6 +94,9 @@ impl Rdm {
 		};
 		let count = self.downloads.iter().filter(|d| filter.matches(d, &self.categories)).count();
 		let selector = label.clone();
+		// The icon is grey until the row is chosen or hovered, then its own hue; the svg cannot
+		// inherit a hover colour, so it watches the row through a group.
+		let tint = p.tint(filter.tint(&self.categories));
 		div()
 			.id(SharedString::from(format!("filter:{label}")))
 			.role(Role::Tab)
@@ -107,10 +110,15 @@ impl Rdm {
 			.py_0p5()
 			.rounded_sm()
 			.cursor_pointer()
+			.group("filter-row")
 			.when(active, |s| s.bg(p.selection))
 			.when(!active, move |s| s.hover(move |s| s.bg(p.hover)))
 			.on_click(cx.listener(move |this, _, _, cx| this.set_filter(filter, cx)))
-			.child(icon(glyph, if active { p.text } else { p.muted }).size_3p5())
+			.child(
+				icon(glyph, if active { tint } else { p.muted })
+					.size_3p5()
+					.when(!active, move |s| s.group_hover("filter-row", move |s| s.text_color(tint))),
+			)
 			.child(div().flex_1().child(label))
 			.child(div().text_xs().text_color(p.muted).child(count.to_string()))
 	}

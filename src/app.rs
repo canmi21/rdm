@@ -227,16 +227,25 @@ impl Rdm {
 		categories_of(&self.categories, download)
 	}
 
-	/// The icon a row shows: the filtered category's when one is filtered and matches, else the
-	/// first that matches, else a plain file.
-	pub(crate) fn category_icon(&self, download: &Download) -> Icon {
+	/// The category a row is drawn as: the filtered one when one is filtered and matches, else
+	/// the first that matches. None when nothing does and there is no catch-all.
+	fn category_shown(&self, download: &Download) -> Option<&Category> {
 		let matched = self.categories_of(download);
 		if let Filter::Category(id) = self.filter
 			&& let Some(c) = matched.iter().find(|c| c.id == id)
 		{
-			return c.icon;
+			return Some(c);
 		}
-		matched.first().map_or(Icon::File, |c| c.icon)
+		matched.first().copied()
+	}
+
+	/// The icon a row shows, and the hue it is drawn in: its category's, so the list reads the
+	/// way the sidebar does. A plain file, muted, when no category claims it.
+	pub(crate) fn category_icon(&self, download: &Download) -> (Icon, gpui::Hsla) {
+		match self.category_shown(download) {
+			Some(c) => (c.icon, self.palette.tint(c.tint)),
+			None => (Icon::File, self.palette.muted),
+		}
 	}
 
 	/// A new category goes before the catch-all, which stays last so it reads as the remainder.

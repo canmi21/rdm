@@ -5,6 +5,8 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 use serde::Serialize;
 
+use crate::ui::theme::Tint;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Status {
 	Queued,
@@ -36,6 +38,7 @@ impl Status {
 pub struct Preset {
 	pub name: &'static str,
 	pub icon: crate::ui::icon::Icon,
+	pub tint: crate::ui::theme::Tint,
 	pub extensions: &'static str,
 }
 
@@ -89,6 +92,8 @@ pub struct Category {
 	/// compiled form, or None for the catch-all.
 	pub pattern: String,
 	regex: Option<fancy_regex::Regex>,
+	/// The hue its icon shows when lit; a preset's own, a custom rule's from the cycle.
+	pub tint: crate::ui::theme::Tint,
 	/// Which preset this is, with the user's changes to its list; None for a custom rule.
 	pub preset: Option<(&'static Preset, Overrides)>,
 }
@@ -106,12 +111,14 @@ impl Category {
 		} else {
 			Some(fancy_regex::Regex::new(pattern).map_err(|e| e.to_string())?)
 		};
+		let tint = if pattern.is_empty() { Tint::Snow } else { Tint::cycle(id) };
 		Ok(Category {
 			id,
 			name: name.to_owned(),
 			icon,
 			pattern: pattern.to_owned(),
 			regex,
+			tint,
 			preset: None,
 		})
 	}
@@ -129,24 +136,57 @@ impl Category {
 	/// removes them, and one who wants more writes a custom one or adds to a preset's list.
 	pub const PRESETS: [Preset; 9] = {
 		use crate::ui::icon::Icon;
+		use crate::ui::theme::Tint;
 		[
-			Preset { name: "Video", icon: Icon::Film, extensions: "mp4 mkv mov webm avi" },
-			Preset { name: "Audio", icon: Icon::Music, extensions: "mp3 flac aac wav m4a ogg" },
-			Preset { name: "Images", icon: Icon::Image, extensions: "jpg jpeg png gif webp svg heic" },
+			Preset {
+				name: "Video",
+				icon: Icon::Film,
+				tint: Tint::Purple,
+				extensions: "mp4 mkv mov webm avi",
+			},
+			Preset {
+				name: "Audio",
+				icon: Icon::Music,
+				tint: Tint::Teal,
+				extensions: "mp3 flac aac wav m4a ogg",
+			},
+			Preset {
+				name: "Images",
+				icon: Icon::Image,
+				tint: Tint::Yellow,
+				extensions: "jpg jpeg png gif webp svg heic",
+			},
 			Preset {
 				name: "Documents",
 				icon: Icon::FileText,
+				tint: Tint::Frost,
 				extensions: "pdf doc docx txt md pptx xlsx",
 			},
-			Preset { name: "Ebooks", icon: Icon::BookOpen, extensions: "epub mobi azw3" },
+			Preset {
+				name: "Ebooks",
+				icon: Icon::BookOpen,
+				tint: Tint::Green,
+				extensions: "epub mobi azw3",
+			},
 			Preset {
 				name: "Code",
 				icon: Icon::Code,
+				tint: Tint::Blue,
 				extensions: "rs py ts js go c h cpp java json toml yaml",
 			},
-			Preset { name: "Archives", icon: Icon::Archive, extensions: "zip tar gz xz 7z rar" },
-			Preset { name: "Programs", icon: Icon::Package, extensions: "dmg pkg app exe msi deb rpm" },
-			Preset { name: "Disk images", icon: Icon::Disc, extensions: "iso img" },
+			Preset {
+				name: "Archives",
+				icon: Icon::Archive,
+				tint: Tint::Orange,
+				extensions: "zip tar gz xz 7z rar",
+			},
+			Preset {
+				name: "Programs",
+				icon: Icon::Package,
+				tint: Tint::Red,
+				extensions: "dmg pkg app exe msi deb rpm",
+			},
+			Preset { name: "Disk images", icon: Icon::Disc, tint: Tint::Navy, extensions: "iso img" },
 		]
 	};
 
@@ -159,6 +199,7 @@ impl Category {
 		let preset = Category::find_preset(name)?;
 		let pattern = pattern_for_extensions(&merged_extensions(&preset.base(), &overrides).join(" "));
 		let mut category = Category::new(id, preset.name, preset.icon, &pattern).ok()?;
+		category.tint = preset.tint;
 		category.preset = Some((preset, overrides));
 		Some(category)
 	}
@@ -362,6 +403,18 @@ impl Filter {
 			Filter::Category(id) => {
 				categories.iter().find(|c| c.id == id).map(|c| c.name.clone()).unwrap_or_default()
 			}
+		}
+	}
+
+	/// The hue a filter's icon shows when lit: All is white, the states take their status colours,
+	/// a category its own.
+	pub fn tint(self, categories: &[Category]) -> Tint {
+		match self {
+			Filter::All => Tint::Snow,
+			Filter::Downloading => Tint::Frost,
+			Filter::Unfinished => Tint::Yellow,
+			Filter::Completed => Tint::Green,
+			Filter::Category(id) => categories.iter().find(|c| c.id == id).map_or(Tint::Snow, |c| c.tint),
 		}
 	}
 

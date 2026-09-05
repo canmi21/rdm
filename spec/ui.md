@@ -69,6 +69,17 @@ red failed, frost blue for downloading, grey queued, because a column of status 
 slower than a column of colours. Selection and hover are Nord's polar-night greys; the frost blue
 is reserved for progress that is moving.
 
+**Every filter and category owns a hue, shown only when asked.** All is snow white, the three
+states take their status colours, and each built-in category has one of Nord's nine accents --
+Video purple, Audio teal, Images yellow, Documents frost, Ebooks green, Code blue, Archives
+orange, Programs red, Disk images navy -- with a custom rule handed the next hue in a fixed
+cycle so nobody has to pick. In the sidebar an icon is grey until its row is chosen or hovered,
+then its own hue: a column of nine colours at rest is a rainbow, and a rainbow is noise. The
+list is the other way: a row's type icon always wears its category's hue, because there the
+colour is information -- which bucket this file fell into -- and the icons are one per row
+rather than one per line of a menu. Both go monochrome with the rest when the window is
+inactive.
+
 **The window is blurred, and only the sidebar lets it show.** `WindowBackgroundAppearance::Blurred`
 asks macOS for the blur behind a native window, but a native window is not transparent: Finder's
 content is opaque and its sidebar is a *material*, mostly opaque with a hint of the desktop's

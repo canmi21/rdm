@@ -208,7 +208,7 @@ impl Rdm {
 			.items_center()
 			.h(px(26.0))
 			.px_2()
-			.child(icon(self.category_icon(download), p.muted).size_3p5())
+			.child(tinted_icon(self.category_icon(download)).size_3p5())
 			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child(download.name.clone()))
 			.child(
 				cell(Column::Size).text_color(p.muted).child(div().truncate().child(size_cell(download))),
@@ -239,7 +239,7 @@ impl Rdm {
 			.h(px(22.0))
 			.px_2()
 			.text_xs()
-			.child(icon(self.category_icon(download), p.muted).size_3())
+			.child(tinted_icon(self.category_icon(download)).size_3())
 			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
 			.child(div().w(px(96.0)).flex_none().child(progress_bar(p, download, tint)))
 			.child(
@@ -266,7 +266,7 @@ impl Rdm {
 					.items_center()
 					.rounded_sm()
 					.bg(p.panel)
-					.child(icon(self.category_icon(download), p.muted).size_8()),
+					.child(tinted_icon(self.category_icon(download)).size_8()),
 			)
 			.child(div().truncate().text_xs().child(download.name.clone()))
 			.child(progress_bar(p, download, tint))
@@ -281,6 +281,11 @@ impl Rdm {
 					.child(icon(Icon::for_status(download.status), tint).size_3()),
 			)
 	}
+}
+
+/// A row's type icon in its category's hue.
+fn tinted_icon((glyph, color): (Icon, Hsla)) -> gpui::Svg {
+	icon(glyph, color)
 }
 
 fn status_label(download: &Download, tint: Hsla) -> impl IntoElement {
