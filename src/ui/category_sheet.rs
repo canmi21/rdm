@@ -288,7 +288,7 @@ impl Rdm {
 	}
 
 	pub(crate) fn show_color_guide(&mut self, cx: &mut Context<Self>) {
-		self.open_guide("Colors", &COLOR_GUIDE, cx);
+		self.show_guide(crate::ui::guide::Guide { title: "Colors", lines: &COLOR_GUIDE }, cx);
 	}
 
 	pub(crate) fn toggle_ignore_space(&mut self, cx: &mut Context<Self>) {
@@ -928,8 +928,8 @@ impl Rdm {
 			.children(swatches)
 			.child(div().flex_1().min_w_0().ml_1().child(custom))
 			.child(preview)
-			// A question mark after the field: the rule on hover, the whole guide in a window of
-			// its own on a press, so the form does not move under the pointer.
+			// A question mark after the field: the rule on hover, the whole guide laid over the
+			// form on a press, so the form does not move under the pointer.
 			.child(
 				div()
 					.id("color-help")

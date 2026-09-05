@@ -133,9 +133,8 @@ pub struct Rdm {
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
 	pub(crate) category_sheet: Option<CategorySheet>,
-	/// The guide window, while one is open; a second request raises it rather than opening
-	/// another. Found dead on the next use once closed, like the download windows.
-	pub(crate) guide: Option<WindowHandle<crate::ui::guide_window::GuideWindow>>,
+	/// A few lines of guidance laid over whatever sheet is up, until OK is pressed.
+	pub(crate) guide: Option<crate::ui::guide::Guide>,
 	/// Holds the keyboard while the categories are being reordered, so Escape can finish.
 	pub(crate) reorder_focus: gpui::FocusHandle,
 	pub(crate) filter: Filter,
@@ -920,34 +919,7 @@ impl Render for Rdm {
 			.when(self.adding.is_some(), |s| s.child(self.add_dialog(cx)))
 			.when(self.settings_open, |s| s.child(self.settings_sheet(cx)))
 			.when(self.category_sheet.is_some(), |s| s.child(self.render_category_sheet(cx)))
-	}
-}
-
-impl Rdm {
-	/// A few lines of guidance in a window of their own, with one button. One at a time: asking
-	/// again raises the one that is open. Deferred, since a window cannot be opened from inside
-	/// the click that asks for it; see `open_download`.
-	pub(crate) fn open_guide(
-		&mut self,
-		title: &'static str,
-		lines: &'static [&'static str],
-		cx: &mut Context<Self>,
-	) {
-		if let Some(handle) = &self.guide
-			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
-		{
-			return;
-		}
-		let rdm = cx.entity();
-		cx.defer(move |cx| {
-			let extent = crate::ui::guide_window::GuideWindow::extent(lines);
-			let options = child_window(cx, title, extent);
-			if let Ok(handle) = cx.open_window(options, |_, cx| {
-				cx.new(|_| crate::ui::guide_window::GuideWindow::new(title, lines))
-			}) {
-				rdm.update(cx, |this, _| this.guide = Some(handle));
-			}
-		});
+			.when_some(self.guide, |s, guide| s.child(self.guide_sheet(guide, cx)))
 	}
 }
 
@@ -1617,20 +1589,25 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn the_question_mark_opens_one_guide_window_and_raises_it_after(cx: &mut TestAppContext) {
+	fn the_question_mark_lays_the_guide_over_the_form_and_ok_takes_it_away(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "button:New category");
 		click(&mut cx, "button:Add");
 		click(&mut cx, "button:Color");
 		click(&mut cx, "button:Color formats");
-		cx.run_until_parked();
-		assert_eq!(cx.windows().len(), 2, "the guide is a window of its own");
+		assert_eq!(cx.windows().len(), 1, "no window of its own");
+		assert!(cx.debug_bounds("guide").is_some());
+		let card = cx.debug_bounds("category-sheet").unwrap().center();
+		cx.simulate_click(card, Modifiers::default());
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.guide.is_some(), "only OK closes it"));
+		click(&mut cx, "button:OK");
 		rdm.read_with(&cx, |rdm, _| {
-			assert!(rdm.adding.is_none() && rdm.category_sheet.is_some(), "the form is untouched");
+			assert!(rdm.guide.is_none());
+			assert!(
+				matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))),
+				"the form is where it was"
+			);
 		});
-		click(&mut cx, "button:Color formats");
-		cx.run_until_parked();
-		assert_eq!(cx.windows().len(), 2, "asked again, it is raised, not doubled");
 	}
 
 	#[gpui::test]

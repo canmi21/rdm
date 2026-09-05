@@ -257,11 +257,11 @@ without the hash, and the CSS functions `rgb()`, `rgba()`, `hsl()` and `hsla()`,
 dropped; its placeholder is one hex value, the way most people write one, and the rest of what
 it reads sits behind a question mark after the field: the one-line rule on hover, and on a
 press the whole guide -- every shape with examples, and that alpha is dropped and names are
-not read -- in a small window of its own with one button, OK. A placeholder that listed every
-shape was a sentence in a box meant for a word, and a guide unfolded under the line moved the
-form under the pointer; a window is the one place help can appear without displacing what it
-is about. It is the exception to the rule below that only a download gets a window, and the
-same shape: one at a time, raised when asked for again. The dot previews what is typed as it is typed, and once the text reads as a color
+not read -- laid over the form with one button, OK, that takes it away and leaves the form as
+it was. A placeholder that listed every shape was a sentence in a box meant for a word; a guide
+unfolded under the line moved the form under the pointer; and a window of its own, tried next,
+was somewhere else to look and something else to close. Over the form is where the eye already
+is, and one press is all it costs. Nothing but OK closes it, since it was asked for. The dot previews what is typed as it is typed, and once the text reads as a color
 the dot is a swatch like the nine: pressing it, or Enter in the field, chooses that color. The
 writing stays with the category, as written, so the user can move between a named hue and
 their own and back; on the new-category form it is kept only if the category is created. What
