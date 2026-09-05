@@ -12,6 +12,7 @@
 pub mod client;
 pub mod control;
 pub mod error;
+pub mod inspect;
 pub mod limiter;
 #[cfg(test)]
 mod mirror;
@@ -28,6 +29,7 @@ pub mod writer;
 
 pub use control::Control;
 pub use error::{Error, Result};
+pub use inspect::{Inspection, Link};
 pub use limiter::Limiter;
 pub use probe::{Probe, probe};
 pub use queue::{Engine, EngineSettings, Event, Snapshot, Status, TaskId};

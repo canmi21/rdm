@@ -13,6 +13,7 @@ use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::error::{Error, Result};
+use crate::engine::inspect::{self, Inspection};
 use crate::engine::limiter::Limiter;
 use crate::engine::task::{self, Finished, Handle, Progress, Request};
 use crate::engine::verify::{self, Checksum};
@@ -208,6 +209,26 @@ impl Engine {
 			});
 		}
 		self.pump();
+	}
+
+	/// Looks at an address without downloading it: what the server says it is, and, when it is
+	/// a web page, the files that page links to. The answer arrives on the returned channel,
+	/// which the caller polls the way it polls events; an address that could not be reached
+	/// arrives as the error's message.
+	pub fn inspect(
+		&self,
+		url: reqwest::Url,
+	) -> mpsc::Receiver<std::result::Result<Inspection, String>> {
+		let (sender, receiver) = mpsc::channel();
+		let settings = crate::engine::Settings::default();
+		self.runtime.spawn(async move {
+			let result = match crate::engine::client::build(&settings, false) {
+				Ok(client) => inspect::inspect(&client, url).await.map_err(|e| e.to_string()),
+				Err(e) => Err(e.to_string()),
+			};
+			let _ = sender.send(result);
+		});
+		receiver
 	}
 
 	pub fn snapshot(&self, id: TaskId) -> Option<Snapshot> {

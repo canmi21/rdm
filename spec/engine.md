@@ -206,3 +206,16 @@ does not wait on a connection closing. The row's id is the engine's task id, so 
 between them. The download folder is the platform's own as the user has it, from the
 `directories` crate: the XDG user-dirs entry on Linux, the known folder on Windows,
 `~/Downloads` on macOS, which offers no way to move it.
+
+## An address is looked at before it is downloaded
+
+`inspect` runs the probe and, when the server calls the address a web page -- `text/html` or
+XHTML in `Content-Type` -- reads the page for the files it links to: every `href` and `src`
+value, resolved against the page, kept when it is an http address whose last segment has a
+short alphanumeric extension that is not itself a page's, deduplicated, in the order written.
+The page is scanned for attribute values rather than parsed as a document, because a page of
+downloads offers its files as plain links and a page of anything else mostly does not; what
+this misses -- links built by script -- no parser would find either. At most two megabytes of
+the page are read. The answer, or the failure's message, arrives on a channel the window polls
+like the events, so the check never holds the window. The window uses it to say "this is a
+page" before saving one, and to offer the files behind it instead; see [ui.md](ui.md).
