@@ -35,27 +35,15 @@ correctness = "deny"
 suspicious = "deny"
 complexity = "warn"
 
-# Development: our own code unoptimised so it rebuilds in seconds and steps in a debugger; the
-# dependencies at full optimisation, since they change rarely and gpui unoptimised is too slow to
-# look at. The codegen-unit counts are the defaults, stated: at opt-level 0 the count changes
-# nothing that can be measured, and the lever for our own hot code is a crate of its own with its
-# own opt-level, not fewer units here. See spec/packaging.md.
 [profile.dev]
-opt-level = 0
+opt-level = 2
 codegen-units = 256
 incremental = true
 
 [profile.dev.package."*"]
 opt-level = 3
-# Release's default rather than dev's 256: a dependency is compiled once and run for weeks, so it
-# takes the better code. 1 would be better still and roughly doubles that one compile; not taken
-# until a hot path shows it is worth it.
 codegen-units = 16
 
-# Release: the smallest binary the compiler will make. A download manager sits in the background,
-# so what it costs at rest and on disk matters more than how fast it was built. `panic = "abort"`
-# is a safety property as much as a size one: a panic unwinding through a GPUI callback is not a
-# state worth continuing from.
 [profile.release]
 opt-level = "z"
 lto = true

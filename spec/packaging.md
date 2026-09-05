@@ -29,16 +29,17 @@ over, and a release build is minutes where a check is seconds.
 
 ## Two profiles, two questions
 
-**Development asks how fast a change can be looked at.** Our own code is built at `opt-level = 0`
-so it compiles in seconds and steps cleanly in a debugger; the dependencies are built at 3, since
-they change rarely and GPUI unoptimised is too slow to judge a layout in. The split is Cargo's
+**Development asks how fast a change can be looked at.** Our own code is built at `opt-level = 2`:
+fast enough to run as it will ship while still rebuilding in seconds, a trade the author made in
+favour of seeing real behaviour over stepping unoptimised code in a debugger. The dependencies are
+built at 3, since they change rarely and GPUI unoptimised is too slow to judge a layout in. The split is Cargo's
 `[profile.dev.package."*"]`, which names every crate but ours.
 
 **Codegen units are not the lever they look like.** The count sets how many pieces LLVM optimises
 in parallel; more pieces is more parallelism up to the machine's cores and less inlining across
-them. At `opt-level = 0` LLVM optimises nothing, so the count changes neither the speed of the
-build nor of the code, and 256 -- the default, written down so nobody wonders -- is as good as
-any. Dependencies take release's 16 rather than dev's 256, since they are compiled once and run
+them. Fewer units buy inlining across them, but in a development build they also fight incremental
+compilation, which reuses the units a change did not touch; 256 -- the default, written down so
+nobody wonders -- keeps a one-line change a one-unit rebuild. Dependencies take release's 16 rather than dev's 256, since they are compiled once and run
 for weeks; 1 would be a little better and roughly double that one compile, and is not taken until
 a hot path shows it earns it.
 
