@@ -69,7 +69,15 @@ impl Rdm {
 								cx.listener(|this, _, window, cx| this.open_category_sheet(window, cx)),
 							)),
 					)
-					.when(reordering, |s| s.child(div().absolute().inset_0().occlude().bg(p.dim))),
+					// A press on this wash is a press outside the work, and finishes the reorder.
+					.when(reordering, |s| {
+						s.child(
+							div().id("sidebar-wash").absolute().inset_0().occlude().bg(p.dim).on_mouse_down(
+								gpui::MouseButton::Left,
+								cx.listener(|this, _, _, cx| this.close_category_sheet(cx)),
+							),
+						)
+					}),
 			)
 			.children(categories)
 	}

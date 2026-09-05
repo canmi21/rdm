@@ -13,11 +13,11 @@ use crate::download::{Category, Combine, pattern_for_rule};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::Palette;
+use crate::ui::tooltip::tooltip;
 use crate::ui::{button, icon_button, sidebar, status_bar, toolbar};
 
 /// The pattern field's placeholder: one worked example, and what the engine allows, as a comment.
-const PATTERN_EXAMPLE: &str =
-	r"^(?!.*\.mp4$).*$  // lookahead and lookbehind are supported";
+const PATTERN_EXAMPLE: &str = r"^(?!.*\.mp4$).*$  // lookahead and lookbehind are supported";
 
 /// Under the pattern field.
 const ADVANCED_HINT: &str = "Enter a regular expression to match against whole file names.";
@@ -60,7 +60,7 @@ impl Rdm {
 				extensions: field("Extensions: rs, py, ts", cx),
 				contains: field("Name contains", cx),
 				combine: Combine::And,
-				ignore_case: false,
+				match_case: false,
 				ignore_space: false,
 				pattern: field(PATTERN_EXAMPLE, cx),
 				icon: Icon::Code,
@@ -138,9 +138,8 @@ impl Rdm {
 	/// A click outside closes the sheet only while there is nothing to lose. The presets act at
 	/// once, so that face always closes; a preset's list applies each change as it is made, so
 	/// its editor closes unless something is typed in its field; the custom form closes only
-	/// while nothing has been typed or switched. Reorder is the exception: a click outside is
-	/// how the sidebar is reached, so it never closes that face, which ends only from its check
-	/// or Escape. See spec/ui.md.
+	/// while nothing has been typed or switched. Reorder has no card to press outside of in this
+	/// sense: its washes close it themselves, and the sidebar is the work. See spec/ui.md.
 	pub(crate) fn dismiss_category_sheet(&mut self, cx: &mut Context<Self>) {
 		let clean = match &self.category_sheet {
 			None | Some(CategorySheet::Presets { .. }) => true,
@@ -152,7 +151,7 @@ impl Rdm {
 					&& form.contains.read(cx).content.trim().is_empty()
 					&& form.pattern.read(cx).content.trim().is_empty()
 					&& form.combine == Combine::And
-					&& !form.ignore_case
+					&& !form.match_case
 					&& !form.ignore_space
 					&& form.icon == Icon::Code
 			}
@@ -195,9 +194,9 @@ impl Rdm {
 		}
 	}
 
-	pub(crate) fn toggle_ignore_case(&mut self, cx: &mut Context<Self>) {
+	pub(crate) fn toggle_match_case(&mut self, cx: &mut Context<Self>) {
 		if let Some(form) = self.form_mut() {
-			form.ignore_case = !form.ignore_case;
+			form.match_case = !form.match_case;
 			cx.notify();
 		}
 	}
@@ -234,7 +233,7 @@ impl Rdm {
 			&form.extensions.read(cx).content,
 			&form.contains.read(cx).content,
 			form.combine,
-			form.ignore_case,
+			!form.match_case,
 			form.ignore_space,
 		)
 	}
@@ -423,22 +422,28 @@ impl Rdm {
 		.priority(2)
 	}
 
-	/// One line pointing at the sidebar, and a check to finish; Escape finishes too. The backdrop
-	/// leaves the sidebar's column alone, since that is where the work is, and takes no press:
-	/// the face is left up until it is finished on purpose. The sidebar dims its own filters,
-	/// above the categories, so the categories are the one lit thing. See spec/ui.md.
+	/// One line pointing at the sidebar; Escape finishes, and so does a press anywhere that is
+	/// neither this line nor the categories, since every drop is written as it lands and there
+	/// is nothing to lose. A drag never counts: it begins on a row, not on a wash. The backdrop
+	/// leaves the sidebar's column alone, since that is where the work is; the sidebar dims its
+	/// own filters, above the categories, so the categories are the one lit thing. See spec/ui.md.
 	fn reorder_face(&self, cx: &mut Context<Self>) -> gpui::Deferred {
 		let p = self.palette;
 		let side = px(sidebar::WIDTH);
-		let wash = || div().absolute().occlude().bg(p.dim);
+		let wash = |id: &'static str, cx: &mut Context<Self>| {
+			div().id(id).absolute().occlude().bg(p.dim).on_mouse_down(
+				gpui::MouseButton::Left,
+				cx.listener(|this, _, _, cx| this.close_category_sheet(cx)),
+			)
+		};
 		deferred(
 			div()
 				.absolute()
 				.inset_0()
-				.child(wash().top_0().left_0().w(side).h(px(toolbar::HEIGHT)))
-				.child(wash().bottom_0().left_0().w(side).h(px(status_bar::HEIGHT)))
+				.child(wash("wash-top", cx).top_0().left_0().w(side).h(px(toolbar::HEIGHT)))
+				.child(wash("wash-bottom", cx).bottom_0().left_0().w(side).h(px(status_bar::HEIGHT)))
 				.child(
-					wash()
+					wash("wash-right", cx)
 						.top_0()
 						.bottom_0()
 						.left(side)
@@ -448,13 +453,15 @@ impl Rdm {
 						.justify_center()
 						.child(
 							self
-								.sheet_card("category-sheet", 440.0, false, cx)
+								.sheet_card("category-sheet", 400.0, false, cx)
 								.track_focus(&self.reorder_focus)
 								.on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
 									if event.keystroke.key == "escape" {
 										this.close_category_sheet(cx);
 									}
 								}))
+								// The card is not outside: a press on it stays on it.
+								.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
 								.flex_row()
 								.items_center()
 								.gap_3()
@@ -464,15 +471,7 @@ impl Rdm {
 										.flex_1()
 										.text_xs()
 										.child("Drag the categories in the sidebar into the order you want."),
-								)
-								.child(icon_button(
-									p,
-									"category-finish",
-									Icon::Check,
-									"Finish",
-									true,
-									cx.listener(|this, _, _, cx| this.close_category_sheet(cx)),
-								)),
+								),
 						),
 				),
 		)
@@ -570,6 +569,7 @@ impl Rdm {
 					.rounded_sm()
 					.cursor_pointer()
 					.group("icon-choice")
+					.tooltip(tooltip(choice.name()))
 					.when(on, |s| s.bg(p.selection))
 					.on_click(cx.listener(move |this, _, _, cx| this.choose_category_icon(choice, cx)))
 					.child(
@@ -640,11 +640,11 @@ impl Rdm {
 							.child(div().flex_1().min_w_0().child(form.contains.clone()))
 							.child(toggle(
 								p,
-								"ignore-case",
+								"match-case",
 								Icon::CaseSensitive,
-								"Ignore case",
-								form.ignore_case,
-								cx.listener(|this, _, _, cx| this.toggle_ignore_case(cx)),
+								"Match case",
+								form.match_case,
+								cx.listener(|this, _, _, cx| this.toggle_match_case(cx)),
 							))
 							.child(toggle(
 								p,
@@ -753,6 +753,7 @@ fn toggle(
 		.rounded_sm()
 		.cursor_pointer()
 		.group("toggle")
+		.tooltip(tooltip(label))
 		.when(on, |s| s.bg(p.selection))
 		.on_click(on_click)
 		.child(

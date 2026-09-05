@@ -12,11 +12,13 @@ pub mod status_bar;
 pub mod text_input;
 pub mod theme;
 pub mod toolbar;
+pub mod tooltip;
 
 use gpui::{ClickEvent, Div, ElementId, Role, SharedString, Stateful, div, prelude::*};
 
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
+use crate::ui::tooltip::tooltip;
 
 /// An icon with its label. Disabled ones stay in the layout but neither react nor invite a click.
 pub fn button(
@@ -50,7 +52,8 @@ pub fn button(
 }
 
 /// An icon alone that does one thing when pressed. It has no pressed state to show, so hovering
-/// brightens it and nothing else; a background is for controls that stay selected.
+/// brightens it and nothing else; a background is for controls that stay selected. The label
+/// the icon cannot show appears as a tooltip once the pointer has rested on it.
 pub fn icon_button(
 	p: Palette,
 	id: impl Into<ElementId>,
@@ -76,7 +79,7 @@ pub fn icon_button(
 				.size_3p5()
 				.when(enabled, move |s| s.group_hover("icon-button", move |s| s.text_color(p.text))),
 		);
-	if enabled { base.cursor_pointer().on_click(on_click) } else { base }
+	if enabled { base.cursor_pointer().tooltip(tooltip(label)).on_click(on_click) } else { base }
 }
 
 /// A row in a menu: icon, label, and a count at the end; lit while it is the choice.

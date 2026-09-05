@@ -6,6 +6,7 @@ use gpui::{
 use crate::app::{Rdm, View};
 use crate::download::{Status, format_speed};
 use crate::ui::icon::{Icon, icon};
+use crate::ui::tooltip::tooltip;
 use crate::ui::{icon_button, menu_row, sidebar};
 
 /// The status bar's height, which the filter menu sits just above.
@@ -125,6 +126,7 @@ impl Rdm {
 			.text_color(if lit { p.text } else { p.muted })
 			.when(open || lit, |s| s.bg(p.selection))
 			.group("funnel")
+			.tooltip(tooltip("Filter"))
 			.hover(move |s| s.text_color(p.text))
 			.on_click(cx.listener(move |this, _, _, cx| this.toggle_filter_menu(!open, cx)))
 			.child(
@@ -213,6 +215,7 @@ impl Rdm {
 					.rounded_sm()
 					.cursor_pointer()
 					.group("view")
+					.tooltip(tooltip(format!("{view:?}")))
 					.when(active, |s| s.bg(p.selection))
 					.on_click(cx.listener(move |this, _, _, cx| this.set_view(view, cx)))
 					.child(

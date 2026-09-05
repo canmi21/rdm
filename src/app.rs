@@ -77,8 +77,9 @@ pub struct CategoryForm {
 	pub contains: Entity<TextInput>,
 	/// How the two basic fields combine when both are filled.
 	pub combine: Combine,
-	/// The two switches after the contains field.
-	pub ignore_case: bool,
+	/// The two switches after the contains field. Off, the text is matched loosely: case is
+	/// ignored; on, it must match as typed. Spaces are the other way: kept unless switched off.
+	pub match_case: bool,
 	pub ignore_space: bool,
 	pub pattern: Entity<TextInput>,
 	pub icon: Icon,
@@ -916,16 +917,20 @@ mod tests {
 			assert!(rdm.categories.last().unwrap().is_catch_all(), "Other is not a drop target");
 			assert_eq!(names(rdm)[0], "Audio");
 		});
-		// The list behind the wash is not a way out: reorder is suspended until it is finished.
-		let row = cx.debug_bounds("row:3").unwrap().center();
-		cx.simulate_click(row, Modifiers::default());
-		rdm.read_with(&cx, |rdm, _| assert!(rdm.reordering(), "a click outside does not finish"));
+		// Every drop is already written, so a press anywhere but the categories finishes.
 		cx.simulate_keystrokes("escape");
 		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none(), "Escape finishes"));
 		click(&mut cx, "button:New category");
 		click(&mut cx, "button:Reorder");
-		click(&mut cx, "button:Finish");
-		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none(), "the check finishes"));
+		let card = cx.debug_bounds("category-sheet").unwrap().center();
+		cx.simulate_click(card, Modifiers::default());
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.reordering(), "the hint itself is not outside"));
+		let row = cx.debug_bounds("row:3").unwrap().center();
+		cx.simulate_click(row, Modifiers::default());
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_sheet.is_none(), "a press on the list finishes");
+			assert_eq!(rdm.selected, None, "and reaches nothing behind the wash");
+		});
 	}
 
 	#[gpui::test]
@@ -990,11 +995,19 @@ mod tests {
 			contains.update(cx, |input, cx| input.replace_text_in_range(None, "rust book", window, cx));
 		});
 		click(&mut cx, "combine:OR");
-		click(&mut cx, "toggle:Ignore case");
 		click(&mut cx, "toggle:Ignore spaces");
 		click(&mut cx, "button:Advanced");
 		let derived = pattern.read_with(&cx, |input, _| input.content.to_string());
-		assert_eq!(derived, r"(?:(?i:rust\s*book)|(?i:\.(pdf))$)");
+		assert_eq!(derived, r"(?:(?i:rust\s*book)|(?i:\.(pdf))$)", "case is ignored until Match case");
+		click(&mut cx, "button:Advanced");
+		click(&mut cx, "toggle:Match case");
+		cx.update(|window, cx| {
+			pattern.update(cx, |input, cx| input.set_content("", cx));
+			let _ = window;
+		});
+		click(&mut cx, "button:Advanced");
+		let derived = pattern.read_with(&cx, |input, _| input.content.to_string());
+		assert_eq!(derived, r"(?:rust\s*book|(?i:\.(pdf))$)");
 	}
 
 	#[gpui::test]

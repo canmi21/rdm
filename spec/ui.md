@@ -117,6 +117,12 @@ do next: Pause while it downloads, Resume while it is paused, queued or failed, 
 complete, with a cross rather than the trash can so the two removes read differently. Four
 labelled buttons of which three were greyed at any moment spent the toolbar on saying no.
 
+**An icon alone carries its name as a tooltip.** Every control drawn without a label -- the
+corner icons, the action icons, the view segments, the funnel, the two switches on the custom
+form, the icon picker -- names itself in a small label once the pointer has rested on it for
+half a second, which is GPUI's own delay. A label that is always there is a toolbar; one that
+appears when asked is how an icon stays an icon.
+
 **Two hover languages, by whether there is a state to show.** A control that does one thing when
 pressed -- the corner icons, the action icons, a menu row's icon -- brightens on hover and
 nothing else: it has no pressed state, and a background would promise one. A control that stays
@@ -179,21 +185,24 @@ added one simply dropped -- with a field that adds more and Reset while anything
 changed. Each change applies and is written as it is made, like the preset switches themselves.
 
 **Reorder happens in the sidebar, not in the sheet.** The sheet shrinks to one line with an
-arrow pointing left and a check, and every wash in the window but the sidebar's categories goes
+arrow pointing left, and every wash in the window but the sidebar's categories goes
 dim -- the list, the toolbar and status bar, and the sidebar's own filters above the heading --
 so the categories are the one lit thing. Each row grows a six-dot grip and is dragged onto the
 row whose place it should take; the drop is applied and written as it lands. Other is neither
-dragged nor a target, so it stays last and reads as the remainder. This face ends only from its
-check or Escape: a press on the dim wash does nothing, because outside the card is where the
-work is, and the one press that reached the sidebar by mistake closed the face under the
-pointer. The backdrop cannot cover the sidebar, so the sidebar dims its own filters with the
-same wash and the backdrop is cut around it.
+dragged nor a target, so it stays last and reads as the remainder. The face ends from Escape or
+from a press anywhere that is neither the hint nor the categories: every drop is already
+written, so there is nothing to lose, and a button to say "done" was one more thing to find. A
+drag never ends it, since a drag begins on a row and the washes only answer presses on
+themselves. The backdrop cannot cover the sidebar, so the sidebar dims its own filters with the
+same wash, which closes like the rest, and the backdrop is cut around it.
 
 **Add is a second level.** The custom form asks for a name, one of fourteen Lucide icons, and a
 basic rule in two fields with a switch between them: the extensions the category stands for,
 typed as `rs, py`, and text the name contains, joined by AND or OR when both are filled -- AND
-by default, since a rule that names both usually means both. After the text, two icon switches:
-one ignores case, the other lets any run of whitespace in the text match any run or none. The
+by default, since a rule that names both usually means both. After the text, two icon switches,
+both off to start: Match case, since a name typed from memory is more often right in its
+letters than in its capitals, and Ignore spaces, which lets any run of whitespace in the text
+match any run or none. The
 application spells all of it as the one regular expression that actually runs, the extensions
 always without regard to case, so nobody has to know what a regular expression is to make a
 category. **Advanced** -- the one word -- unfolds that pattern for editing, prefilled from the
