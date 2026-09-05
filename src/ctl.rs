@@ -10,8 +10,9 @@ use futures::channel::{mpsc, oneshot};
 use gpui::{App, Context, Entity};
 use serde::Serialize;
 
-use crate::app::{CategorySheet, Rdm, SortKey, View};
+use crate::app::{Rdm, SortKey, View};
 use crate::download::{Download, Filter, Status};
+use crate::ui::category_sheet::CategorySheet;
 use crate::ui::icon::Icon;
 
 /// Under the build directory, so it is per checkout and gone with `cargo clean`.

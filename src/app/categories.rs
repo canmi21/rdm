@@ -3,10 +3,11 @@
 
 use gpui::Context;
 
-use crate::app::{CategorySheet, Rdm};
+use crate::app::Rdm;
 use crate::category::{self, Category, Overrides};
 use crate::config::{self, Config};
 use crate::download::Filter;
+use crate::ui::category_sheet::CategorySheet;
 use crate::ui::icon::Icon;
 
 impl Rdm {

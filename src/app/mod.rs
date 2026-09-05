@@ -5,21 +5,21 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui::{
-	App, Bounds, Context, Entity, IntoElement, Render, Task, TitlebarOptions, Window, WindowBounds,
+	App, Bounds, Context, IntoElement, Render, Task, TitlebarOptions, Window, WindowBounds,
 	WindowHandle, WindowOptions, div, prelude::*, px, size,
 };
 
 use serde::Serialize;
 
-use crate::category::{Category, Combine, categories_of};
+use crate::category::{Category, categories_of};
 use crate::config::{Config, Preferences};
 use crate::download::{Download, Filter, Status};
 use crate::engine::{self, Engine, Event, TaskId};
 use crate::state::{self, Frame, Paths, State};
 use crate::store::Store;
+use crate::ui::category_sheet::CategorySheet;
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::icon::Icon;
-use crate::ui::text_input::TextInput;
 use crate::ui::theme::{self, Palette};
 
 mod categories;
@@ -75,49 +75,6 @@ pub struct Resize {
 	pub column: Column,
 	pub from_x: gpui::Pixels,
 	pub from_width: f32,
-}
-
-/// The custom category form while it is up. The pattern field is what runs; until Advanced is
-/// opened it is derived from the basic fields and never seen.
-pub struct CategoryForm {
-	pub name: Entity<TextInput>,
-	pub extensions: Entity<TextInput>,
-	pub contains: Entity<TextInput>,
-	/// How the two basic fields combine when both are filled.
-	pub combine: Combine,
-	/// The two switches after the contains field. Off, the text is matched loosely: case is
-	/// ignored; on, it must match as typed. Spaces are the other way: kept unless switched off.
-	pub match_case: bool,
-	pub ignore_space: bool,
-	pub pattern: Entity<TextInput>,
-	pub icon: Icon,
-	/// The color the icon will be lit in, `0xrrggbb`; the swatch beside the name opens the
-	/// picker, whose field takes a color written any way the stack reads.
-	pub color: u32,
-	pub color_open: bool,
-	pub custom: Entity<TextInput>,
-	pub advanced: bool,
-}
-
-/// A preset being edited: which category, the field that adds to its list, and the field for
-/// a color of the user's own, which follows the category.
-pub struct PresetForm {
-	pub id: u64,
-	pub add: Entity<TextInput>,
-	pub custom: Entity<TextInput>,
-}
-
-/// The category sheet's faces: the presets with Edit, Reorder and Add under them; the one-line
-/// hint while the sidebar's categories are being dragged into order; one preset's extension
-/// list; and the custom form.
-pub enum CategorySheet {
-	/// `editing` turns the preset chips from switches into doors to their lists.
-	Presets {
-		editing: bool,
-	},
-	Reorder,
-	Preset(PresetForm),
-	Custom(CategoryForm),
 }
 
 /// What a sidebar row carries while it is dragged: the category's id.

@@ -2,7 +2,7 @@
 //! bar -- and the windows it opens beside itself.
 
 pub mod add_dialog;
-mod category_sheet;
+pub mod category_sheet;
 pub mod download_window;
 pub mod first_mouse;
 pub mod guide;
