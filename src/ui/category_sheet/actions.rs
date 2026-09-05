@@ -18,9 +18,9 @@ const COLOR_EXAMPLES: &str = "#3b4252";
 
 /// The full guide, laid over the form on a press: one line per shape, named, with examples.
 const COLOR_GUIDE: [(&str, &str); 3] = [
-	("Hex", "#3b4252, #3b4252ff, #abc, #abcf"),
-	("rgb", "rgb(59, 66, 82), rgba(59 66 82 / 0.5), rgb(23%, 26%, 32%)"),
-	("hsl", "hsl(220, 16%, 28%), hsla(220 16% 28% / 1)"),
+	("HEX", "#3b4252, #3b4252ff, #abc, #abcf"),
+	("RGB", "rgb(59, 66, 82), rgba(59 66 82 / 0.5), rgb(23%, 26%, 32%)"),
+	("HSL", "hsl(220, 16%, 28%), hsla(220 16% 28% / 1)"),
 ];
 
 /// After the shapes: what the field does with what it does not keep.
