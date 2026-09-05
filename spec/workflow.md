@@ -30,7 +30,7 @@ uses for its webview app, kept to a socket and a Python client because that is a
 needs. The socket lives in `target/` so it is per checkout and gone with `cargo clean`.
 
 **`ax` is the accessibility tree, which macOS already has.** Every interactive element carries
-a role and a label -- `Button "Pause"`, `RadioButton "Filter: Video"`, `CheckBox "Completed 2"`,
+a role and a label -- `Button "Pause"`, `RadioButton "Filter: Videos"`, `CheckBox "Completed 2"`,
 `ListItem "rust-book.pdf"` -- so the tree a screen reader sees is a structural snapshot an agent
 can read, and `AXPress` performs an element's own action through the same channel. This is the
 one of the four that is also a feature: it is what makes the application usable with VoiceOver.

@@ -149,7 +149,7 @@ fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
 fn the_custom_form_adds_a_rule_and_advanced_exposes_the_pattern(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:New category");
-	assert!(cx.debug_bounds("preset:Video").is_some(), "the sheet opens on the presets");
+	assert!(cx.debug_bounds("preset:Videos").is_some(), "the sheet opens on the presets");
 	assert!(cx.debug_bounds("button:Advanced").is_none(), "the form is a level down");
 	click(&mut cx, "button:Add");
 	let (name, extensions, pattern) = rdm.read_with(&cx, |rdm, _| {
@@ -263,7 +263,7 @@ fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAp
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.reordering()));
 	let names = |rdm: &Rdm| rdm.categories.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
 	let before = rdm.read_with(&cx, |rdm, _| names(rdm));
-	assert_eq!(&before[..2], ["Video", "Audio"]);
+	assert_eq!(&before[..2], ["Videos", "Audio"]);
 	let drag = |cx: &mut VisualTestContext, from: &'static str, onto: &'static str| {
 		let start = cx.debug_bounds(from).unwrap().center();
 		let end = cx.debug_bounds(onto).unwrap().center();
@@ -288,11 +288,11 @@ fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAp
 			click_count: 1,
 		});
 	};
-	drag(&mut cx, "filter:Video", "filter:Code");
+	drag(&mut cx, "filter:Videos", "filter:Code");
 	rdm.read_with(&cx, |rdm, _| {
 		let after = names(rdm);
 		assert_eq!(after[0], "Audio", "{after:?}");
-		assert_eq!(after.iter().position(|n| n == "Video"), before.iter().position(|n| n == "Code"));
+		assert_eq!(after.iter().position(|n| n == "Videos"), before.iter().position(|n| n == "Code"));
 		assert_eq!(rdm.filter, Filter::All, "a row in reorder mode does not filter");
 	});
 	drag(&mut cx, "filter:Audio", "filter:Other");
@@ -330,7 +330,7 @@ fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut Test
 			"a preset that is off has no list to open"
 		)
 	});
-	click(&mut cx, "preset:Video");
+	click(&mut cx, "preset:Videos");
 	let add = rdm.read_with(&cx, |rdm, _| {
 		let Some(CategorySheet::Preset(form)) = &rdm.category_sheet else { panic!("the list is up") };
 		form.add.clone()
@@ -343,7 +343,7 @@ fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut Test
 	cx.dispatch_action(crate::ui::text_input::Confirm);
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
-		let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
+		let video = rdm.categories.iter().find(|c| c.name == "Videos").unwrap();
 		let list = video.extensions();
 		assert!(!list.contains(&"mkv".to_owned()));
 		assert_eq!(&list[list.len() - 2..], ["xyz", "zyx"]);
@@ -352,14 +352,14 @@ fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut Test
 	click(&mut cx, "extension:xyz");
 	click(&mut cx, "extension:mkv");
 	rdm.read_with(&cx, |rdm, _| {
-		let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
+		let video = rdm.categories.iter().find(|c| c.name == "Videos").unwrap();
 		let list = video.extensions();
 		assert!(list.contains(&"mkv".to_owned()) && !list.contains(&"xyz".to_owned()));
 		assert_eq!(list.last().map(String::as_str), Some("zyx"));
 	});
 	click(&mut cx, "button:Reset");
 	rdm.read_with(&cx, |rdm, _| {
-		let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
+		let video = rdm.categories.iter().find(|c| c.name == "Videos").unwrap();
 		assert_eq!(video.extensions(), Category::preset("Video").unwrap().extensions());
 	});
 	click(&mut cx, "button:Close");

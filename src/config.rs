@@ -223,7 +223,7 @@ mod tests {
 		let path = dir.join("config.json");
 		let config = load_or_seed(&path);
 		assert_eq!(config.categories.len(), Category::PRESETS.len() + 1, "every preset, then Other");
-		assert_eq!(config.categories[0].name, "Video");
+		assert_eq!(config.categories[0].name, "Videos");
 		assert_eq!(parse(&std::fs::read_to_string(&path).unwrap()).unwrap(), config);
 		std::fs::remove_dir_all(dir).ok();
 	}
@@ -246,7 +246,8 @@ mod tests {
 			{ "name": "Video", "icon": "disc", "color": "#abc", "custom_color": "rgb(1, 2, 3)", "preset": "Video", "added": ["xyz"], "removed": ["mkv"] },
 			{ "name": "Audio", "icon": "music", "pattern": "(?i)\\.(mp3|flac|aac|wav|m4a|ogg|xyz)$" },
 			{ "name": "Films", "icon": "film", "pattern": "(?i)\\.(mp4)$" },
-			{ "name": "Ebooks", "icon": "code", "preset": "Ebooks" }
+			{ "name": "Ebooks", "icon": "code", "preset": "Ebooks" },
+			{ "name": "Disk images", "icon": "disc", "preset": "Disk images" }
 		] }"##;
 		let categories = parse(text).unwrap().categories();
 		assert_eq!(
@@ -254,6 +255,8 @@ mod tests {
 			("eBooks", Icon::Code),
 			"a preset and an icon under the names an older file wrote"
 		);
+		assert_eq!(categories[4].name, "Disk Images", "a preset renamed for the sidebar's style");
+		assert_eq!(categories[0].name, "Videos", "the preset's name, not the file's, is shown");
 		let video = categories[0].extensions();
 		assert!(!video.contains(&"mkv".to_owned()) && video.last() == Some(&"xyz".to_owned()));
 		assert_eq!((categories[0].icon, categories[0].color), (Icon::Disc, 0xaabbcc), "overrides hold");

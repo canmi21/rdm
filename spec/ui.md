@@ -71,9 +71,9 @@ is reserved for progress that is moving.
 
 **Every filter and category owns a color, shown only when asked.** All Tasks is snow white,
 the three states take their status colors, and each built-in category starts with one of
-Nord's nine accents -- Video purple, Audio teal, Images yellow, Documents frost, Plain text
+Nord's nine accents -- Videos purple, Audio teal, Images yellow, Documents frost, Plain Text
 teal, Presentations orange, Spreadsheets green, eBooks green, Code blue, Archives orange,
-Programs red, Disk images navy -- with a custom rule handed the next hue in a fixed cycle so
+Programs red, Disk Images navy -- with a custom rule handed the next hue in a fixed cycle so
 nobody has to pick. Any of them can be changed to a named hue or one the user writes; the
 color is a number on the category, so a written one is the same kind of thing as a named one.
 
@@ -213,9 +213,16 @@ dialog must never do, and it outranks the convenience the outside click buys.
 ## Categories are rules the user writes
 
 The sidebar's categories are one kind of thing: a name, an icon and a regular expression over
-the file name. Nine presets -- Video, Audio, Images, Documents, eBooks, Code, Archives, Programs,
-Disk images -- are seeded into `config.json` on the first launch, followed by Other, which has no
+the file name. Nine presets -- Videos, Audio, Images, Documents, eBooks, Code, Archives, Programs,
+Disk Images -- are seeded into `config.json` on the first launch, followed by Other, which has no
 pattern and takes whatever nothing else did.
+
+**A sidebar label is in Title Case, and plural when it can be counted.** Title Case because
+that is what macOS asks of sidebar items and what Finder's are; the plural because the row
+names a set -- Videos, Documents, Disk Images -- and Finder's rows do the same. What cannot be
+counted keeps its form: Audio, Code, Plain Text; and Other names the remainder, not a kind. A
+preset renamed for this rule keeps reading under its old name from a config.json written
+before, so nobody's list changes but the label.
 
 **A file is in every category that matches it.** Two rules that both describe a file put it in
 both, so there is nothing to order and no priority to drag; the row's icon is the first match's,
@@ -241,7 +248,7 @@ built-in one is kept as additions, and nothing is marked removed, so the extensi
 arrive as they do for everyone. The lists aim to be complete for what a download manager
 meets -- every vendor's and every open format of the kind, and the newer ones like AVIF, JPEG
 XL and Zstandard -- because a file that lands in Other for want of one extension is a list's
-failure, not the user's. Presentations, Spreadsheets and Plain text are presets of their own;
+failure, not the user's. Presentations, Spreadsheets and Plain Text are presets of their own;
 word processing and PDF stay under Documents.
 
 Edit turns the chips into doors: a lit chip opens its list. The name stands alone above; the

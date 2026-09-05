@@ -122,7 +122,7 @@ impl Category {
 		use Icon;
 		[
 			Preset {
-				name: "Video",
+				name: "Videos",
 				icon: Icon::Film,
 				tint: Tint::Purple,
 				extensions: "mp4 m4v mkv mov webm avi wmv flv f4v ts m2ts mts mpg mpeg mpe m2v vob \
@@ -151,7 +151,7 @@ impl Category {
 					oxps",
 			},
 			Preset {
-				name: "Plain text",
+				name: "Plain Text",
 				icon: Icon::Text,
 				tint: Tint::Teal,
 				extensions: "txt text md markdown mdx rst adoc asciidoc org log nfo",
@@ -198,7 +198,7 @@ impl Category {
 					flatpak snap apk aab xapk ipa jar run",
 			},
 			Preset {
-				name: "Disk images",
+				name: "Disk Images",
 				icon: Icon::Disc,
 				tint: Tint::Navy,
 				extensions: "iso img dmg bin cue nrg mdf mds toast cdr vhd vhdx vmdk vdi qcow qcow2 wim \
@@ -213,8 +213,15 @@ impl Category {
 	}
 
 	pub fn find_preset(name: &str) -> Option<&'static Preset> {
-		// The spelling a config.json carried before the preset was renamed is still that preset.
-		let name = if name == "Ebooks" { "eBooks" } else { name };
+		// The names a config.json carried before a preset was renamed are still that preset: the
+		// sidebar took Title Case and the plural for what can be counted, as Finder's does.
+		let name = match name {
+			"Ebooks" => "eBooks",
+			"Video" => "Videos",
+			"Plain text" => "Plain Text",
+			"Disk images" => "Disk Images",
+			other => other,
+		};
 		Category::PRESETS.iter().find(|p| p.name == name)
 	}
 
@@ -400,8 +407,8 @@ mod tests {
 		let names = |name: &str| -> Vec<String> {
 			categories_of(&categories, &named(name)).iter().map(|c| c.name.clone()).collect()
 		};
-		assert_eq!(names("talk.MP4"), ["Video"]);
-		assert_eq!(names("ubuntu-26.04.iso"), ["Disk images", "Ubuntu"]);
+		assert_eq!(names("talk.MP4"), ["Videos"]);
+		assert_eq!(names("ubuntu-26.04.iso"), ["Disk Images", "Ubuntu"]);
 		assert_eq!(names("notes.unknown"), ["Other"]);
 	}
 
@@ -446,7 +453,7 @@ mod tests {
 
 	#[test]
 	fn a_preset_keeps_the_built_in_list_apart_from_the_users_changes() {
-		let mut video = Category::preset("Video").unwrap();
+		let mut video = Category::preset("Videos").unwrap();
 		video.set_extension("mkv", false);
 		video.set_extension("xyz", true);
 		video.set_extension(".XYZ", true);
@@ -462,7 +469,7 @@ mod tests {
 		video.set_extension("xyz", false);
 		assert!(video.preset.as_ref().unwrap().1.is_empty());
 		video.reset_preset();
-		assert_eq!(video.pattern, Category::preset("Video").unwrap().pattern);
+		assert_eq!(video.pattern, Category::preset("Videos").unwrap().pattern);
 	}
 
 	#[test]
