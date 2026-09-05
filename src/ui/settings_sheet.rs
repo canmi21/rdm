@@ -10,7 +10,7 @@ use gpui::{Context, Entity, IntoElement, Role, SharedString, deferred, div, prel
 use crate::app::Rdm;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
-use crate::ui::{backdrop, icon_button};
+use crate::ui::{LeavesFocus, backdrop, icon_button};
 
 // TODO: every value row here is a label until there is a setting behind it and a store to keep it
 // in; the folder is the one the engine writes to, the rest are the engine's defaults, read only.
@@ -284,6 +284,7 @@ impl Rdm {
 					.p_px()
 					.rounded_full()
 					.cursor_pointer()
+					.leaves_focus()
 					.bg(if on { p.accent } else { p.track })
 					.when(!on, |s| s.justify_start())
 					.when(on, |s| s.justify_end())

@@ -346,10 +346,13 @@ fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut Test
 		let Some(CategorySheet::Preset(form)) = &rdm.category_sheet else { panic!("the list is up") };
 		form.add.clone()
 	});
+	cx.update(|window, cx| window.focus(&add.read(cx).focus(), cx));
 	click(&mut cx, "extension:mkv");
-	// The press on the chip took the keyboard from the field; a user presses the field again.
+	assert!(
+		cx.update(|window, cx| add.read(cx).focus().is_focused(window)),
+		"a chip is a switch: pressing it leaves the field's focus alone"
+	);
 	cx.update(|window, cx| {
-		window.focus(&add.read(cx).focus(), cx);
 		add.update(cx, |input, cx| input.replace_text_in_range(None, "xyz, zyx", window, cx))
 	});
 	// The tests bind no keys; main does. The action is what Enter is bound to.
@@ -757,7 +760,9 @@ fn a_press_on_a_sheet_that_lands_on_no_field_drops_the_fields_focus(cx: &mut Tes
 	assert!(!focused(&mut cx), "a press on the card takes the keyboard away from the field");
 	cx.update(|window, cx| window.focus(&name.read(cx).focus(), cx));
 	click(&mut cx, "toggle:Match case");
-	assert!(!focused(&mut cx), "so does a press on a control");
+	assert!(focused(&mut cx), "a switch leaves it: the typing carries on after the press");
+	click(&mut cx, "icon:film");
+	assert!(!focused(&mut cx), "a press on a picker takes it, like any other control");
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))), "the form stays");
 	});

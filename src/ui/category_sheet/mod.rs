@@ -13,10 +13,10 @@ use gpui::{
 use crate::app::Rdm;
 use crate::category::Combine;
 use crate::ui::icon::{Icon, hover_icon};
-use crate::ui::icon_button;
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::Palette;
 use crate::ui::tooltip::tooltip;
+use crate::ui::{LeavesFocus, icon_button};
 
 mod actions;
 mod custom;
@@ -184,6 +184,7 @@ fn toggle(
 		.size_6()
 		.rounded_sm()
 		.cursor_pointer()
+		.leaves_focus()
 		.group("toggle")
 		.tooltip(tooltip(label))
 		.when(on, |s| s.bg(p.selection))

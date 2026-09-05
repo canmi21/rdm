@@ -206,7 +206,10 @@ one on its own; and a sheet's backdrop occludes the window's root, which is the 
 a press on the card would otherwise reach. So with one field on a sheet, no press anywhere on
 the sheet took the keyboard from it. The backdrop under every sheet now answers a press that
 no field claimed by dropping the focus, and the root takes it back at the next frame: a press
-on the card, a button or a row leaves the field, as it does in a native window. Which field
+on the card, a button or a row leaves the field, as it does in a native window. A switch is
+the exception -- an extension chip, the two toggles on the custom form, a switch in Settings --
+since it is pressed in the middle of typing and the typing should carry on; its press claims
+the keyboard the way a field's does, and the backdrop leaves the focus alone. Which field
 starts with the keyboard is the sheet's decision, not the framework's -- nothing is focused
 unless asked -- and the rule is by what the sheet is for: a form is opened to be filled in, so
 Add Task, the custom category and a preset's list focus their first field; Settings is a place

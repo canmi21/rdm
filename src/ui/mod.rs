@@ -47,6 +47,18 @@ pub fn backdrop(p: Palette) -> Div {
 		})
 }
 
+/// A control that changes something without wanting the keyboard: a chip, a toggle, a switch.
+/// Its press says so the way a field's does, so the backdrop under it leaves the field's focus
+/// where it was and typing carries on after the press. A button or a row does not: a press on
+/// those ends what the field was for.
+pub trait LeavesFocus: InteractiveElement + Sized {
+	fn leaves_focus(self) -> Self {
+		self.on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+	}
+}
+
+impl<E: InteractiveElement> LeavesFocus for E {}
+
 /// An icon with its label. Disabled ones stay in the layout but neither react nor invite a click.
 pub fn button(
 	p: Palette,

@@ -5,8 +5,8 @@ use gpui::{Context, Role, SharedString, deferred, div, prelude::*};
 
 use crate::app::Rdm;
 use crate::category::Category;
-use crate::ui::backdrop;
 use crate::ui::category_sheet::{PresetForm, section, word};
+use crate::ui::{LeavesFocus, backdrop};
 
 impl Rdm {
 	/// A preset's list: the built-in extensions and the added ones as chips that switch, a field
@@ -40,6 +40,7 @@ impl Rdm {
 					.py_1()
 					.rounded_md()
 					.cursor_pointer()
+					.leaves_focus()
 					.text_xs()
 					.text_color(if on { p.text } else { p.muted })
 					.when(on, |s| s.bg(p.selection))
