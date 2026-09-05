@@ -115,7 +115,7 @@ impl Rdm {
 			sort: SortKey::Added,
 			ascending: false,
 			view: View::Detailed,
-			widths: [104.0, 150.0, 84.0, 104.0, 108.0],
+			widths: [132.0, 150.0, 84.0, 112.0, 108.0],
 			resizing: None,
 			selected: None,
 			palette: theme::palette(true),

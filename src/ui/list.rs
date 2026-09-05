@@ -203,7 +203,9 @@ impl Rdm {
 			.px_2()
 			.child(icon(Icon::for_kind(download.kind()), p.muted).size_3p5())
 			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child(download.name.clone()))
-			.child(cell(Column::Size).text_color(p.muted).whitespace_nowrap().child(size_cell(download)))
+			.child(
+				cell(Column::Size).text_color(p.muted).child(div().truncate().child(size_cell(download))),
+			)
 			.child(
 				cell(Column::Progress).items_center().gap_2().child(progress_bar(p, download, tint)).child(
 					div().w(px(32.0)).flex_none().text_right().text_color(p.muted).child(percent(download)),
