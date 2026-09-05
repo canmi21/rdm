@@ -1,8 +1,7 @@
 #!/usr/bin/env swift
 //MISE description="Screenshot the running window to a file: `shot [path]`"
-// Finds the on-screen window owned by the rdm process and hands its id to screencapture, which
-// is the only way to capture one window without the rest of the desktop. Swift because the
-// window list is a CoreGraphics call and the system python has no bridge to it.
+// Captures the rdm window alone; see spec/workflow.md. Swift because the window list is a
+// CoreGraphics call and the system python has no bridge to it.
 import CoreGraphics
 import Foundation
 

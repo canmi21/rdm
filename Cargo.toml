@@ -18,8 +18,7 @@ path = "src/main.rs"
 anyhow = "1"
 env_logger = "0.11"
 gpui = { package = "gpui-unofficial", version = "1" }
-# font-kit is what makes text render on macOS; without it gpui_macos draws every glyph as nothing
-# and says so once, at warn level. Zed enables it the same way.
+# Without font-kit the macOS backend renders no text at all. See spec/framework.md.
 gpui_platform = { package = "gpui-platform-gpui-unofficial", version = "1", features = ["font-kit"] }
 rust-embed = "8"
 

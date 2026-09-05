@@ -2,11 +2,9 @@
 #MISE description="Fetch the Lucide icons the source names into assets/icons: `icons [--check]`"
 """The icons are not committed; the list of them is, in `src/ui/icon.rs`, and this fetches it.
 
-`Icon::path` names every file the binary embeds, so that match is the declaration and there is
-no second list to keep in step with it. This reads those paths out of the source, downloads
-each from Lucide at the pinned release below, and writes the licence beside them. It is quick
-to skip: a file already on disk is not fetched again, so `check` and `dev` can depend on it and
-pay nothing on a machine that has them.
+Every `icons/*.svg` path in `Icon::path` is one file to fetch from Lucide at the release pinned
+below, plus the licence. Files already on disk are skipped, so the build tasks depend on this
+and pay nothing after the first run. The reasoning is in spec/icons.md.
 
 `--check` reports what is missing without fetching, for a run with no network.
 """
@@ -21,9 +19,7 @@ import urllib.request
 
 sys.dont_write_bytecode = True
 
-# An exact release rather than `main`: an icon is vendored content, and a redraw upstream would
-# otherwise change the binary on the next fresh clone with nothing in this repository saying so.
-# Raise it on purpose, and look at what changed.
+# An exact release, raised on purpose; see spec/icons.md.
 LUCIDE = "1.41.0"
 RAW = f"https://raw.githubusercontent.com/lucide-icons/lucide/{LUCIDE}"
 

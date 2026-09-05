@@ -70,8 +70,7 @@ impl Icon {
 	}
 }
 
-/// The colour is a parameter because gpui paints an svg only when the colour is set on the svg
-/// element itself; it is not inherited from the text around it, so an untinted icon is invisible.
+/// The colour is a parameter, not inherited: an untinted svg paints nothing. See spec/icons.md.
 pub fn icon(icon: Icon, color: impl Into<Hsla>) -> Svg {
 	svg().path(icon.path()).size_4().flex_none().text_color(color)
 }
