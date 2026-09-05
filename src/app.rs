@@ -735,6 +735,32 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn a_sheet_swallows_clicks_and_only_a_clean_one_closes_from_outside(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		let row = cx.debug_bounds("row:3").unwrap().center();
+		click(&mut cx, "button:New category");
+		// The row is under the backdrop now: a click there reaches nothing behind, and a clean sheet
+		// takes it as a request to close.
+		cx.simulate_click(row, Modifiers::default());
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(rdm.selected, None, "the row behind the sheet was not pressed");
+			assert!(rdm.category_form.is_none(), "an untouched sheet closes from a click outside");
+		});
+		click(&mut cx, "button:New category");
+		let name = rdm.read_with(&cx, |rdm, _| rdm.category_form.as_ref().unwrap().name.clone());
+		cx.update(|window, cx| {
+			name.update(cx, |input, cx| input.replace_text_in_range(None, "Rust", window, cx))
+		});
+		cx.simulate_click(row, Modifiers::default());
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_form.is_some(), "typed text is not thrown away by a click outside");
+			assert_eq!(rdm.selected, None);
+		});
+		click(&mut cx, "button:Close");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_form.is_none(), "the cross always closes"));
+	}
+
+	#[gpui::test]
 	fn opening_a_download_adds_one_window_and_removing_it_closes_it(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
 		rdm.update(&mut cx, |rdm, cx| rdm.open_download(2, cx));

@@ -40,6 +40,20 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// A click outside closes the sheet only while it is untouched: nothing typed, the icon as it
+	/// came. Presets switch in and out at once and leave nothing to lose. See spec/ui.md.
+	pub(crate) fn dismiss_category_form(&mut self, cx: &mut Context<Self>) {
+		let clean = self.category_form.as_ref().is_none_or(|form| {
+			form.name.read(cx).content.trim().is_empty()
+				&& form.extensions.read(cx).content.trim().is_empty()
+				&& form.pattern.read(cx).content.trim().is_empty()
+				&& form.icon == Icon::Code
+		});
+		if clean {
+			self.close_category_form(cx);
+		}
+	}
+
 	pub(crate) fn close_category_form(&mut self, cx: &mut Context<Self>) {
 		self.category_form = None;
 		cx.notify();
@@ -176,7 +190,7 @@ impl Rdm {
 		.text_xs();
 		let advanced = form.advanced;
 		deferred(
-			div().absolute().inset_0().flex().items_center().justify_center().bg(p.dim).child(
+			div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim).child(
 				div()
 					.id("category-sheet")
 					.debug_selector(|| "category-sheet".to_owned())
@@ -190,7 +204,7 @@ impl Rdm {
 					.border_color(p.border)
 					.bg(p.panel)
 					.shadow_lg()
-					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_category_form(cx)))
+					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.dismiss_category_form(cx)))
 					.child(
 						div()
 							.flex()

@@ -36,6 +36,15 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// A click outside closes the sheet only while nothing has been typed; typed text is kept until
+	/// the cross is pressed. See spec/ui.md.
+	pub(crate) fn dismiss_add(&mut self, cx: &mut Context<Self>) {
+		let clean = self.adding.as_ref().is_none_or(|input| input.read(cx).content.trim().is_empty());
+		if clean {
+			self.close_add(cx);
+		}
+	}
+
 	pub(crate) fn close_add(&mut self, cx: &mut Context<Self>) {
 		self.adding = None;
 		cx.notify();
@@ -60,7 +69,8 @@ impl Rdm {
 		let p = self.palette;
 		let ready = !input.read(cx).content.trim().is_empty();
 		deferred(
-			div().absolute().inset_0().flex().items_center().justify_center().bg(p.dim).child(
+			// The backdrop takes every mouse event, so nothing behind the sheet can be pressed through it.
+			div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim).child(
 				div()
 					.id("add-dialog")
 					.flex()
@@ -73,7 +83,7 @@ impl Rdm {
 					.border_color(p.border)
 					.bg(p.panel)
 					.shadow_lg()
-					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_add(cx)))
+					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.dismiss_add(cx)))
 					.child(
 						div()
 							.flex()

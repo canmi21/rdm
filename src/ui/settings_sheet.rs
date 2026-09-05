@@ -35,7 +35,7 @@ impl Rdm {
 				.child(div().text_color(p.muted).child(*value))
 		});
 		deferred(
-			div().absolute().inset_0().flex().items_center().justify_center().bg(p.dim).child(
+			div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim).child(
 				div()
 					.id("settings-sheet")
 					.flex()

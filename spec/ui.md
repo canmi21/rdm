@@ -132,6 +132,21 @@ window draws its first frame inside `open_window`, that frame reads the main vie
 view is still being updated by the click -- which panics. Opening is therefore deferred to after
 the update, in `Rdm::open_download`.
 
+## A sheet is modal, and a click outside closes it only while it is clean
+
+A sheet lies over a backdrop that takes every mouse event, so nothing behind it can be pressed
+through it. Without that, a press on the sheet was also a press on whatever row lay under the
+pointer -- two presets toggled twice became a double-click on a row and opened its window from
+behind a sheet that was supposed to have the screen.
+
+Clicking outside the sheet closes it, which is the habit every native dialog teaches, with one
+line drawn: **only while there is nothing to lose.** A sheet with no input, or one whose fields
+are still empty and whose choices are still their defaults, closes from a click outside. Once
+something has been typed or chosen, a click outside does nothing, and the cross in the corner is
+the way to discard it; Escape, a deliberate key, still cancels. Presets are exempt because they
+act at once and leave nothing pending. Losing typed text to a stray click is the one thing a
+dialog must never do, and it outranks the convenience the outside click buys.
+
 ## Categories are rules the user writes
 
 The sidebar's categories are one kind of thing: a name, an icon and a regular expression over
