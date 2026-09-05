@@ -44,7 +44,11 @@ macos-arm64)
 		"Refined Installer" "dist/$name.dmg"
 	;;
 windows-x64)
-	cp target/release/rdm.exe "dist/$name.exe"
+	# The executable under its name in full, in a zip so the download is one file with that
+	# name inside it. Python's zipfile, since the runner's shell has no zip.
+	rm -rf target/pkg && mkdir -p target/pkg
+	cp target/release/rdm.exe "target/pkg/Refined Download Manager.exe"
+	(cd target/pkg && python3 -m zipfile -c "$root/dist/$name.zip" "Refined Download Manager.exe")
 	;;
 linux-x64 | linux-arm64)
 	case "$target" in linux-x64) arch=x86_64 ;; *) arch=aarch64 ;; esac

@@ -43,20 +43,22 @@ where a user's desktop looks, without root. `pkgs/macos/background.svg`, `render
 
 The code, the crate, the binary and the bundle identifier say `rdm`, and never change. What a
 person sees is named twice in `src/identity.rs`, and every file that names the application
-reads it from there: `NAME`, `Refined Download Manager`, is what the `.app` is called, what the
-menu bar and the About window show, the Linux entry's generic name and the Windows
-executable's product; `DISPLAY_NAME`, `Downloads`, is what the Dock, Spotlight and the window
-title show, the Linux launcher's name and the Windows Task Manager's description, one word
-like the system's own applications. The two are separate on purpose: a person installing
+reads it from there: `NAME`, `Refined Download Manager`, is what the `.app` and the `.exe` are
+called, what the menu bar and the About window show, the Linux launcher's name and the
+Windows executable's product; `DISPLAY_NAME`, `Downloads`, is what the Dock, Spotlight and the
+window title show and the Windows Task Manager's description, one word like the system's own
+applications. The two are separate on purpose: a person installing
 should read what they are installing, and a person using should read what it is for. The
 cost is that Spotlight answers `Downloads` with the folder and the application both, told
 apart by their icons; the file is not named `Downloads.app` so that Finder, at least, keeps
 them apart.
 
 On macOS the Dock reads `CFBundleDisplayName`, the menu bar `CFBundleName`, and Finder the
-file's name, so the three can differ without localisation. On Linux the `.desktop` entry's
-`Name` is the launcher's and `GenericName` the full one. On Windows the names are resources
-winresource writes into the executable beside the icon.
+file's name, so the three can differ without localisation. On Linux the files keep the
+short name -- the binary, the entry and the icon are `rdm`, which is what `Exec` and `Icon`
+resolve -- and the entry's `Name` is the full one, the only name a launcher shows. On Windows
+the names are resources winresource writes into the executable beside the icon, and the
+executable itself is named in full inside the zip.
 
 ## The installer is a Finder window, laid out without Finder
 

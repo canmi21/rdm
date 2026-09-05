@@ -48,7 +48,7 @@ answers with, and that address is the daily channel's.
 | Target | File | Shape |
 | --- | --- | --- |
 | `macos-arm64` | `rdm-nightly-macos-arm64.dmg` | the installer window: `Refined Download Manager.app` beside an Applications shortcut, see spec/packaging.md |
-| `windows-x64` | `rdm-nightly-windows-x64.exe` | the executable alone, the icon inside it |
+| `windows-x64` | `rdm-nightly-windows-x64.zip` | `Refined Download Manager.exe` alone, the icon inside it |
 | `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.AppImage` | the binary, desktop entry and icon; system libraries left to the system |
 | `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.tar.gz` | the binary, desktop entry, icon and `install.sh` |
 
