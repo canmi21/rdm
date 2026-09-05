@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="640" height="360">
+  <!-- The window behind the installer's two icons, 16:9: the grid is 20 to a cell and everything sits on
+       its lines: the app centred at (160, 160) and Applications at (480, 160), in slots of 149, which
+       macOS draws as 120 since the icon fills 824 of its 1024, so six cells with the app's edges on
+       lines; the arrow between them, the icon's own stroke turned
+       to point the way, on the line at 160 with its wings on crossings; the line of help, in Kalam, a hand from
+       Google Fonts the packaging fetches and registers for the render, with the line at 320
+       through its middle, clear of the names Finder draws under the icons. Finder lays a background picture over white whatever the system's
+       appearance and draws the names in black, so the ground is light but not white, a card
+       beside the dark system and plain beside the light one, ruled with a faint grid. Rendered at
+       2x for the volume. See spec/packaging.md. -->
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e3e7ee"/>
+      <stop offset="1" stop-color="#d3d9e2"/>
+    </linearGradient>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M20 0 H0 V20" fill="none" stroke="#b9c1cd" stroke-width="1" stroke-opacity="0.55"/>
+    </pattern>
+    <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#459bff"/>
+      <stop offset="1" stop-color="#3a86f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#ground)"/>
+  <rect width="640" height="360" fill="url(#grid)"/>
+  <g fill="none" stroke="url(#arrow)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M280 160 H360"/>
+    <path d="M320 120 L360 160 L320 200"/>
+  </g>
+  <text x="320" y="325" text-anchor="middle" font-family="Kalam" font-size="17" fill="#6b7380">Drag Refined Download Manager into Applications to install it.</text>
+</svg>

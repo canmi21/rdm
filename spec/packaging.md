@@ -36,7 +36,8 @@ and `CFBundleVersion` the build, so two builds of one version are told apart.
 `pkgs/linux/rdm.desktop` is the desktop entry, whose `StartupWMClass` is the window's app
 id -- the bundle identifier again, which `main.rs` hands to GPUI so the desktop can match the
 running window to its entry -- and `pkgs/linux/install.sh` puts the tarball's three files
-where a user's desktop looks, without root.
+where a user's desktop looks, without root. `pkgs/macos/background.svg`, `render.swift` and
+`installer.py` are the installer's, below.
 
 ## The application has three names, and the code's is the shortest
 
@@ -56,6 +57,32 @@ On macOS the Dock reads `CFBundleDisplayName`, the menu bar `CFBundleName`, and 
 file's name, so the three can differ without localisation. On Linux the `.desktop` entry's
 `Name` is the launcher's and `GenericName` the full one. On Windows the names are resources
 winresource writes into the executable beside the icon.
+
+## The installer is a Finder window, laid out without Finder
+
+What opens from the dmg is a Finder window, and its look is two files on the volume: a hidden
+background picture and a `.DS_Store` holding the view's settings, the window's size, the icon
+size and where each icon sits. `pkgs/macos/installer.py` says all of that and dmgbuild writes
+the `.DS_Store` itself, so the layout is made on a runner with no Finder session to drive;
+`pkgs/package.sh` makes dmgbuild a venv of its own under `target/` rather than writing to the
+runner's python. The volume is `Refined Installer` and keeps the system's disk icon; the file
+stays `rdm-nightly-macos-arm64.dmg`, since that is the link.
+
+The picture is `pkgs/macos/background.svg`, rendered at 2x by `pkgs/macos/render.swift` with
+AppKit, which reads SVG since macOS 11, so nothing is installed for it. Three things Finder does
+shaped the drawing. It lays a background picture over white whatever the system's appearance,
+so a transparent ground shows white in dark mode and the picture carries its own, a light grey
+that reads as a card beside the dark system and plain beside the light one; a dark ground was
+tried and fails the next point. It draws the icons' names in black whatever the ground. And it
+draws an icon's tile at 824 of its slot, since the icns is on Apple's grid, so a slot of 149
+draws the tile 120 wide, six cells of the background's 20-point grid, and the tile's edges sit
+on lines; the arrow between the icons is the icon's own stroke turned to point the way, on a
+line with its wings on crossings. The window is 16:9, 640 by 360 of content, and 100 taller
+than that in `installer.py` for the bars Finder keeps above and below.
+
+The line of help is set in Kalam, a hand from Google Fonts; the packaging fetches the file from
+the google/fonts repository and the renderer registers it for its own process, so the runner
+does not have the face installed and does not need to.
 
 ## The .app is assembled by a task, not a tool
 
