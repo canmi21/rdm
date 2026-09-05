@@ -88,7 +88,7 @@ pub fn icon_button(
 pub fn menu_row(
 	p: Palette,
 	id: impl Into<ElementId>,
-	glyph: Icon,
+	glyph: (Icon, gpui::Hsla),
 	label: impl Into<SharedString>,
 	count: usize,
 	on: bool,
@@ -96,6 +96,10 @@ pub fn menu_row(
 ) -> Stateful<Div> {
 	let label = label.into();
 	let color = if on { p.text } else { p.muted };
+	// The icon follows the sidebar's rule: grey at rest, its own hue while the row is chosen or
+	// hovered, so the menu reads as the same legend as the rows it filters.
+	let (glyph, tint) = glyph;
+	let glyph_color = if on { tint } else { p.muted };
 	div()
 		.id(id)
 		.role(Role::CheckBox)
@@ -115,7 +119,7 @@ pub fn menu_row(
 		.when(!on, move |s| s.hover(move |s| s.bg(p.hover)))
 		.group("menu-row")
 		.on_click(on_click)
-		.child(icon(glyph, color).size_3().group_hover("menu-row", move |s| s.text_color(p.text)))
+		.child(icon(glyph, glyph_color).size_3().group_hover("menu-row", move |s| s.text_color(tint)))
 		.child(div().flex_1().child(label))
 		.child(div().text_color(p.muted).child(count.to_string()))
 }

@@ -82,7 +82,12 @@ categories", on to start with, has every category icon in the sidebar wear its h
 time; off, an icon is grey until its row is chosen or hovered and then its own hue. The state
 filters above the categories -- All Tasks, Downloading, Unfinished, Completed -- keep the
 chosen-or-hovered rule whatever the switch says: they are four, and always the same four, so
-their hues are not a legend to anything. Both readings of the categories are right -- a column
+their hues are not a legend to anything. The funnel's menu follows the state filters' rule --
+each status icon grey at rest, its status color while its row is chosen or hovered, All in snow
+white -- since it is the same legend drawn a second time. Reorder keeps the switch's reading:
+with the hues on, the rows keep them while they are dragged, and the row travelling under the
+pointer wears its hue too; off, they are plain text with Other grey. Both readings of the
+categories are right -- a column
 of colors at rest is a legend to one eye and a rainbow to another -- so it is a switch, the
 first row of Settings with something behind it, kept in config.json with the categories since
 it is the user's. The list's type icons wear their hues either way, since there the color says

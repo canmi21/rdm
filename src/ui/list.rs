@@ -196,7 +196,7 @@ impl Rdm {
 
 	fn table_row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let tint = status_color(p, download.status);
+		let tint = p.status(download.status);
 		// Every fixed cell is preceded by the same 12px the header spends on a drag handle, so the
 		// columns line up under their titles.
 		let cell = |column: Column| {
@@ -230,7 +230,7 @@ impl Rdm {
 
 	fn compact(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let tint = status_color(p, download.status);
+		let tint = p.status(download.status);
 		self
 			.item(download, cx)
 			.flex()
@@ -250,7 +250,7 @@ impl Rdm {
 
 	fn card(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let tint = status_color(p, download.status);
+		let tint = p.status(download.status);
 		self
 			.item(download, cx)
 			.flex()
@@ -297,16 +297,6 @@ fn status_label(download: &Download, tint: Hsla) -> impl IntoElement {
 		.whitespace_nowrap()
 		.child(download.status.label())
 		.child(icon(Icon::for_status(download.status), tint).size_3())
-}
-
-fn status_color(p: Palette, status: Status) -> Hsla {
-	match status {
-		Status::Completed => p.success,
-		Status::Failed => p.failure,
-		Status::Paused => p.warning,
-		Status::Downloading => p.accent,
-		Status::Queued => p.muted,
-	}
 }
 
 fn progress_bar(p: Palette, download: &Download, fill: Hsla) -> impl IntoElement {

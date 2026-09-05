@@ -1,5 +1,6 @@
 use gpui::{
-	Context, IntoElement, Pixels, Point, Render, Role, SharedString, Window, div, prelude::*, px,
+	Context, Hsla, IntoElement, Pixels, Point, Render, Role, SharedString, Window, div, prelude::*,
+	px,
 };
 
 use crate::app::{DraggedCategory, Rdm};
@@ -137,7 +138,17 @@ impl Rdm {
 		let movable = !category.is_catch_all();
 		let label = category.name.clone();
 		let selector = label.clone();
-		let preview = (label.clone(), category.icon, p);
+		// The rows keep the hues they had a moment ago when the categories are set to be colorful;
+		// reordering a legend should not first wipe it. Otherwise they are plain text, with Other
+		// grey since it is neither dragged nor a target.
+		let tint = if self.preferences.colorful_categories {
+			p.hue(category.color)
+		} else if movable {
+			p.text
+		} else {
+			p.muted
+		};
+		let preview = (label.clone(), category.icon, tint, p);
 		div()
 			.id(("reorder", id))
 			.role(Role::ListItem)
@@ -149,15 +160,15 @@ impl Rdm {
 			.px_1p5()
 			.py_0p5()
 			.rounded_sm()
-			.child(icon(category.icon, if movable { p.text } else { p.muted }).size_3p5())
+			.child(icon(category.icon, tint).size_3p5())
 			.child(div().flex_1().text_color(if movable { p.text } else { p.muted }).child(label))
 			.when(movable, |s| {
 				s.cursor_grab()
 					.hover(move |s| s.bg(p.hover))
 					.child(icon(Icon::GripVertical, p.muted).size_3p5())
 					.on_drag(DraggedCategory(id), move |_, position, _, cx| {
-						let (name, glyph, p) = preview.clone();
-						cx.new(|_| DragPreview { name, glyph, palette: p, position })
+						let (name, glyph, tint, p) = preview.clone();
+						cx.new(|_| DragPreview { name, glyph, tint, palette: p, position })
 					})
 					// The row the pointer is over is where the drop will land, so it lights up.
 					.drag_over::<DraggedCategory>(move |s, _, _, _| s.bg(p.selection))
@@ -172,6 +183,7 @@ impl Rdm {
 struct DragPreview {
 	name: String,
 	glyph: Icon,
+	tint: Hsla,
 	palette: Palette,
 	position: Point<Pixels>,
 }
@@ -191,7 +203,7 @@ impl Render for DragPreview {
 				.text_size(px(13.0))
 				.text_color(p.text)
 				.shadow_md()
-				.child(icon(self.glyph, p.text).size_3p5())
+				.child(icon(self.glyph, self.tint).size_3p5())
 				.child(self.name.clone()),
 		)
 	}

@@ -2,6 +2,8 @@
 
 use gpui::{Hsla, Rgba, rgb, rgba};
 
+use crate::download::Status;
+
 /// A hue an icon may carry: the sidebar's filters and categories each own one, and a row's type
 /// icon borrows its category's. Named for the color, since here the color is the point: a
 /// column of hues reads faster than a column of glyphs, which is why status is color-coded too.
@@ -226,6 +228,18 @@ impl Palette {
 	/// it is not, so an inactive window goes monochrome the way its status colors already do.
 	pub fn hue(&self, rgb: u32) -> Hsla {
 		if self.active { solid(rgb) } else { self.muted }
+	}
+
+	/// The color a status wears wherever it is shown: a row's state, the detail window, the
+	/// funnel's menu. Queued has none; it is waiting, and grey says so.
+	pub fn status(&self, status: Status) -> Hsla {
+		match status {
+			Status::Completed => self.success,
+			Status::Failed => self.failure,
+			Status::Paused => self.warning,
+			Status::Downloading => self.accent,
+			Status::Queued => self.muted,
+		}
 	}
 }
 

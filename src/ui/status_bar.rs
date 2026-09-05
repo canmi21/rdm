@@ -6,6 +6,7 @@ use gpui::{
 use crate::app::{Rdm, View};
 use crate::download::{Status, format_speed};
 use crate::ui::icon::{Icon, icon};
+use crate::ui::theme::Tint;
 use crate::ui::tooltip::tooltip;
 use crate::ui::{icon_button, menu_row, sidebar};
 
@@ -157,7 +158,10 @@ impl Rdm {
 				menu_row(
 					p,
 					SharedString::from(format!("chip:{label}")),
-					status.map_or(Icon::List, Icon::for_status),
+					(
+						status.map_or(Icon::List, Icon::for_status),
+						status.map_or_else(|| p.hue(Tint::Snow.rgb()), |s| p.status(s)),
+					),
 					label,
 					count,
 					self.status == status,

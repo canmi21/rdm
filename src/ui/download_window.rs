@@ -45,13 +45,7 @@ impl Render for DownloadWindow {
 			return frame;
 		};
 		window.set_window_title(&download.name);
-		let tint = match download.status {
-			Status::Completed => p.success,
-			Status::Failed => p.failure,
-			Status::Paused => p.warning,
-			Status::Downloading => p.accent,
-			Status::Queued => p.muted,
-		};
+		let tint = p.status(download.status);
 		let mut state = download.status.label().to_owned();
 		if download.speed > 0 {
 			state.push_str(&format!(", {}", format_speed(download.speed)));
