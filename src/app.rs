@@ -212,6 +212,40 @@ impl Rdm {
 				engine.add_with_id(TaskId(download.id), request, None);
 			}
 		}
+		// Downloads the folder holds that the store does not: a plan and a partial file left by a
+		// run whose rows were lost, or copied in from elsewhere. Each that can be continued comes
+		// in as a paused row, to be resumed by hand; what cannot be read is left where it is.
+		for found in engine::control::find(&directory) {
+			let name = found.target.file_name().map(|n| n.to_string_lossy().into_owned());
+			let Some(name) = name else { continue };
+			if downloads.iter().any(|d| d.name == name || d.url == found.control.url) {
+				continue;
+			}
+			let id = store
+				.as_ref()
+				.and_then(|s| s.next_id().ok())
+				.unwrap_or(0)
+				.max(downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
+			let download = Download {
+				id,
+				name,
+				url: found.control.url.clone(),
+				size: found.control.size.unwrap_or(0),
+				received: found.control.plan.done(),
+				speed: 0,
+				status: Status::Paused,
+				added: found.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
+				source: None,
+				path: None,
+				error: None,
+			};
+			if let Some(store) = &store
+				&& let Err(error) = store.save(&download)
+			{
+				eprintln!("could not keep download {id}: {error:#}");
+			}
+			downloads.push(download);
+		}
 		Self {
 			downloads,
 			engine,
@@ -1439,6 +1473,57 @@ mod tests {
 		assert_eq!(rows[2].status, Status::Queued, "the resume was written");
 		rdm.update(&mut cx, |rdm, cx| rdm.remove(2, cx));
 		assert_eq!(store.load().unwrap().len(), 4, "a removed row is gone from the store");
+	}
+
+	#[gpui::test]
+	fn a_plan_left_in_the_folder_comes_in_as_a_paused_row(cx: &mut TestAppContext) {
+		use crate::engine::control::{self, Control};
+		use crate::engine::{Plan, Span};
+		let dir = std::env::temp_dir().join(format!("rdm-app-stray-{}", std::process::id()));
+		let _ = std::fs::remove_dir_all(&dir);
+		let downloads = dir.join("downloads");
+		std::fs::create_dir_all(&downloads).unwrap();
+		let paths = || Paths {
+			state: dir.join("state.json"),
+			config: dir.join("config.json"),
+			database: dir.join("internal.sqlite"),
+			downloads: downloads.clone(),
+		};
+		let mut plan = Plan::whole(Span::new(0, 1000));
+		plan.segments[0].done = 300;
+		control::save(
+			&downloads.join("left.bin"),
+			&Control::new("https://h/left.bin", Some(1000), None, plan),
+		)
+		.unwrap();
+		std::fs::write(control::part_path(&downloads.join("left.bin")), vec![0; 1000]).unwrap();
+		// A plan that cannot be read stays untouched and unlisted.
+		std::fs::write(control::control_path(&downloads.join("odd.bin")), "{ \"version\": 42 }")
+			.unwrap();
+		std::fs::write(control::part_path(&downloads.join("odd.bin")), vec![0; 10]).unwrap();
+		let window = cx.update(|cx| {
+			cx.open_window(Default::default(), |window, cx| {
+				cx.new(|cx| {
+					let (engine, events) = Engine::new(engine::EngineSettings::default()).unwrap();
+					Rdm::new(State::default(), Config::seed(), Some(paths()), engine, events, window, cx)
+				})
+			})
+			.unwrap()
+		});
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+		let rdm = window.root(&mut cx).unwrap();
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(rdm.downloads.len(), 1, "the readable one, and only it");
+			let row = &rdm.downloads[0];
+			assert_eq!(
+				(row.name.as_str(), row.status, row.received, row.size),
+				("left.bin", Status::Paused, 300, 1000)
+			);
+			assert_eq!(row.url, "https://h/left.bin");
+			assert!(!rdm.engine.contains(TaskId(row.id)), "paused, not running, until resumed by hand");
+		});
+		assert!(control::control_path(&downloads.join("odd.bin")).exists(), "left where it was");
+		assert_eq!(Store::open(&paths().database).unwrap().load().unwrap().len(), 1, "and kept");
 	}
 
 	#[gpui::test]

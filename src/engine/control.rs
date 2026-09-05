@@ -93,6 +93,47 @@ pub fn remove(target: &Path) {
 	let _ = std::fs::remove_file(control_path(target));
 }
 
+/// A download found on disk by its files alone: where it would land, its plan, and when the
+/// plan was last written.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Found {
+	pub target: PathBuf,
+	pub control: Control,
+	pub modified: Option<std::time::SystemTime>,
+}
+
+/// Every download that left its two files in `directory` and can be continued: a control file
+/// this build reads, a plan that holds together, and the partial file beside it at least as
+/// long as the plan says was written. Anything else is left exactly as it is -- a plan from a
+/// newer build, a damaged one, a plan whose partial file is gone -- because a file the user
+/// meant to keep is not this code's to delete, and one it cannot read is one it cannot judge.
+pub fn find(directory: &Path) -> Vec<Found> {
+	let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
+	let suffix = format!(".{CONTROL}");
+	let mut found: Vec<Found> = entries
+		.flatten()
+		.filter_map(|entry| {
+			let path = entry.path();
+			let name = path.file_name()?.to_str()?;
+			let target = path.with_file_name(name.strip_suffix(&suffix)?);
+			let control = load(&target).ok()??;
+			if !control.plan.is_consistent() {
+				return None;
+			}
+			let written = control.plan.segments.iter().map(|s| s.position()).max().unwrap_or(0)
+				- control.plan.span.start;
+			let part = std::fs::metadata(part_path(&target)).ok()?;
+			if part.len() < written {
+				return None;
+			}
+			let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+			Some(Found { target, control, modified })
+		})
+		.collect();
+	found.sort_by(|a, b| a.target.cmp(&b.target));
+	found
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -123,6 +164,54 @@ mod tests {
 		assert!(!with_suffix(&control_path(&target), "tmp").exists(), "the temporary is renamed away");
 		remove(&target);
 		assert_eq!(load(&target).unwrap(), None);
+	}
+
+	#[test]
+	fn plans_left_in_a_folder_are_found_when_they_can_be_continued() {
+		let dir = std::env::temp_dir().join(format!("rdm-control-find-{}", std::process::id()));
+		let _ = std::fs::remove_dir_all(&dir);
+		std::fs::create_dir_all(&dir).unwrap();
+		let plan = |done: u64| {
+			let mut plan = Plan::split(Span::new(0, 100), 2, 1);
+			plan.segments[0].done = done;
+			plan
+		};
+		// Whole: a plan and a partial file long enough for it.
+		save(&dir.join("good.bin"), &Control::new("https://h/good.bin", Some(100), None, plan(40)))
+			.unwrap();
+		std::fs::write(part_path(&dir.join("good.bin")), vec![0; 100]).unwrap();
+		// The partial file is shorter than the plan says was written.
+		save(&dir.join("short.bin"), &Control::new("https://h/short.bin", Some(100), None, plan(40)))
+			.unwrap();
+		std::fs::write(part_path(&dir.join("short.bin")), vec![0; 10]).unwrap();
+		// No partial file at all.
+		save(&dir.join("alone.bin"), &Control::new("https://h/alone.bin", Some(100), None, plan(0)))
+			.unwrap();
+		// Not a control file this build reads.
+		std::fs::write(control_path(&dir.join("newer.bin")), "{ \"version\": 99 }").unwrap();
+		std::fs::write(part_path(&dir.join("newer.bin")), vec![0; 100]).unwrap();
+		// A plan that does not hold together.
+		let mut broken = plan(0);
+		broken.segments[0].done = 999;
+		save(&dir.join("broken.bin"), &Control::new("https://h/broken.bin", Some(100), None, broken))
+			.unwrap();
+		std::fs::write(part_path(&dir.join("broken.bin")), vec![0; 100]).unwrap();
+		// A file with the suffix that is not ours at all.
+		std::fs::write(dir.join("note.rdm"), "hello").unwrap();
+
+		let found = find(&dir);
+		let names: Vec<_> =
+			found.iter().map(|f| f.target.file_name().unwrap().to_str().unwrap()).collect();
+		assert_eq!(names, ["good.bin"]);
+		assert_eq!(found[0].control.url, "https://h/good.bin");
+		assert_eq!(found[0].control.plan.done(), 40);
+		assert!(found[0].modified.is_some());
+		// Nothing was touched, least of all the ones that were refused.
+		assert!(
+			control_path(&dir.join("newer.bin")).exists()
+				&& control_path(&dir.join("broken.bin")).exists()
+		);
+		assert!(control_path(&dir.join("alone.bin")).exists() && dir.join("note.rdm").exists());
 	}
 
 	#[test]

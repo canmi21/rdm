@@ -52,7 +52,14 @@ Three files, because three kinds of writing:
 A download in flight leaves two files beside where it will land, both the engine's and neither
 the window's: `name.downloading`, the bytes, and `name.rdm`, the plan -- which segments there
 are and how far each has come. The first suffix says what the file is to anyone who meets it in
-a folder; the second names the application. See [engine.md](engine.md).
+a folder; the second names the application. Both exist from the moment the probe answers, before
+the first byte, so a crash a second in leaves something to continue. At launch the download
+folder is read for plans the database does not know -- left by a run whose rows were lost, or
+copied in from another machine -- and each that can be continued comes in as a paused row: a
+plan this build reads, that holds together, with its partial file beside it at least as long
+as the plan says. Anything else is left exactly where it is and off the list, because a file
+the user meant to keep is not this application's to delete and one it cannot read is one it
+cannot judge. See [engine.md](engine.md).
 
 Sort order and the sidebar's filter are not remembered: a launch starts at newest-first and All,
 because a filter left on from last time reads as downloads having vanished.

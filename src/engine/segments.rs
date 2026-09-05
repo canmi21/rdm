@@ -130,6 +130,23 @@ impl Plan {
 		Some(self.segments.len() - 1)
 	}
 
+	/// Whether a plan read from disk could have been written by this code: the segments cover
+	/// the span exactly once, in order, and none claims more than its length. A plan that fails
+	/// this is not one to continue from.
+	pub fn is_consistent(&self) -> bool {
+		let mut at = self.span.start;
+		for segment in &self.segments {
+			if segment.span.start != at
+				|| segment.span.end < segment.span.start
+				|| segment.done > segment.span.len()
+			{
+				return false;
+			}
+			at = segment.span.end;
+		}
+		at == self.span.end && !self.segments.is_empty()
+	}
+
 	/// The segments that are still open, in the order they sit in the file.
 	pub fn open(&self) -> impl Iterator<Item = (usize, &Segment)> {
 		self.segments.iter().enumerate().filter(|(_, s)| !s.is_complete())
@@ -197,6 +214,23 @@ mod tests {
 		}
 		assert!(plan.is_complete());
 		assert_eq!(plan.open().count(), 0);
+	}
+
+	#[test]
+	fn a_plan_read_from_disk_is_checked_before_it_is_believed() {
+		let mut plan = Plan::split(Span::new(0, 100), 3, 1);
+		plan.segments[1].done = 7;
+		assert!(plan.is_consistent());
+		let mut gap = plan.clone();
+		gap.segments[1].span.start += 1;
+		assert!(!gap.is_consistent(), "a gap between segments");
+		let mut over = plan.clone();
+		over.segments[0].done = 1000;
+		assert!(!over.is_consistent(), "more done than the segment holds");
+		let mut short = plan.clone();
+		short.segments.pop();
+		assert!(!short.is_consistent(), "the span is not covered");
+		assert!(!Plan { span: Span::new(0, 10), segments: vec![] }.is_consistent());
 	}
 
 	#[test]

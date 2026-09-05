@@ -27,7 +27,7 @@ pub mod verify;
 pub mod worker;
 pub mod writer;
 
-pub use control::Control;
+pub use control::{Control, Found};
 pub use error::{Error, Result};
 pub use inspect::{Inspection, Link};
 pub use limiter::Limiter;
