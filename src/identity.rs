@@ -6,8 +6,8 @@ pub const QUALIFIER: &str = "app";
 pub const ORGANIZATION: &str = "canmi";
 pub const APPLICATION: &str = "rdm";
 
-/// What `Info.plist` will carry once there is a bundle; until then it names the state directory.
-// TODO: read by the packaging task once there is one; kept so the identifier is decided before it.
+/// What `Info.plist` carries. Read by the bundle task out of this source, not by Rust code, which
+/// is why the compiler sees it unused; it also names the state directory through the three words.
 #[cfg_attr(not(test), expect(dead_code))]
 pub const BUNDLE_ID: &str = "app.canmi.rdm";
 

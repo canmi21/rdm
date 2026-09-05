@@ -67,7 +67,7 @@ back off-screen, with no edge to grab; centring is the one answer that is always
 
 The bundle identifier is `app.canmi.rdm`: the domain kept for software, reversed, then the
 application, all lowercase -- the shape macOS expects and the one every other application on the
-machine uses. It is decided now and written in one place, `src/identity.rs`, though nothing reads
-it yet: the application runs as a bare binary during development, and a bundle with an
-`Info.plist` is a packaging step for later. The same three words name the state directory, so
+machine uses. It is written in one place, `src/identity.rs`, and the bundle task reads it from there
+into `Info.plist` (see [packaging.md](packaging.md)); during development the application runs as
+a bare binary and the identifier is not in play. The same three words name the state directory, so
 the identifier and the directory agree by construction rather than by remembering to keep them so.

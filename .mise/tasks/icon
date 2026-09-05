@@ -1,0 +1,58 @@
+#!/usr/bin/env swift
+//MISE description="Render the macOS icon set from assets/icon/rdm.png into target/icon/rdm.icns"
+// The artwork is edge to edge and already has the system's rounded corners. macOS draws an icon
+// on a 1024 canvas with the shape 824 wide and centred, so the artwork is scaled to 824 and the
+// rest is transparent; drawn edge to edge it would sit oversized beside every other icon in the
+// Dock. Each size in the set is rendered from the 1024 result. See spec/packaging.md.
+import AppKit
+import Foundation
+
+let root = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+let source = root.appendingPathComponent("assets/icon/rdm.png")
+let out = root.appendingPathComponent("target/icon")
+let iconset = out.appendingPathComponent("rdm.iconset")
+try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
+
+guard let artwork = NSImage(contentsOf: source) else {
+	FileHandle.standardError.write("cannot read \(source.path)\n".data(using: .utf8)!)
+	exit(1)
+}
+
+/// Apple's template: the icon shape is 824 of 1024, so 100 of padding a side.
+let canvas = 1024.0
+let shape = 824.0
+
+func render(_ pixels: Int) -> CGImage {
+	let scale = Double(pixels) / canvas
+	let context = CGContext(
+		data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
+		space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+	)!
+	context.interpolationQuality = .high
+	let inset = (canvas - shape) / 2 * scale
+	let rect = CGRect(x: inset, y: inset, width: shape * scale, height: shape * scale)
+	var proposed = rect
+	let cg = artwork.cgImage(forProposedRect: &proposed, context: nil, hints: nil)!
+	context.draw(cg, in: rect)
+	return context.makeImage()!
+}
+
+func write(_ image: CGImage, to url: URL) {
+	let rep = NSBitmapImageRep(cgImage: image)
+	try! rep.representation(using: .png, properties: [:])!.write(to: url)
+}
+
+// The names iconutil expects, size then scale.
+for (points, scale) in [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), (256, 1), (256, 2), (512, 1), (512, 2)] {
+	let name = scale == 1 ? "icon_\(points)x\(points).png" : "icon_\(points)x\(points)@2x.png"
+	write(render(points * scale), to: iconset.appendingPathComponent(name))
+}
+write(render(1024), to: out.appendingPathComponent("rdm-1024.png"))
+
+let iconutil = Process()
+iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+iconutil.arguments = ["-c", "icns", iconset.path, "-o", out.appendingPathComponent("rdm.icns").path]
+try iconutil.run()
+iconutil.waitUntilExit()
+if iconutil.terminationStatus != 0 { exit(iconutil.terminationStatus) }
+print(out.appendingPathComponent("rdm.icns").path)

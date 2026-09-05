@@ -35,5 +35,26 @@ correctness = "deny"
 suspicious = "deny"
 complexity = "warn"
 
+# Development: our own code unoptimised so it rebuilds in seconds and steps in a debugger; the
+# dependencies at full optimisation, since they change rarely and gpui unoptimised is too slow to
+# look at. See spec/packaging.md.
+[profile.dev]
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Release: the smallest binary the compiler will make. A download manager sits in the background,
+# so what it costs at rest and on disk matters more than how fast it was built. `panic = "abort"`
+# is a safety property as much as a size one: a panic unwinding through a GPUI callback is not a
+# state worth continuing from.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# The headless tests draw into gpui's test platform; see spec/workflow.md.
 [dev-dependencies]
 gpui = { version = "1", package = "gpui-unofficial", features = ["test-support"] }

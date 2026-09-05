@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+#MISE description="Build the release binary and wrap it as target/bundle/rdm.app"
+"""The .app is a folder with a shape: the binary under Contents/MacOS, the icon under
+Contents/Resources, and an Info.plist naming both. The bundle identifier is read out of
+src/identity.rs so it has one home. See spec/packaging.md.
+"""
+
+import pathlib
+import plistlib
+import re
+import shutil
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+NAME = "rdm"
+
+
+def read(pattern: str, path: pathlib.Path) -> str:
+	match = re.search(pattern, path.read_text(), re.MULTILINE)
+	if not match:
+		raise SystemExit(f"error: {pattern!r} not found in {path.relative_to(ROOT)}")
+	return match.group(1)
+
+
+def main() -> int:
+	version = read(r'^version = "([^"]+)"', ROOT / "Cargo.toml")
+	bundle_id = read(r'^pub const BUNDLE_ID: &str = "([^"]+)";', ROOT / "src" / "identity.rs")
+	icns = ROOT / "target" / "icon" / "rdm.icns"
+	binary = ROOT / "target" / "release" / NAME
+	if not icns.is_file():
+		raise SystemExit("error: no icon; `mise run icon` first")
+	if not binary.is_file():
+		raise SystemExit("error: no release binary; `cargo build --release` first")
+	app = ROOT / "target" / "bundle" / f"{NAME}.app"
+	shutil.rmtree(app, ignore_errors=True)
+	contents = app / "Contents"
+	(contents / "MacOS").mkdir(parents=True)
+	(contents / "Resources").mkdir()
+	shutil.copy2(binary, contents / "MacOS" / NAME)
+	shutil.copy2(icns, contents / "Resources" / f"{NAME}.icns")
+	info = {
+		"CFBundleName": NAME,
+		"CFBundleDisplayName": NAME,
+		"CFBundleIdentifier": bundle_id,
+		"CFBundleVersion": version,
+		"CFBundleShortVersionString": version,
+		"CFBundleExecutable": NAME,
+		"CFBundleIconFile": f"{NAME}.icns",
+		"CFBundlePackageType": "APPL",
+		"CFBundleInfoDictionaryVersion": "6.0",
+		"LSMinimumSystemVersion": "13.0",
+		"NSHighResolutionCapable": True,
+		"NSPrincipalClass": "NSApplication",
+	}
+	with open(contents / "Info.plist", "wb") as f:
+		plistlib.dump(info, f)
+	(contents / "PkgInfo").write_text("APPL????")
+	# Ad hoc signature: unsigned binaries are refused by newer macOS even when run locally.
+	subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True, capture_output=True)
+	size = sum(f.stat().st_size for f in app.rglob("*") if f.is_file())
+	print(f"{app.relative_to(ROOT)}  {size / 1_000_000:.1f} MB  ({bundle_id} {version})")
+	return 0
+
+
+if __name__ == "__main__":
+	raise SystemExit(main())
