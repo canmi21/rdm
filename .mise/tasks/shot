@@ -1,0 +1,24 @@
+#!/usr/bin/env swift
+//MISE description="Screenshot the running window to a file: `shot [path]`"
+// Finds the on-screen window owned by the rdm process and hands its id to screencapture, which
+// is the only way to capture one window without the rest of the desktop. Swift because the
+// window list is a CoreGraphics call and the system python has no bridge to it.
+import CoreGraphics
+import Foundation
+
+let output = CommandLine.arguments.dropFirst().first ?? "/tmp/rdm.png"
+let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+let found = windows.first { window in
+	(window[kCGWindowOwnerName as String] as? String) == "rdm" && (window[kCGWindowLayer as String] as? Int) == 0
+}
+guard let window = found, let id = window[kCGWindowNumber as String] as? Int else {
+	FileHandle.standardError.write("no rdm window on screen; `mise run dev` first\n".data(using: .utf8)!)
+	exit(1)
+}
+let capture = Process()
+capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+capture.arguments = ["-x", "-o", "-l", String(id), output]
+try capture.run()
+capture.waitUntilExit()
+if capture.terminationStatus != 0 { exit(capture.terminationStatus) }
+print(output)
