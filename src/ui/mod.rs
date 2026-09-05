@@ -8,7 +8,7 @@ pub mod icon;
 pub mod list;
 mod settings_sheet;
 pub mod sidebar;
-mod status_bar;
+pub mod status_bar;
 pub mod text_input;
 pub mod theme;
 pub mod toolbar;

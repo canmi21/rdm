@@ -29,7 +29,10 @@ Three files, because three kinds of writing:
   is the user's: the categories, and later the settings. It is seeded with the built-in
   categories the first time the application starts and finds no file, so a user who wants to
   change the defaults finds them written down rather than baked in, and it is otherwise only
-  written when the application itself changes it -- adding a category, today. A file that is
+  written when the application itself changes it -- adding a category, switching a preset,
+  amending its list, reordering. A preset is written as its name and the user's changes to its
+  extension list, never as the list itself, so the built-in list can grow under it; see
+  [ui.md](ui.md). A file that is
   there but cannot be read is left exactly as it is and the seed is used for the run, so a hand
   edit that went wrong is not corrected away. It carries the same integer version with the same
   rule as `state.json`, and the two share one reader.

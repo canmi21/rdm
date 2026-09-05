@@ -163,18 +163,51 @@ URL would catch hosts as often as files. The engine is `fancy-regex`, chosen ove
 be written without them -- at the cost of a backtracking engine, which for patterns over file
 names is no cost anyone will measure.
 
-The plus beside the Categories heading opens a sheet in three parts. **Presets** are switches:
-one press adds a preset to the sidebar, another removes it. **Custom** is a name, one of twelve
-Lucide icons, and the extensions the category stands for, typed as `rs, py`; the application
-spells them as the anchored, case-insensitive pattern that actually runs, so nobody has to know
-what a regular expression is to make a category. **Advanced** unfolds that pattern for editing,
-prefilled from the extensions, for the rule that extensions cannot say. Under it, a line reports
-what the rule would do right now -- the engine's own error while it does not compile, or how many
-of the current downloads it catches -- so a rule is checked before it exists. The icon list is
-twelve glyphs; the whole of Lucide would be a picker nobody finishes scrolling.
+The plus beside the Categories heading opens a sheet that shows one thing at a time. **It opens
+on the presets**, each a switch: one press adds a preset to the sidebar, another removes it.
+Under them, three ways on: Edit and Reorder, two words, and Add, a button.
 
-Categories are read from `config.json` and written back when one is added or a preset removed;
-see [state.md](state.md). Editing or removing a custom one from the window is not built; the
+**A preset is a list the application maintains and the user amends.** Each ships with its
+extensions, and a release may add to them. The user's changes are kept apart from that list --
+extensions added, and built-in ones removed -- and the list a preset runs with is the built-in
+one less the removals, then the additions in the order they were typed. So a release that adds
+an extension reaches every user who did not remove that one on purpose, and a file written by
+an older build, which spelled presets as patterns, is read as the preset whenever its name and
+pattern are one. Edit turns the chips into doors: a lit chip opens its list, where every
+extension is a chip that switches -- a built-in one off and back, struck through while off; an
+added one simply dropped -- with a field that adds more and Reset while anything has been
+changed. Each change applies and is written as it is made, like the preset switches themselves.
+
+**Reorder happens in the sidebar, not in the sheet.** The sheet shrinks to one line with an
+arrow pointing left and a check, and every wash in the window but the sidebar's categories goes
+dim -- the list, the toolbar and status bar, and the sidebar's own filters above the heading --
+so the categories are the one lit thing. Each row grows a six-dot grip and is dragged onto the
+row whose place it should take; the drop is applied and written as it lands. Other is neither
+dragged nor a target, so it stays last and reads as the remainder. This face ends only from its
+check or Escape: a press on the dim wash does nothing, because outside the card is where the
+work is, and the one press that reached the sidebar by mistake closed the face under the
+pointer. The backdrop cannot cover the sidebar, so the sidebar dims its own filters with the
+same wash and the backdrop is cut around it.
+
+**Add is a second level.** The custom form asks for a name, one of fourteen Lucide icons, and a
+basic rule in two fields with a switch between them: the extensions the category stands for,
+typed as `rs, py`, and text the name contains, joined by AND or OR when both are filled -- AND
+by default, since a rule that names both usually means both. After the text, two icon switches:
+one ignores case, the other lets any run of whitespace in the text match any run or none. The
+application spells all of it as the one regular expression that actually runs, the extensions
+always without regard to case, so nobody has to know what a regular expression is to make a
+category. **Advanced** -- the one word -- unfolds that pattern for editing, prefilled from the
+basic fields, for the rule they cannot say. The empty field shows one worked example with a
+comment after it saying that lookahead and lookbehind are supported; under the field, a
+sentence says the pattern is matched against whole file names, and a line reports what the
+rule would do right now: the engine's own error while it does not compile, or how many of the
+current downloads it catches. The report belongs to Advanced alone; under the basic fields it
+read as noise, since those always compile. The cross on the form, and on a preset's list, steps
+back to the presets, one level up, rather than out; the cross on the presets closes. The icon
+list is fourteen glyphs; the whole of Lucide would be a picker nobody finishes scrolling.
+
+Categories are read from `config.json` and written back when one is added, a preset switched
+or its list changed, or the order changed; see [state.md](state.md). Editing or removing a custom one from the window is not built; the
 file is the way, for now.
 
 ## What is deliberately not there yet

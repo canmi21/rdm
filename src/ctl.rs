@@ -10,7 +10,7 @@ use futures::channel::{mpsc, oneshot};
 use gpui::{App, Context, Entity};
 use serde::Serialize;
 
-use crate::app::{Rdm, SortKey, View};
+use crate::app::{CategorySheet, Rdm, SortKey, View};
 use crate::download::{Download, Filter, Status};
 use crate::ui::icon::Icon;
 
@@ -20,7 +20,8 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
-	category <name> <icon> <pattern> | preset <name>";
+	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | custom | advanced | reorder | \
+	move <id> <onto id>";
 
 pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
 	let _ = std::fs::remove_file(SOCKET);
@@ -77,9 +78,11 @@ struct State<'a> {
 	ascending: bool,
 	view: View,
 	selected: Option<u64>,
-	/// Downloads with a window open, and whether the Settings sheet is up.
+	/// Downloads with a window open, whether the Settings sheet is up, and which face of the
+	/// category sheet is, if any.
 	windows: Vec<u64>,
 	settings: bool,
+	category_sheet: Option<&'static str>,
 	downloads: &'a [Download],
 }
 
@@ -115,6 +118,12 @@ impl Rdm {
 			selected: self.selected,
 			windows,
 			settings,
+			category_sheet: self.category_sheet.as_ref().map(|sheet| match sheet {
+				CategorySheet::Presets { .. } => "presets",
+				CategorySheet::Preset(_) => "preset",
+				CategorySheet::Reorder => "reorder",
+				CategorySheet::Custom(_) => "custom",
+			}),
 			downloads: &self.downloads,
 		};
 		serde_json::to_string_pretty(&state).unwrap_or_else(|error| failure(&error.to_string()))
@@ -161,6 +170,31 @@ impl Rdm {
 				}
 			}
 			"preset" if !label.is_empty() => self.toggle_preset(&label, cx),
+			"categories" => {
+				self.category_sheet = Some(CategorySheet::Presets { editing: false });
+				cx.notify();
+			}
+			"reorder" => self.start_reorder(None, cx),
+			"edit" => {
+				let Some(id) = id else { return failure("edit takes a preset's category id") };
+				self.open_preset_editor(id, None, cx);
+			}
+			"extension" => {
+				let (Some(id), Some(extension)) = (id, rest.get(1)) else {
+					return failure("extension takes a category id, an extension and on or off");
+				};
+				let on = rest.get(2) != Some(&"off");
+				self.set_preset_extension(id, extension, on, cx);
+			}
+			"custom" => self.open_custom_form(None, cx),
+			"advanced" => self.toggle_advanced(None, cx),
+			"move" => {
+				let onto = rest.get(1).and_then(|word| word.parse::<u64>().ok());
+				let (Some(id), Some(onto)) = (id, onto) else {
+					return failure("move takes a category id and the id of the row to take the place of");
+				};
+				self.move_category(id, onto, cx);
+			}
 			"category" => {
 				// category <name> <icon> <pattern...>: the name is one word here; the sheet takes any.
 				let (Some(name), Some(glyph)) = (rest.first(), rest.get(1)) else {

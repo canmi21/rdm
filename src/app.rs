@@ -12,7 +12,7 @@ use gpui::{
 use serde::Serialize;
 
 use crate::config::{self, Config};
-use crate::download::{self, Category, Download, Filter, Status, categories_of};
+use crate::download::{self, Category, Combine, Download, Filter, Status, categories_of};
 use crate::state::{self, Frame, Paths, State};
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::icon::Icon;
@@ -69,21 +69,52 @@ pub struct Resize {
 	pub from_width: f32,
 }
 
-/// The category sheet while it is up. The pattern field is what runs; until Advanced is opened it
-/// is derived from the extensions and never seen.
+/// The custom category form while it is up. The pattern field is what runs; until Advanced is
+/// opened it is derived from the basic fields and never seen.
 pub struct CategoryForm {
 	pub name: Entity<TextInput>,
 	pub extensions: Entity<TextInput>,
+	pub contains: Entity<TextInput>,
+	/// How the two basic fields combine when both are filled.
+	pub combine: Combine,
+	/// The two switches after the contains field.
+	pub ignore_case: bool,
+	pub ignore_space: bool,
 	pub pattern: Entity<TextInput>,
 	pub icon: Icon,
 	pub advanced: bool,
 }
 
+/// A preset's extension list being edited: which category, and the field that adds to it.
+pub struct PresetForm {
+	pub id: u64,
+	pub add: Entity<TextInput>,
+}
+
+/// The category sheet's faces: the presets with Edit, Reorder and Add under them; the one-line
+/// hint while the sidebar's categories are being dragged into order; one preset's extension
+/// list; and the custom form.
+pub enum CategorySheet {
+	/// `editing` turns the preset chips from switches into doors to their lists.
+	Presets {
+		editing: bool,
+	},
+	Reorder,
+	Preset(PresetForm),
+	Custom(CategoryForm),
+}
+
+/// What a sidebar row carries while it is dragged: the category's id.
+#[derive(Clone, Copy, Debug)]
+pub struct DraggedCategory(pub u64);
+
 pub struct Rdm {
 	pub(crate) downloads: Vec<Download>,
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
-	pub(crate) category_form: Option<CategoryForm>,
+	pub(crate) category_sheet: Option<CategorySheet>,
+	/// Holds the keyboard while the categories are being reordered, so Escape can finish.
+	pub(crate) reorder_focus: gpui::FocusHandle,
 	pub(crate) filter: Filter,
 	/// A second cut within the sidebar's filter, from the chips above the list.
 	pub(crate) status: Option<Status>,
@@ -144,7 +175,8 @@ impl Rdm {
 		Self {
 			downloads: download::sample(),
 			categories: config.categories(),
-			category_form: None,
+			category_sheet: None,
+			reorder_focus: cx.focus_handle(),
 			filter: Filter::All,
 			status: None,
 			filter_open: false,
@@ -224,18 +256,26 @@ impl Rdm {
 		if self.categories.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
 			return Err(format!("there is already a category called {name}"));
 		}
-		let id = self.categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
-		let category = Category::new(id, name, icon, pattern.trim())?;
+		let category = Category::new(self.next_category_id(), name, icon, pattern.trim())?;
+		self.insert_category(category, cx);
+		Ok(())
+	}
+
+	fn next_category_id(&self) -> u64 {
+		self.categories.iter().map(|c| c.id).max().unwrap_or(0) + 1
+	}
+
+	fn insert_category(&mut self, category: Category, cx: &mut Context<Self>) {
 		let at =
 			self.categories.iter().position(Category::is_catch_all).unwrap_or(self.categories.len());
 		self.categories.insert(at, category);
 		self.save_config();
 		cx.notify();
-		Ok(())
 	}
 
 	/// A preset is added when absent and removed when present, so the sheet's preset row is a
-	/// switch for what the sidebar shows.
+	/// switch for what the sidebar shows. Removing one drops the user's changes to its list with
+	/// it; the list is the preset's and goes where it goes.
 	pub(crate) fn toggle_preset(&mut self, name: &str, cx: &mut Context<Self>) {
 		if let Some(at) = self.categories.iter().position(|c| c.name == name) {
 			let removed = self.categories.remove(at);
@@ -244,9 +284,60 @@ impl Rdm {
 			}
 			self.save_config();
 			cx.notify();
-		} else if let Some(preset) = Category::preset(name) {
-			let _ = self.add_category(&preset.name, preset.icon, &preset.pattern, cx);
+		} else if let Some(preset) =
+			Category::from_preset(self.next_category_id(), name, download::Overrides::default())
+		{
+			self.insert_category(preset, cx);
 		}
+	}
+
+	/// One extension of a preset's list switched on or off; see `Category::set_extension`.
+	pub(crate) fn set_preset_extension(
+		&mut self,
+		id: u64,
+		extension: &str,
+		on: bool,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			category.set_extension(extension, on);
+			self.save_config();
+			cx.notify();
+		}
+	}
+
+	/// `rs, py` typed into a preset's editor: each switched on, whether built in or new.
+	pub(crate) fn add_preset_extensions(&mut self, id: u64, text: &str, cx: &mut Context<Self>) {
+		for extension in download::split_extensions(text) {
+			self.set_preset_extension(id, &extension, true, cx);
+		}
+	}
+
+	pub(crate) fn reset_preset(&mut self, id: u64, cx: &mut Context<Self>) {
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			category.reset_preset();
+			self.save_config();
+			cx.notify();
+		}
+	}
+
+	/// The sidebar's categories are being dragged into order; the rows drag instead of filtering.
+	pub(crate) fn reordering(&self) -> bool {
+		matches!(self.category_sheet, Some(CategorySheet::Reorder))
+	}
+
+	/// Drops the dragged category at the target's position, the rest shifting to make room. The
+	/// catch-all is neither dragged nor a target, so it stays last. Written at once, like an add.
+	pub(crate) fn move_category(&mut self, dragged: u64, onto: u64, cx: &mut Context<Self>) {
+		let position = |id: u64| self.categories.iter().position(|c| c.id == id);
+		let (Some(from), Some(to)) = (position(dragged), position(onto)) else { return };
+		if from == to || self.categories[from].is_catch_all() || self.categories[to].is_catch_all() {
+			return;
+		}
+		let category = self.categories.remove(from);
+		self.categories.insert(to, category);
+		self.save_config();
+		cx.notify();
 	}
 
 	/// Written at once, not debounced: a category is added once, and the file is the user's.
@@ -523,7 +614,7 @@ impl Render for Rdm {
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when_some(self.adding.clone(), |s, input| s.child(self.add_dialog(input, cx)))
 			.when(self.settings_open, |s| s.child(self.settings_sheet(cx)))
-			.when(self.category_form.is_some(), |s| s.child(self.category_sheet(cx)))
+			.when(self.category_sheet.is_some(), |s| s.child(self.render_category_sheet(cx)))
 	}
 }
 
@@ -671,37 +762,42 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn the_category_sheet_adds_a_custom_rule_and_advanced_exposes_the_pattern(
-		cx: &mut TestAppContext,
-	) {
+	fn the_custom_form_adds_a_rule_and_advanced_exposes_the_pattern(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "button:New category");
+		assert!(cx.debug_bounds("preset:Video").is_some(), "the sheet opens on the presets");
+		assert!(cx.debug_bounds("button:Advanced").is_none(), "the form is a level down");
+		click(&mut cx, "button:Add");
 		let (name, extensions, pattern) = rdm.read_with(&cx, |rdm, _| {
-			let form = rdm.category_form.as_ref().expect("the sheet is up");
+			let Some(CategorySheet::Custom(form)) = &rdm.category_sheet else { panic!("the form is up") };
 			(form.name.clone(), form.extensions.clone(), form.pattern.clone())
 		});
 		cx.update(|window, cx| {
 			name.update(cx, |input, cx| input.replace_text_in_range(None, "Rust", window, cx));
 			extensions.update(cx, |input, cx| input.replace_text_in_range(None, "rs, rlib", window, cx));
 		});
+		assert!(cx.debug_bounds("category-sheet").is_some());
 		click(&mut cx, "button:Advanced");
 		let derived = pattern.read_with(&cx, |input, _| input.content.to_string());
 		assert_eq!(
 			derived, r"(?i)\.(rs|rlib)$",
-			"opening Advanced fills the pattern from the extensions"
+			"opening Advanced fills the pattern from the basic fields"
 		);
 		cx.update(|window, cx| {
 			pattern.update(cx, |input, cx| input.replace_text_in_range(None, "(", window, cx));
 		});
 		let card = cx.debug_bounds("category-sheet").unwrap();
-		let add = cx.debug_bounds("button:Add").unwrap();
+		let create = cx.debug_bounds("button:Create").unwrap();
 		assert!(
-			card.contains(&add.center()),
-			"the Add button stays inside the card however long the report"
+			card.contains(&create.center()),
+			"the Create button stays inside the card however long the report"
 		);
-		click(&mut cx, "button:Add");
+		click(&mut cx, "button:Create");
 		rdm.read_with(&cx, |rdm, _| {
-			assert!(rdm.category_form.is_some(), "a pattern that does not compile is not added")
+			assert!(
+				matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))),
+				"a pattern that does not compile is not added"
+			)
 		});
 		cx.update(|window, cx| {
 			pattern.update(cx, |input, cx| {
@@ -710,9 +806,9 @@ mod tests {
 			});
 		});
 		click(&mut cx, "icon:terminal");
-		click(&mut cx, "button:Add");
+		click(&mut cx, "button:Create");
 		rdm.read_with(&cx, |rdm, _| {
-			assert!(rdm.category_form.is_none());
+			assert!(rdm.category_sheet.is_none());
 			let rust = rdm.categories.iter().find(|c| c.name == "Rust").expect("added");
 			assert_eq!(rust.icon, Icon::Terminal);
 			assert!(rdm.categories.last().unwrap().is_catch_all(), "Other stays last");
@@ -739,25 +835,166 @@ mod tests {
 		let (rdm, mut cx) = open(cx);
 		let row = cx.debug_bounds("row:3").unwrap().center();
 		click(&mut cx, "button:New category");
-		// The row is under the backdrop now: a click there reaches nothing behind, and a clean sheet
-		// takes it as a request to close.
+		// The row is under the backdrop now: a click there reaches nothing behind, and the presets
+		// have nothing to lose, so the sheet takes it as a request to close.
 		cx.simulate_click(row, Modifiers::default());
 		rdm.read_with(&cx, |rdm, _| {
 			assert_eq!(rdm.selected, None, "the row behind the sheet was not pressed");
-			assert!(rdm.category_form.is_none(), "an untouched sheet closes from a click outside");
+			assert!(rdm.category_sheet.is_none(), "an untouched sheet closes from a click outside");
 		});
 		click(&mut cx, "button:New category");
-		let name = rdm.read_with(&cx, |rdm, _| rdm.category_form.as_ref().unwrap().name.clone());
+		click(&mut cx, "button:Add");
+		let name = rdm.read_with(&cx, |rdm, _| {
+			let Some(CategorySheet::Custom(form)) = &rdm.category_sheet else { panic!("the form is up") };
+			form.name.clone()
+		});
 		cx.update(|window, cx| {
 			name.update(cx, |input, cx| input.replace_text_in_range(None, "Rust", window, cx))
 		});
 		cx.simulate_click(row, Modifiers::default());
 		rdm.read_with(&cx, |rdm, _| {
-			assert!(rdm.category_form.is_some(), "typed text is not thrown away by a click outside");
+			assert!(
+				matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))),
+				"typed text is not thrown away by a click outside"
+			);
 			assert_eq!(rdm.selected, None);
 		});
 		click(&mut cx, "button:Close");
-		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_form.is_none(), "the cross always closes"));
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(
+				matches!(rdm.category_sheet, Some(CategorySheet::Presets { .. })),
+				"the form's cross steps back to the presets"
+			)
+		});
+		click(&mut cx, "button:Close");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none(), "the presets' cross closes"));
+	}
+
+	#[gpui::test]
+	fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAppContext) {
+		use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent};
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		click(&mut cx, "button:Reorder");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.reordering()));
+		let names = |rdm: &Rdm| rdm.categories.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
+		let before = rdm.read_with(&cx, |rdm, _| names(rdm));
+		assert_eq!(&before[..2], ["Video", "Audio"]);
+		let drag = |cx: &mut VisualTestContext, from: &'static str, onto: &'static str| {
+			let start = cx.debug_bounds(from).unwrap().center();
+			let end = cx.debug_bounds(onto).unwrap().center();
+			cx.simulate_event(MouseDownEvent {
+				button: MouseButton::Left,
+				position: start,
+				modifiers: Modifiers::default(),
+				click_count: 1,
+				first_mouse: false,
+			});
+			for position in [start + gpui::point(px(0.0), px(6.0)), end] {
+				cx.simulate_event(MouseMoveEvent {
+					position,
+					pressed_button: Some(MouseButton::Left),
+					modifiers: Modifiers::default(),
+				});
+			}
+			cx.simulate_event(MouseUpEvent {
+				button: MouseButton::Left,
+				position: end,
+				modifiers: Modifiers::default(),
+				click_count: 1,
+			});
+		};
+		drag(&mut cx, "filter:Video", "filter:Code");
+		rdm.read_with(&cx, |rdm, _| {
+			let after = names(rdm);
+			assert_eq!(after[0], "Audio", "{after:?}");
+			assert_eq!(after.iter().position(|n| n == "Video"), before.iter().position(|n| n == "Code"));
+			assert_eq!(rdm.filter, Filter::All, "a row in reorder mode does not filter");
+		});
+		drag(&mut cx, "filter:Audio", "filter:Other");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.categories.last().unwrap().is_catch_all(), "Other is not a drop target");
+			assert_eq!(names(rdm)[0], "Audio");
+		});
+		// The list behind the wash is not a way out: reorder is suspended until it is finished.
+		let row = cx.debug_bounds("row:3").unwrap().center();
+		cx.simulate_click(row, Modifiers::default());
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.reordering(), "a click outside does not finish"));
+		cx.simulate_keystrokes("escape");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none(), "Escape finishes"));
+		click(&mut cx, "button:New category");
+		click(&mut cx, "button:Reorder");
+		click(&mut cx, "button:Finish");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none(), "the check finishes"));
+	}
+
+	#[gpui::test]
+	fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		click(&mut cx, "preset:Ebooks");
+		rdm.read_with(&cx, |rdm, _| assert!(!rdm.categories.iter().any(|c| c.name == "Ebooks")));
+		click(&mut cx, "button:Edit");
+		click(&mut cx, "preset:Ebooks");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(
+				matches!(rdm.category_sheet, Some(CategorySheet::Presets { editing: true })),
+				"a preset that is off has no list to open"
+			)
+		});
+		click(&mut cx, "preset:Video");
+		let add = rdm.read_with(&cx, |rdm, _| {
+			let Some(CategorySheet::Preset(form)) = &rdm.category_sheet else { panic!("the list is up") };
+			form.add.clone()
+		});
+		click(&mut cx, "extension:mkv");
+		cx.update(|window, cx| {
+			add.update(cx, |input, cx| input.replace_text_in_range(None, "ts, m2ts", window, cx))
+		});
+		// The tests bind no keys; main does. The action is what Enter is bound to.
+		cx.dispatch_action(crate::ui::text_input::Confirm);
+		cx.run_until_parked();
+		rdm.read_with(&cx, |rdm, _| {
+			let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
+			assert_eq!(video.extensions(), ["mp4", "mov", "webm", "avi", "ts", "m2ts"]);
+		});
+		assert_eq!(add.read_with(&cx, |input, _| input.content.to_string()), "", "the field clears");
+		click(&mut cx, "extension:ts");
+		click(&mut cx, "extension:mkv");
+		rdm.read_with(&cx, |rdm, _| {
+			let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
+			assert_eq!(video.extensions(), ["mp4", "mkv", "mov", "webm", "avi", "m2ts"]);
+		});
+		click(&mut cx, "button:Reset");
+		rdm.read_with(&cx, |rdm, _| {
+			let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
+			assert_eq!(video.extensions(), ["mp4", "mkv", "mov", "webm", "avi"]);
+		});
+		click(&mut cx, "button:Close");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(matches!(rdm.category_sheet, Some(CategorySheet::Presets { editing: false })))
+		});
+	}
+
+	#[gpui::test]
+	fn the_custom_form_combines_its_fields_by_the_switch(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		click(&mut cx, "button:Add");
+		let (extensions, contains, pattern) = rdm.read_with(&cx, |rdm, _| {
+			let Some(CategorySheet::Custom(form)) = &rdm.category_sheet else { panic!("the form is up") };
+			(form.extensions.clone(), form.contains.clone(), form.pattern.clone())
+		});
+		cx.update(|window, cx| {
+			extensions.update(cx, |input, cx| input.replace_text_in_range(None, "pdf", window, cx));
+			contains.update(cx, |input, cx| input.replace_text_in_range(None, "rust book", window, cx));
+		});
+		click(&mut cx, "combine:OR");
+		click(&mut cx, "toggle:Ignore case");
+		click(&mut cx, "toggle:Ignore spaces");
+		click(&mut cx, "button:Advanced");
+		let derived = pattern.read_with(&cx, |input, _| input.content.to_string());
+		assert_eq!(derived, r"(?:(?i:rust\s*book)|(?i:\.(pdf))$)");
 	}
 
 	#[gpui::test]

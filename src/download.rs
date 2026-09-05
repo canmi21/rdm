@@ -29,16 +29,68 @@ impl Status {
 	}
 }
 
-/// A user-shaped bucket: a name, an icon, and a pattern over the file name. The built-in set is
-/// seeded the same way, so there is one kind of category and the sidebar reads a list.
+/// A built-in category: a name, an icon and the extensions it starts with. The list is the
+/// application's and grows with releases; a user's changes to it are kept apart, so a release
+/// that adds an extension reaches every user who did not remove it on purpose.
+#[derive(Debug)]
+pub struct Preset {
+	pub name: &'static str,
+	pub icon: crate::ui::icon::Icon,
+	pub extensions: &'static str,
+}
+
+impl Preset {
+	pub fn base(&self) -> Vec<String> {
+		split_extensions(self.extensions)
+	}
+}
+
+/// A user's changes to a preset's extension list: what they added, what they took away. Both
+/// are lists of extensions, not a copy of the whole list, so the built-in list can change
+/// under them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Overrides {
+	pub added: Vec<String>,
+	pub removed: Vec<String>,
+}
+
+impl Overrides {
+	pub fn is_empty(&self) -> bool {
+		self.added.is_empty() && self.removed.is_empty()
+	}
+}
+
+/// The list a preset runs with: the built-in extensions less the removed ones, then the added
+/// ones after them. The built-in order is the application's and the additions keep the order
+/// they were typed in.
+// TODO: whether the additions should be able to sit among the built-in ones rather than after
+// them is the author's to decide; the file already keeps them apart, so either order is a
+// change here alone.
+pub fn merged_extensions(base: &[String], overrides: &Overrides) -> Vec<String> {
+	let mut list: Vec<String> =
+		base.iter().filter(|e| !overrides.removed.contains(e)).cloned().collect();
+	for extension in &overrides.added {
+		if !list.contains(extension) {
+			list.push(extension.clone());
+		}
+	}
+	list
+}
+
+/// A user-shaped bucket: a name, an icon, and a pattern over the file name. A preset is the same
+/// thing with its pattern derived from an extension list the application maintains, so the
+/// sidebar reads one kind of list.
 #[derive(Clone, Debug)]
 pub struct Category {
 	pub id: u64,
 	pub name: String,
 	pub icon: crate::ui::icon::Icon,
-	/// As written; `regex` is its compiled form, or None for the catch-all.
+	/// As written for a custom rule; derived from the extensions for a preset. `regex` is its
+	/// compiled form, or None for the catch-all.
 	pub pattern: String,
 	regex: Option<fancy_regex::Regex>,
+	/// Which preset this is, with the user's changes to its list; None for a custom rule.
+	pub preset: Option<(&'static Preset, Overrides)>,
 }
 
 impl Category {
@@ -54,7 +106,14 @@ impl Category {
 		} else {
 			Some(fancy_regex::Regex::new(pattern).map_err(|e| e.to_string())?)
 		};
-		Ok(Category { id, name: name.to_owned(), icon, pattern: pattern.to_owned(), regex })
+		Ok(Category {
+			id,
+			name: name.to_owned(),
+			icon,
+			pattern: pattern.to_owned(),
+			regex,
+			preset: None,
+		})
 	}
 
 	/// Matches the file name only: a URL's path is what the name came from, and a pattern over the
@@ -66,35 +125,96 @@ impl Category {
 		}
 	}
 
-	/// The presets a user picks from: a name, an icon and the extensions it stands for. The seed
-	/// is all of them plus Other; a user who wants fewer removes them, and one who wants more
-	/// writes a custom one.
-	pub const PRESETS: [(&'static str, crate::ui::icon::Icon, &'static str); 9] = {
+	/// The presets a user picks from. The seed is all of them plus Other; a user who wants fewer
+	/// removes them, and one who wants more writes a custom one or adds to a preset's list.
+	pub const PRESETS: [Preset; 9] = {
 		use crate::ui::icon::Icon;
 		[
-			("Video", Icon::Film, "mp4 mkv mov webm avi"),
-			("Audio", Icon::Music, "mp3 flac aac wav m4a ogg"),
-			("Images", Icon::Image, "jpg jpeg png gif webp svg heic"),
-			("Documents", Icon::FileText, "pdf doc docx txt md pptx xlsx"),
-			("Ebooks", Icon::BookOpen, "epub mobi azw3"),
-			("Code", Icon::Code, "rs py ts js go c h cpp java json toml yaml"),
-			("Archives", Icon::Archive, "zip tar gz xz 7z rar"),
-			("Programs", Icon::Package, "dmg pkg app exe msi deb rpm"),
-			("Disk images", Icon::Disc, "iso img"),
+			Preset { name: "Video", icon: Icon::Film, extensions: "mp4 mkv mov webm avi" },
+			Preset { name: "Audio", icon: Icon::Music, extensions: "mp3 flac aac wav m4a ogg" },
+			Preset { name: "Images", icon: Icon::Image, extensions: "jpg jpeg png gif webp svg heic" },
+			Preset {
+				name: "Documents",
+				icon: Icon::FileText,
+				extensions: "pdf doc docx txt md pptx xlsx",
+			},
+			Preset { name: "Ebooks", icon: Icon::BookOpen, extensions: "epub mobi azw3" },
+			Preset {
+				name: "Code",
+				icon: Icon::Code,
+				extensions: "rs py ts js go c h cpp java json toml yaml",
+			},
+			Preset { name: "Archives", icon: Icon::Archive, extensions: "zip tar gz xz 7z rar" },
+			Preset { name: "Programs", icon: Icon::Package, extensions: "dmg pkg app exe msi deb rpm" },
+			Preset { name: "Disk images", icon: Icon::Disc, extensions: "iso img" },
 		]
 	};
 
+	pub fn find_preset(name: &str) -> Option<&'static Preset> {
+		Category::PRESETS.iter().find(|p| p.name == name)
+	}
+
+	/// A preset with the user's changes applied; None for a name that is not a preset.
+	pub fn from_preset(id: u64, name: &str, overrides: Overrides) -> Option<Category> {
+		let preset = Category::find_preset(name)?;
+		let pattern = pattern_for_extensions(&merged_extensions(&preset.base(), &overrides).join(" "));
+		let mut category = Category::new(id, preset.name, preset.icon, &pattern).ok()?;
+		category.preset = Some((preset, overrides));
+		Some(category)
+	}
+
 	pub fn preset(name: &str) -> Option<Category> {
-		let (name, icon, extensions) = Category::PRESETS.iter().find(|(n, _, _)| *n == name)?;
-		Category::new(0, name, *icon, &pattern_for_extensions(extensions)).ok()
+		Category::from_preset(0, name, Overrides::default())
+	}
+
+	/// The extensions a preset runs with; empty for a custom rule, which has no list.
+	pub fn extensions(&self) -> Vec<String> {
+		match &self.preset {
+			Some((preset, overrides)) => merged_extensions(&preset.base(), overrides),
+			None => Vec::new(),
+		}
+	}
+
+	/// Rewrites a preset's list, one extension at a time. A built-in extension is switched off
+	/// by naming it in `removed` and back on by taking it out; an added one is dropped outright.
+	/// Does nothing to a custom rule.
+	pub fn set_extension(&mut self, extension: &str, on: bool) {
+		let Some((preset, overrides)) = &mut self.preset else { return };
+		let extension = extension.trim().trim_start_matches('.').to_lowercase();
+		if preset.base().contains(&extension) {
+			overrides.removed.retain(|e| *e != extension);
+			if !on {
+				overrides.removed.push(extension);
+			}
+		} else {
+			overrides.added.retain(|e| *e != extension);
+			if on {
+				overrides.added.push(extension);
+			}
+		}
+		self.recompile();
+	}
+
+	pub fn reset_preset(&mut self) {
+		if let Some((_, overrides)) = &mut self.preset {
+			*overrides = Overrides::default();
+		}
+		self.recompile();
+	}
+
+	fn recompile(&mut self) {
+		if self.preset.is_some() {
+			self.pattern = pattern_for_extensions(&self.extensions().join(" "));
+			self.regex = fancy_regex::Regex::new(&self.pattern).ok();
+		}
 	}
 
 	pub fn defaults() -> Vec<Category> {
 		let mut all: Vec<Category> = Category::PRESETS
 			.iter()
 			.enumerate()
-			.map(|(i, (name, icon, extensions))| {
-				Category::new(i as u64 + 1, name, *icon, &pattern_for_extensions(extensions))
+			.map(|(i, preset)| {
+				Category::from_preset(i as u64 + 1, preset.name, Overrides::default())
 					.expect("a preset compiles")
 			})
 			.collect();
@@ -110,17 +230,70 @@ impl Category {
 	}
 }
 
+/// `rs, py` or `rs py` as a list: trimmed, a leading dot dropped, lowercase, empties gone.
+pub fn split_extensions(extensions: &str) -> Vec<String> {
+	extensions
+		.split(|c: char| c == ',' || c.is_whitespace())
+		.map(|e| e.trim().trim_start_matches('.').to_lowercase())
+		.filter(|e| !e.is_empty())
+		.collect()
+}
+
 /// `rs, py` or `rs py` becomes `(?i)\.(rs|py)$`: what a user means by "these file types", spelled
 /// as the regular expression the category actually runs.
 pub fn pattern_for_extensions(extensions: &str) -> String {
-	let list: Vec<String> = extensions
-		.split(|c: char| c == ',' || c.is_whitespace())
-		.map(|e| e.trim().trim_start_matches('.'))
-		.filter(|e| !e.is_empty())
-		.map(fancy_regex::escape)
-		.map(|e| e.into_owned())
-		.collect();
+	let list: Vec<String> =
+		split_extensions(extensions).iter().map(|e| fancy_regex::escape(e).into_owned()).collect();
 	if list.is_empty() { String::new() } else { format!(r"(?i)\.({})$", list.join("|")) }
+}
+
+/// How the custom form's two fields combine when both are filled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum Combine {
+	And,
+	Or,
+}
+
+/// The basic rule the custom form offers: extensions, text the name contains, or both, spelled
+/// as the one regular expression the category runs. The text is taken literally; `ignore_case`
+/// does what it says, and `ignore_space` lets any run of whitespace in the text match any run of
+/// whitespace or none, so "rust book" finds "rust  book" and "RustBook" alike. The extensions
+/// are always matched without regard to case, as they are alone.
+pub fn pattern_for_rule(
+	extensions: &str,
+	contains: &str,
+	combine: Combine,
+	ignore_case: bool,
+	ignore_space: bool,
+) -> String {
+	let suffix = pattern_for_extensions(extensions);
+	let mut text = if ignore_space {
+		contains
+			.split_whitespace()
+			.map(|part| fancy_regex::escape(part).into_owned())
+			.collect::<Vec<_>>()
+			.join(r"\s*")
+	} else {
+		let trimmed = contains.trim();
+		if trimmed.is_empty() { String::new() } else { fancy_regex::escape(trimmed).into_owned() }
+	};
+	if ignore_case && !text.is_empty() {
+		text = format!("(?i:{text})");
+	}
+	match (text.is_empty(), suffix.is_empty()) {
+		(true, true) => String::new(),
+		(true, false) => suffix,
+		(false, true) => text,
+		// The suffix pattern carries its own (?i); beside text it becomes a group so the text keeps
+		// its own case rule.
+		(false, false) => {
+			let suffix = format!("(?i:{})", suffix.trim_start_matches("(?i)").trim_end_matches('$'));
+			match combine {
+				Combine::And => format!("^(?=.*{text}).*{suffix}$"),
+				Combine::Or => format!("(?:{text}|{suffix}$)"),
+			}
+		}
+	}
 }
 
 /// Every category whose pattern matches, in the sidebar's order; the catch-all alone when none
@@ -359,6 +532,51 @@ mod tests {
 		assert_eq!(pattern_for_extensions("rs, py .ts"), r"(?i)\.(rs|py|ts)$");
 		assert_eq!(pattern_for_extensions("c++"), r"(?i)\.(c\+\+)$");
 		assert_eq!(pattern_for_extensions(" , "), "");
+	}
+
+	#[test]
+	fn a_basic_rule_is_extensions_or_text_or_both() {
+		let matches = |pattern: &str, name: &str| {
+			Category::new(1, "x", Icon::File, pattern).unwrap().matches(&named(name))
+		};
+		let rule = |e, c, and, case, space| {
+			pattern_for_rule(e, c, if and { Combine::And } else { Combine::Or }, case, space)
+		};
+		assert_eq!(rule("", "", true, false, false), "");
+		assert_eq!(rule("rs", "", true, false, false), r"(?i)\.(rs)$");
+		let strict = rule("", "Rust book", true, false, false);
+		assert!(matches(&strict, "The Rust book.pdf") && !matches(&strict, "rust-book.pdf"));
+		let loose = rule("", "Rust book", true, true, true);
+		assert!(matches(&loose, "rust  book.pdf") && matches(&loose, "RUSTBOOK.epub"));
+		let case_only = rule("", "Rust book", true, true, false);
+		assert!(matches(&case_only, "rust BOOK.pdf") && !matches(&case_only, "rustbook.pdf"));
+		let both = rule("pdf epub", "rust book", true, true, true);
+		assert!(matches(&both, "RustBook.PDF") && !matches(&both, "rust book.mp4"));
+		let both_strict = rule("pdf", "rust", true, false, false);
+		assert!(matches(&both_strict, "rust.PDF") && !matches(&both_strict, "Rust.pdf"));
+		let either = rule("pdf", "rust", false, false, false);
+		assert!(matches(&either, "notes.PDF") && matches(&either, "rust.mp4"));
+		assert!(!matches(&either, "Rust.mp4"));
+	}
+
+	#[test]
+	fn a_preset_keeps_the_built_in_list_apart_from_the_users_changes() {
+		let mut video = Category::preset("Video").unwrap();
+		video.set_extension("mkv", false);
+		video.set_extension("ts", true);
+		video.set_extension(".TS", true);
+		assert_eq!(video.extensions(), ["mp4", "mov", "webm", "avi", "ts"]);
+		assert!(!video.matches(&named("a.mkv")) && video.matches(&named("a.ts")));
+		let (_, overrides) = video.preset.clone().unwrap();
+		assert_eq!(
+			(overrides.added, overrides.removed),
+			(vec!["ts".to_owned()], vec!["mkv".to_owned()])
+		);
+		video.set_extension("mkv", true);
+		video.set_extension("ts", false);
+		assert!(video.preset.as_ref().unwrap().1.is_empty());
+		video.reset_preset();
+		assert_eq!(video.pattern, Category::preset("Video").unwrap().pattern);
 	}
 
 	#[test]

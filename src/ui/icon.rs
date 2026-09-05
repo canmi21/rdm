@@ -36,6 +36,14 @@ pub enum Icon {
 	Database,
 	Terminal,
 	ChevronRight,
+	ArrowLeft,
+	GripVertical,
+	Check,
+	Pencil,
+	CaseSensitive,
+	Space,
+	Gamepad,
+	Globe,
 }
 
 impl Icon {
@@ -73,12 +81,20 @@ impl Icon {
 			Icon::Database => "icons/database.svg",
 			Icon::Terminal => "icons/terminal.svg",
 			Icon::ChevronRight => "icons/chevron-right.svg",
+			Icon::ArrowLeft => "icons/arrow-left.svg",
+			Icon::GripVertical => "icons/grip-vertical.svg",
+			Icon::Check => "icons/check.svg",
+			Icon::Pencil => "icons/pencil.svg",
+			Icon::CaseSensitive => "icons/case-sensitive.svg",
+			Icon::Space => "icons/space.svg",
+			Icon::Gamepad => "icons/gamepad-2.svg",
+			Icon::Globe => "icons/globe.svg",
 		}
 	}
 
 	/// What a category may be drawn with: the defaults' icons and a few more file shapes. A short
 	/// list on purpose; the whole of Lucide would be a picker nobody finishes scrolling.
-	pub const CATEGORY_CHOICES: [Icon; 12] = [
+	pub const CATEGORY_CHOICES: [Icon; 14] = [
 		Icon::Film,
 		Icon::Music,
 		Icon::FileText,
@@ -91,6 +107,8 @@ impl Icon {
 		Icon::Disc,
 		Icon::Database,
 		Icon::Terminal,
+		Icon::Gamepad,
+		Icon::Globe,
 	];
 
 	/// The icon's name, for the picker's accessibility label and the control socket.
@@ -108,6 +126,8 @@ impl Icon {
 			Icon::Disc => "disc",
 			Icon::Database => "database",
 			Icon::Terminal => "terminal",
+			Icon::Gamepad => "gamepad-2",
+			Icon::Globe => "globe",
 			other => other.path().trim_start_matches("icons/").trim_end_matches(".svg"),
 		}
 	}

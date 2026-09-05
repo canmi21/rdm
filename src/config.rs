@@ -8,7 +8,7 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::download::Category;
+use crate::download::{Category, Overrides};
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
 
@@ -21,12 +21,23 @@ pub struct Config {
 	pub categories: Vec<CategoryConfig>,
 }
 
-/// A category as the file spells it: the icon by its Lucide name, the pattern as written.
+/// A category as the file spells it. A custom rule carries its pattern as written. A preset
+/// carries its name under `preset` and the user's changes to its list -- extensions added, and
+/// built-in ones removed -- and no pattern, since the pattern is derived from the list the
+/// application ships, which a release may extend. A file from before presets were kept this way
+/// spells them as patterns; one whose name and pattern are a preset's is read as that preset.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CategoryConfig {
 	pub name: String,
 	pub icon: String,
+	#[serde(default, skip_serializing_if = "String::is_empty")]
 	pub pattern: String,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub preset: Option<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub added: Vec<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub removed: Vec<String>,
 }
 
 impl Config {
@@ -41,15 +52,25 @@ impl Config {
 
 	/// The categories in the file's order, ids assigned by position. A pattern that does not
 	/// compile is reported and skipped rather than taking the rest down with it; an icon name
-	/// that is not one of the choices draws as a plain file.
+	/// that is not one of the choices draws as a plain file; a preset name the application does
+	/// not know is read as a custom rule over whatever pattern is there.
 	pub fn categories(&self) -> Vec<Category> {
 		self
 			.categories
 			.iter()
 			.enumerate()
 			.filter_map(|(i, c)| {
+				let id = i as u64 + 1;
+				let overrides = Overrides { added: c.added.clone(), removed: c.removed.clone() };
+				let preset = c.preset.as_deref().or_else(|| {
+					let preset = Category::find_preset(&c.name)?;
+					(Category::preset(preset.name)?.pattern == c.pattern).then_some(preset.name)
+				});
+				if let Some(category) = preset.and_then(|name| Category::from_preset(id, name, overrides)) {
+					return Some(category);
+				}
 				let icon = Icon::by_name(&c.icon).unwrap_or(Icon::File);
-				match Category::new(i as u64 + 1, &c.name, icon, &c.pattern) {
+				match Category::new(id, &c.name, icon, &c.pattern) {
 					Ok(category) => Some(category),
 					Err(error) => {
 						eprintln!(
@@ -70,10 +91,23 @@ impl Config {
 
 impl From<&Category> for CategoryConfig {
 	fn from(c: &Category) -> Self {
-		CategoryConfig {
-			name: c.name.clone(),
-			icon: c.icon.name().to_owned(),
-			pattern: c.pattern.clone(),
+		match &c.preset {
+			Some((preset, overrides)) => CategoryConfig {
+				name: c.name.clone(),
+				icon: c.icon.name().to_owned(),
+				pattern: String::new(),
+				preset: Some(preset.name.to_owned()),
+				added: overrides.added.clone(),
+				removed: overrides.removed.clone(),
+			},
+			None => CategoryConfig {
+				name: c.name.clone(),
+				icon: c.icon.name().to_owned(),
+				pattern: c.pattern.clone(),
+				preset: None,
+				added: Vec::new(),
+				removed: Vec::new(),
+			},
 		}
 	}
 }
@@ -138,6 +172,27 @@ mod tests {
 		assert_eq!(categories.len(), 2);
 		assert_eq!((categories[0].name.as_str(), categories[0].icon), ("Papers", Icon::BookOpen));
 		assert_eq!(categories[1].icon, Icon::File, "an unknown icon name draws as a plain file");
+	}
+
+	#[test]
+	fn a_preset_is_read_by_name_with_its_changes_and_an_old_file_by_its_pattern() {
+		let text = r#"{ "version": 1, "categories": [
+			{ "name": "Video", "icon": "film", "preset": "Video", "added": ["ts"], "removed": ["mkv"] },
+			{ "name": "Audio", "icon": "music", "pattern": "(?i)\\.(mp3|flac|aac|wav|m4a|ogg)$" },
+			{ "name": "Films", "icon": "film", "pattern": "(?i)\\.(mp4)$" }
+		] }"#;
+		let categories = parse(text).unwrap().categories();
+		assert_eq!(categories[0].extensions(), ["mp4", "mov", "webm", "avi", "ts"]);
+		assert!(
+			categories[1].preset.is_some(),
+			"a preset's name and pattern from before is that preset"
+		);
+		assert!(categories[2].preset.is_none(), "a custom rule stays a custom rule");
+		let written = Config::from_categories(&categories);
+		assert_eq!(written.categories[0].added, ["ts"]);
+		assert_eq!(written.categories[0].pattern, "", "a preset's pattern is not written");
+		assert_eq!(written.categories[1].preset.as_deref(), Some("Audio"));
+		assert_eq!(parse(&serde_json::to_string(&written).unwrap()).unwrap(), written);
 	}
 
 	#[test]

@@ -9,7 +9,7 @@ use crate::ui::icon::{Icon, icon};
 use crate::ui::{icon_button, menu_row, sidebar};
 
 /// The status bar's height, which the filter menu sits just above.
-const HEIGHT: f32 = 24.0;
+pub const HEIGHT: f32 = 24.0;
 
 /// One line across the whole window, the way an editor keeps its status. Under the sidebar, the
 /// four actions as icons, always drawn and enabled by the selection. Under the list, from left
