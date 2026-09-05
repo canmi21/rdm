@@ -575,7 +575,7 @@ impl Rdm {
 	fn preset_face(&self, form: &PresetForm, cx: &mut Context<Self>) -> gpui::Deferred {
 		let p = self.palette;
 		let id = form.id;
-		let Some(category) = self.categories.iter().find(|c| c.id == id) else {
+		let Some(category) = Category::find(&self.categories, id) else {
 			return deferred(div()).priority(2);
 		};
 		let Some((preset, overrides)) = category.preset.as_ref() else {

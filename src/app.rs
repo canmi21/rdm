@@ -423,6 +423,16 @@ impl Rdm {
 		}
 	}
 
+	/// A change to one category, written and drawn at once. Nothing happens for an id that is
+	/// no longer there.
+	fn edit_category(&mut self, id: u64, cx: &mut Context<Self>, change: impl FnOnce(&mut Category)) {
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			change(category);
+			self.save_config();
+			cx.notify();
+		}
+	}
+
 	/// One extension of a preset's list switched on or off; see `Category::set_extension`.
 	pub(crate) fn set_preset_extension(
 		&mut self,
@@ -431,11 +441,7 @@ impl Rdm {
 		on: bool,
 		cx: &mut Context<Self>,
 	) {
-		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
-			category.set_extension(extension, on);
-			self.save_config();
-			cx.notify();
-		}
+		self.edit_category(id, cx, |c| c.set_extension(extension, on));
 	}
 
 	/// `rs, py` typed into a preset's editor: each switched on, whether built in or new.
@@ -446,39 +452,25 @@ impl Rdm {
 	}
 
 	pub(crate) fn set_category_icon(&mut self, id: u64, icon: Icon, cx: &mut Context<Self>) {
-		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
-			category.icon = icon;
-			self.save_config();
-			cx.notify();
-		}
+		self.edit_category(id, cx, |c| c.icon = icon);
 	}
 
 	pub(crate) fn set_category_color(&mut self, id: u64, color: u32, cx: &mut Context<Self>) {
-		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
-			category.color = color;
-			self.save_config();
-			cx.notify();
-		}
+		self.edit_category(id, cx, |c| c.color = color);
 	}
 
 	/// A color the user wrote for a category: kept as written beside the named ones, and made
 	/// the one in use. Text that is not a color is ignored.
 	pub(crate) fn set_category_custom_color(&mut self, id: u64, text: &str, cx: &mut Context<Self>) {
 		let Some(color) = crate::ui::theme::parse_color(text) else { return };
-		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
-			category.custom_color = Some(text.trim().to_owned());
-			category.color = color;
-			self.save_config();
-			cx.notify();
-		}
+		self.edit_category(id, cx, |c| {
+			c.custom_color = Some(text.trim().to_owned());
+			c.color = color;
+		});
 	}
 
 	pub(crate) fn reset_preset(&mut self, id: u64, cx: &mut Context<Self>) {
-		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
-			category.reset_preset();
-			self.save_config();
-			cx.notify();
-		}
+		self.edit_category(id, cx, Category::reset_preset);
 	}
 
 	/// The sidebar's categories are being dragged into order; the rows drag instead of filtering.
@@ -516,8 +508,12 @@ impl Rdm {
 		cx.notify();
 	}
 
+	pub(crate) fn download(&self, id: u64) -> Option<&Download> {
+		self.downloads.iter().find(|d| d.id == id)
+	}
+
 	pub(crate) fn selected(&self) -> Option<&Download> {
-		self.selected.and_then(|id| self.downloads.iter().find(|d| d.id == id))
+		self.selected.and_then(|id| self.download(id))
 	}
 
 	pub(crate) fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
@@ -692,7 +688,7 @@ impl Rdm {
 
 	/// The row as it now is, written to the store.
 	fn persist(&self, id: u64) {
-		if let (Some(store), Some(download)) = (&self.store, self.downloads.iter().find(|d| d.id == id))
+		if let (Some(store), Some(download)) = (&self.store, self.download(id))
 			&& let Err(error) = store.save(download)
 		{
 			eprintln!("could not keep download {id}: {error:#}");
@@ -986,14 +982,9 @@ mod tests {
 	/// Somewhere under the temp directory, so a test that really downloads writes there and not
 	/// into the repository -- which one did, and three commits carried its files.
 	fn scratch_paths(name: &str) -> Paths {
-		let dir = scratch(name);
-		std::fs::create_dir_all(dir.join("downloads")).unwrap();
-		Paths {
-			state: dir.join("state.json"),
-			config: dir.join("config.json"),
-			database: dir.join("internal.sqlite"),
-			downloads: dir.join("downloads"),
-		}
+		let paths = Paths::under(&scratch(name));
+		std::fs::create_dir_all(&paths.downloads).unwrap();
+		paths
 	}
 
 	fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
@@ -1524,12 +1515,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let dir = scratch("app-store");
-		let paths = || Paths {
-			state: dir.join("state.json"),
-			config: dir.join("config.json"),
-			database: dir.join("internal.sqlite"),
-			downloads: dir.join("downloads"),
-		};
+		let paths = || Paths::under(&dir);
 		{
 			let store = Store::open(&paths().database).unwrap();
 			let mut rows = crate::download::sample();
@@ -1579,14 +1565,9 @@ mod tests {
 		use crate::engine::control::{self, Control};
 		use crate::engine::{Plan, Span};
 		let dir = scratch("app-stray");
-		let downloads = dir.join("downloads");
+		let paths = || Paths::under(&dir);
+		let downloads = paths().downloads;
 		std::fs::create_dir_all(&downloads).unwrap();
-		let paths = || Paths {
-			state: dir.join("state.json"),
-			config: dir.join("config.json"),
-			database: dir.join("internal.sqlite"),
-			downloads: downloads.clone(),
-		};
 		let mut plan = Plan::whole(Span::new(0, 1000));
 		plan.segments[0].done = 300;
 		control::save(

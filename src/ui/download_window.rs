@@ -39,7 +39,7 @@ impl Render for DownloadWindow {
 			.text_size(px(13.0))
 			.bg(p.window)
 			.text_color(p.text);
-		let Some(download) = self.rdm.read(cx).downloads.iter().find(|d| d.id == id).cloned() else {
+		let Some(download) = self.rdm.read(cx).download(id).cloned() else {
 			// Removed from the list while this window was open: nothing left to show.
 			window.remove_window();
 			return frame;

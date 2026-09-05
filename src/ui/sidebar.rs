@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use crate::app::{DraggedCategory, Rdm};
-use crate::download::Filter;
+use crate::download::{Category, Filter};
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::icon_button;
 use crate::ui::theme::Palette;
@@ -88,9 +88,7 @@ impl Rdm {
 		let active = self.filter == filter;
 		let label = filter.label(&self.categories);
 		let glyph = match filter {
-			Filter::Category(id) => {
-				self.categories.iter().find(|c| c.id == id).map_or(Icon::File, |c| c.icon)
-			}
+			Filter::Category(id) => Category::find(&self.categories, id).map_or(Icon::File, |c| c.icon),
 			other => Icon::for_filter(other),
 		};
 		let count = self.downloads.iter().filter(|d| filter.matches(d, &self.categories)).count();
@@ -131,7 +129,7 @@ impl Rdm {
 	/// another row to take its place. The catch-all keeps its place at the end and shows no grip.
 	fn reorder_row(&self, id: u64, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let Some(category) = self.categories.iter().find(|c| c.id == id) else {
+		let Some(category) = Category::find(&self.categories, id) else {
 			return div().id(("reorder", id));
 		};
 		let movable = !category.is_catch_all();

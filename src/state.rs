@@ -30,6 +30,18 @@ pub struct Paths {
 }
 
 impl Paths {
+	/// Every file under one directory, with the downloads in a folder beside them. What the
+	/// tests use in place of the platform's directories.
+	#[cfg(test)]
+	pub fn under(dir: &Path) -> Paths {
+		Paths {
+			state: dir.join("state.json"),
+			config: dir.join("config.json"),
+			database: dir.join("internal.sqlite"),
+			downloads: dir.join("downloads"),
+		}
+	}
+
 	pub fn resolve() -> Option<Paths> {
 		let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)?;
 		// Linux has a directory for state as distinct from data; the others fold them together.

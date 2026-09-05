@@ -263,6 +263,11 @@ impl Category {
 		]
 	};
 
+	/// The category with this id, if it is still there.
+	pub fn find(categories: &[Category], id: u64) -> Option<&Category> {
+		categories.iter().find(|c| c.id == id)
+	}
+
 	pub fn find_preset(name: &str) -> Option<&'static Preset> {
 		// The spelling a config.json carried before the preset was renamed is still that preset.
 		let name = if name == "Ebooks" { "eBooks" } else { name };
@@ -494,7 +499,7 @@ impl Filter {
 			Filter::Unfinished => "Unfinished".to_owned(),
 			Filter::Completed => "Completed".to_owned(),
 			Filter::Category(id) => {
-				categories.iter().find(|c| c.id == id).map(|c| c.name.clone()).unwrap_or_default()
+				Category::find(categories, id).map(|c| c.name.clone()).unwrap_or_default()
 			}
 		}
 	}
@@ -507,9 +512,7 @@ impl Filter {
 			Filter::Downloading => Tint::Frost.rgb(),
 			Filter::Unfinished => Tint::Yellow.rgb(),
 			Filter::Completed => Tint::Green.rgb(),
-			Filter::Category(id) => {
-				categories.iter().find(|c| c.id == id).map_or(Tint::Snow.rgb(), |c| c.color)
-			}
+			Filter::Category(id) => Category::find(categories, id).map_or(Tint::Snow.rgb(), |c| c.color),
 		}
 	}
 
