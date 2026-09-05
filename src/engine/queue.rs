@@ -400,11 +400,17 @@ mod tests {
 	use crate::engine::testing::{Options, TestServer};
 	use crate::testing::scratch;
 
-	fn wait_for(receiver: &mpsc::Receiver<Event>, mut want: impl FnMut(&Event) -> bool) -> Event {
+	/// The next event `want` accepts, within twenty seconds; `what` names it in the failure,
+	/// since a wait that runs out says nothing else about which step stalled.
+	fn wait_for(
+		receiver: &mpsc::Receiver<Event>,
+		what: &str,
+		mut want: impl FnMut(&Event) -> bool,
+	) -> Event {
 		let deadline = std::time::Instant::now() + Duration::from_secs(20);
 		loop {
 			let left = deadline.saturating_duration_since(std::time::Instant::now());
-			let event = receiver.recv_timeout(left).expect("an event before the deadline");
+			let event = receiver.recv_timeout(left).unwrap_or_else(|e| panic!("waiting for {what}: {e}"));
 			if want(&event) {
 				return event;
 			}
@@ -429,11 +435,11 @@ mod tests {
 		let b = engine.add(second, None);
 		assert_eq!(engine.snapshot(a).unwrap().status, Status::Running);
 		assert_eq!(engine.snapshot(b).unwrap().status, Status::Queued, "one at a time");
-		let done = wait_for(&events, |e| matches!(e, Event::Completed(id, _) if *id == a));
+		let done = wait_for(&events, "completed", |e| matches!(e, Event::Completed(id, _) if *id == a));
 		let Event::Completed(_, finished) = done else { unreachable!() };
 		assert_eq!(std::fs::read(&finished.path).unwrap(), data);
-		wait_for(&events, |e| matches!(e, Event::Started(id) if *id == b));
-		wait_for(&events, |e| matches!(e, Event::Completed(id, _) if *id == b));
+		wait_for(&events, "started", |e| matches!(e, Event::Started(id) if *id == b));
+		wait_for(&events, "completed", |e| matches!(e, Event::Completed(id, _) if *id == b));
 		let snapshots = engine.snapshots();
 		assert!(snapshots.iter().all(|s| matches!(s.status, Status::Completed(_))));
 		assert_eq!(snapshots[0].file_name.as_deref(), Some("a.bin"));
@@ -458,22 +464,29 @@ mod tests {
 		request.settings.connections = Connections { min: 2, max: 2, auto: false };
 		request.settings.min_segment = 1000;
 		let id = engine.add(request, None);
-		wait_for(&events, |e| matches!(e, Event::Progress(s) if s.id == id && s.done > 0));
+		wait_for(
+			&events,
+			"first progress",
+			|e| matches!(e, Event::Progress(s) if s.id == id && s.done > 0),
+		);
 		engine.pause(id);
-		wait_for(&events, |e| matches!(e, Event::Paused(i) if *i == id));
+		wait_for(&events, "paused", |e| matches!(e, Event::Paused(i) if *i == id));
 		let paused = engine.snapshot(id).unwrap();
 		assert_eq!(paused.status, Status::Paused);
 		assert!(paused.done > 0 && paused.done < 400_000);
 		assert!(crate::engine::control::control_path(&dir.join("p.bin")).exists());
 		engine.resume(id);
-		wait_for(&events, |e| matches!(e, Event::Completed(i, _) if *i == id));
+		wait_for(&events, "completed", |e| matches!(e, Event::Completed(i, _) if *i == id));
 		assert_eq!(std::fs::read(dir.join("p.bin")).unwrap(), data);
 		assert!(!crate::engine::control::control_path(&dir.join("p.bin")).exists());
 	}
 
 	#[test]
 	fn removing_with_delete_takes_the_partial_file_and_a_checksum_guards_the_result() {
-		let data = body(200_000);
+		// Long enough that the removal lands mid-download however late the first progress event
+		// reaches a test thread starved by the others: a download that had finished would keep
+		// its file, and the assertion below would blame the checksum.
+		let data = body(400_000);
 		let server = TestServer::start(
 			data.clone(),
 			Options { delay_per_chunk: Duration::from_millis(10), ..Options::default() },
@@ -487,9 +500,13 @@ mod tests {
 		let mut request = Request::new(server.url("/r.bin"), &dir);
 		request.file_name = Some("r.bin".into());
 		let id = engine.add(request.clone(), None);
-		wait_for(&events, |e| matches!(e, Event::Progress(s) if s.id == id && s.done > 0));
+		wait_for(
+			&events,
+			"first progress",
+			|e| matches!(e, Event::Progress(s) if s.id == id && s.done > 0),
+		);
 		engine.remove(id, true);
-		wait_for(&events, |e| matches!(e, Event::Removed(i) if *i == id));
+		wait_for(&events, "removed", |e| matches!(e, Event::Removed(i) if *i == id));
 		assert!(engine.snapshot(id).is_none());
 		// The files go once the download has stopped, a moment after the event.
 		let gone = (0..100).any(|_| {
@@ -501,13 +518,13 @@ mod tests {
 
 		let wrong = Checksum::Sha256("0".repeat(64));
 		let id = engine.add(request.clone(), Some(wrong));
-		let failed = wait_for(&events, |e| matches!(e, Event::Failed(i, _) if *i == id));
+		let failed = wait_for(&events, "failed", |e| matches!(e, Event::Failed(i, _) if *i == id));
 		let Event::Failed(_, message) = failed else { unreachable!() };
 		assert!(message.contains("checksum"), "{message}");
 		assert!(!dir.join("r.bin").exists(), "a file that fails its checksum is not kept");
 		let right = Checksum::Sha256(sha256_hex(&data));
 		let id = engine.add(request, Some(right));
-		wait_for(&events, |e| matches!(e, Event::Completed(i, _) if *i == id));
+		wait_for(&events, "completed", |e| matches!(e, Event::Completed(i, _) if *i == id));
 		assert_eq!(std::fs::read(dir.join("r.bin")).unwrap(), data);
 	}
 
