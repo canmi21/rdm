@@ -5,14 +5,20 @@
 //! See spec/engine.md.
 
 pub mod client;
+pub mod control;
 pub mod error;
+pub mod limiter;
 pub mod probe;
 pub mod segments;
 pub mod settings;
 #[cfg(test)]
 pub mod testing;
+pub mod writer;
 
+pub use control::Control;
 pub use error::{Error, Result};
+pub use limiter::Limiter;
 pub use probe::{Probe, probe};
 pub use segments::{Plan, Segment, Span};
 pub use settings::{Connections, HttpVersion, Settings};
+pub use writer::Writer;

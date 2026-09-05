@@ -85,3 +85,29 @@ algorithm is tested without a network. It runs on its own threads rather than th
 test so that a hang in one cannot hide in the other. A handful of tests against a public mirror
 exist for the sake of a real network and real sizes; they are ignored by default and run on
 request.
+
+## One file, written at offsets
+
+Every connection writes into the same partial file, `name.part`, at its own offset with a
+positioned write -- `pwrite` underneath -- so there is no shared cursor, no lock between
+connections and nothing to merge at the end: the last byte lands and the file is renamed. The
+file is grown to its full length before the first byte when the size is known and
+preallocation is on, so a full disk fails the download at the start and not at the end, and so
+every segment has somewhere to land from the first moment. A partial file from an earlier run
+is opened and kept; it is only ever grown. When the final name is taken, the new file becomes
+`name (1).ext`, as browsers do, and the caller is told where it went.
+
+The plan is written beside it as `name.rdm`, the same shape and the same rules as state.json:
+whole, to a sibling and renamed over, with an integer version that moves only when an older
+file could not be read. A control file this build cannot read is an error and not a fresh
+start, so a partial file somebody meant to keep is not begun again over.
+
+## The limit is on the sum
+
+Pacing is a token bucket per download and one for the whole engine, both shared by every
+connection of every download they cover, so a limit is a limit on the total and not on each
+connection. A bucket holds at most a second's worth, so lowering a limit does not pay out a
+burst saved under the old one; setting one where there was none starts with a second's worth,
+so the first draw after does not wait. A draw larger than the bucket goes through once the
+bucket is full and leaves it in debt, which the draws after pay off -- a single large chunk
+must not wait forever.

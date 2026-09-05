@@ -154,6 +154,10 @@ impl Inner {
 	fn serve(&self, mut stream: TcpStream) {
 		let open = self.open.fetch_add(1, Ordering::Relaxed) + 1;
 		self.peak.fetch_max(open, Ordering::Relaxed);
+		// The listener is non-blocking so the accept loop can watch the stop flag, and on macOS
+		// an accepted socket inherits that; a read that returned WouldBlock ended a request half
+		// read, which the client saw as a reset or a truncated response.
+		let _ = stream.set_nonblocking(false);
 		let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
 		// One request per connection is enough for these tests; the client is told so. The
 		// socket is closed politely -- our side shut, theirs read to its end -- because a close

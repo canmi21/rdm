@@ -30,5 +30,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "m
 tokio-util = "0.7"
 url = "2"
 
+# Paused time lets the limiter's tests measure seconds of waiting in no time at all.
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
 [lints]
 workspace = true
