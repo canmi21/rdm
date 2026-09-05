@@ -106,7 +106,7 @@ impl Rdm {
 	}
 
 	/// The corner over the type icons is empty until the pointer rests on it; then it shows a
-	/// reset arrow, named in a tooltip, and a press puts every column back to its starting
+	/// reset glyph, named in a tooltip, and a press puts every column back to its starting
 	/// width. Hidden by opacity rather than left out, so the slot keeps the width the cells match.
 	fn reset_widths_control(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
@@ -126,7 +126,7 @@ impl Rdm {
 			.tooltip(tooltip("Reset to default"))
 			.on_click(cx.listener(|this, _, _, cx| this.reset_widths(cx)))
 			.child(
-				icon(Icon::RotateCcw, p.text)
+				icon(Icon::ListRestart, p.text)
 					.size_3()
 					.opacity(0.0)
 					.group_hover("reset-widths", |s| s.opacity(1.0)),

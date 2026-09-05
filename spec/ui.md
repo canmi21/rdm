@@ -50,7 +50,7 @@ their titles. A drag is clamped at both ends: a column no narrower than fits its
 wider than leaves the name column its floor, because past that the row runs out of the window. A drag is tracked on the window root, not on the handle, because the pointer leaves
 the handle the moment it moves; a move with the button up ends it, since a release outside the
 window is never seen and would otherwise leave the next pointer movement resizing on its own. The
-corner over the type icons, empty at rest, shows a reset arrow while the pointer is on it, named
+corner over the type icons, empty at rest, shows a reset glyph while the pointer is on it, named
 "Reset to default" in a tooltip; a press puts every column back to its starting width, so a
 table dragged out of shape has one way home rather than five drags. A funnel at the
 status bar's corner opens a menu of statuses that cuts within whatever the sidebar selected --
