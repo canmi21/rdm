@@ -105,6 +105,19 @@ brings that window forward rather than opening another. Secondary windows keep t
 documents, and the main window is the application, so closing the main window quits and closing a
 secondary one closes only itself.
 
+**Add Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
+clipboard, and if what is there is under a thousand characters and reads as an address --
+with a scheme, or without one and tried as https -- the field starts with it; anything else
+leaves the field empty rather than guessing. A thousand is a hard ceiling: an address is never
+longer, and a document that happens to be on the clipboard is not worth parsing. Enter or Add
+does not queue the address; it has the engine look at it first. What is not an address is said
+to be one, under the field. A file is queued and the sheet closes. A web page is said to be a
+page, with a button to save it anyway and, under that, the files the page links to, each a row
+that queues it when pressed and stays pressed; the sheet stays up so several can be taken. The
+field itself scrolls under its cursor when the address is longer than the box, as every
+native field does: wrapping would make a one-line field two, and an ellipsis would hide the
+part being edited.
+
 **Only a download gets a window; everything else is a sheet.** Settings and Add Task open as a
 card over the dimmed list inside the main window. The distinction is whether the thing is worth
 keeping beside the list while the list moves: a download is, and its window follows it live; a

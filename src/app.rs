@@ -146,8 +146,8 @@ pub struct Rdm {
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
 	pub(crate) settings_open: bool,
-	/// The Add Task sheet's field while the sheet is up.
-	pub(crate) adding: Option<Entity<TextInput>>,
+	/// The Add Task sheet while it is up.
+	pub(crate) adding: Option<crate::ui::add_dialog::AddSheet>,
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
 	pub(crate) paths: Option<Paths>,
 	frame: Option<Frame>,
@@ -552,6 +552,7 @@ impl Rdm {
 		if changed {
 			cx.notify();
 		}
+		self.poll_add(cx);
 	}
 
 	fn apply(&mut self, event: Event) {
@@ -606,26 +607,40 @@ impl Rdm {
 		}
 	}
 
-	/// A new download from an address, handed to the engine and shown at once under the
-	/// address's last path segment; the probe's name replaces it as soon as it is known.
-	// TODO: an address that is not a URL is dropped silently; the sheet should say so.
+	/// A new download from an address as typed; the sheet has already looked at it, so this is
+	/// for the control socket. What is not an address is dropped.
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
-		let Ok(parsed) = reqwest::Url::parse(url.trim()) else { return };
+		if let Some(parsed) = crate::ui::add_dialog::parse_address(url) {
+			self.add_request(parsed, None, cx);
+		}
+	}
+
+	/// A new download, handed to the engine and shown at once under `name` or the address's
+	/// last path segment; the probe's name replaces it as soon as it is known.
+	pub(crate) fn add_request(
+		&mut self,
+		url: reqwest::Url,
+		name: Option<String>,
+		cx: &mut Context<Self>,
+	) {
 		let directory = self
 			.paths
 			.as_ref()
 			.map(|p| p.downloads.clone())
 			.unwrap_or_else(|| std::path::PathBuf::from("."));
-		let id = self.engine.add(engine::Request::new(parsed.clone(), directory), None).0;
-		let name = parsed
-			.path_segments()
-			.and_then(|mut s| s.next_back())
-			.filter(|n| !n.is_empty())
-			.unwrap_or("download");
+		let id = self.engine.add(engine::Request::new(url.clone(), directory), None).0;
+		let name = name.unwrap_or_else(|| {
+			url
+				.path_segments()
+				.and_then(|mut s| s.next_back())
+				.filter(|n| !n.is_empty())
+				.unwrap_or("download")
+				.to_owned()
+		});
 		self.downloads.push(Download {
 			id,
-			name: name.to_owned(),
-			url: parsed.to_string(),
+			name,
+			url: url.to_string(),
 			size: 0,
 			received: 0,
 			speed: 0,
@@ -740,7 +755,7 @@ impl Render for Rdm {
 			)
 			.child(self.render_status_bar(cx))
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
-			.when_some(self.adding.clone(), |s, input| s.child(self.add_dialog(input, cx)))
+			.when(self.adding.is_some(), |s| s.child(self.add_dialog(cx)))
 			.when(self.settings_open, |s| s.child(self.settings_sheet(cx)))
 			.when(self.category_sheet.is_some(), |s| s.child(self.render_category_sheet(cx)))
 	}
@@ -1229,6 +1244,60 @@ mod tests {
 		click(&mut cx, "button:Advanced");
 		let derived = pattern.read_with(&cx, |input, _| input.content.to_string());
 		assert_eq!(derived, r"(?:rust\s*book|(?i:\.(pdf))$)");
+	}
+
+	#[gpui::test]
+	fn add_task_reads_the_clipboard_names_junk_and_offers_a_pages_files(cx: &mut TestAppContext) {
+		use crate::engine::testing::{Options, TestServer};
+		let page = TestServer::start(
+			b"<a href=\"tool.zip\">tool</a> <a href=\"notes.pdf\">notes</a>".to_vec(),
+			Options { content_type: Some("text/html".into()), ..Options::default() },
+		);
+		let (rdm, mut cx) = open(cx);
+		cx.write_to_clipboard(gpui::ClipboardItem::new_string("example.org/a.zip".into()));
+		click(&mut cx, "button:Add Task");
+		let input = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().input.clone());
+		assert_eq!(
+			input.read_with(&cx, |i, _| i.content.to_string()),
+			"https://example.org/a.zip",
+			"the clipboard is read as an address, scheme supplied"
+		);
+		cx.update(|window, cx| {
+			input.update(cx, |i, cx| i.set_content("not an address at all", cx));
+			let _ = window;
+		});
+		click(&mut cx, "button:Add");
+		assert!(cx.debug_bounds("add-error").is_some(), "junk is named as such");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_some(), "the sheet stays"));
+
+		let address = page.url("/downloads/").to_string();
+		cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
+		click(&mut cx, "button:Add");
+		// The engine looks at the address on its own threads; the pump collects the answer.
+		let mut seen = false;
+		for _ in 0..200 {
+			std::thread::sleep(Duration::from_millis(10));
+			rdm.update(&mut cx, |rdm, cx| rdm.poll_add(cx));
+			cx.run_until_parked();
+			if rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().is_some_and(|s| s.page.is_some())) {
+				seen = true;
+				break;
+			}
+		}
+		assert!(seen, "the address was recognised as a page");
+		assert!(cx.debug_bounds("add-page").is_some());
+		click(&mut cx, "link:tool.zip");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.adding.is_some(), "the sheet stays up for more");
+			let added = rdm.downloads.iter().find(|d| d.name == "tool.zip").expect("queued");
+			assert!(added.url.ends_with("/downloads/tool.zip"), "{}", added.url);
+		});
+		click(&mut cx, "link:tool.zip");
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(rdm.downloads.iter().filter(|d| d.name == "tool.zip").count(), 1, "once");
+		});
+		click(&mut cx, "button:Close");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_none()));
 	}
 
 	#[gpui::test]
