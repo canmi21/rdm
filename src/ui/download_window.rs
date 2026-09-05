@@ -63,14 +63,8 @@ impl Render for DownloadWindow {
 		let can_resume = matches!(download.status, Status::Paused | Status::Failed | Status::Queued);
 		let resume = rdm.clone();
 		let remove = rdm.clone();
+		// The name is the window's title; the body starts with what the title cannot hold.
 		frame
-			.child(
-				div()
-					.text_sm()
-					.font_weight(gpui::FontWeight::MEDIUM)
-					.truncate()
-					.child(download.name.clone()),
-			)
 			.child(field(p.muted, "URL", download.url.clone()))
 			.child(field(p.muted, "Size", format_bytes(download.size)))
 			.child(field(p.muted, "Type", download.kind().label().to_owned()))

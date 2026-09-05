@@ -11,10 +11,10 @@ to a `.rs` or `.toml` file, so the window closes, rebuilds and reopens on its ow
 ## Seeing the window
 
 A GPUI window is not a web view. Chrome DevTools MCP reaches a browser tab and the workspace's
-Tauri MCP server reaches a webview; neither can see this. `mise run shot [path]` is the feedback
+Tauri MCP server reaches a webview; neither can see this. `mise run shot [path] [title]` is the feedback
 loop instead: a Swift script asks CoreGraphics for the window owned by the rdm process and hands
-its id to `screencapture -l`, which captures that one window and nothing else. The result is a
-file an agent can read back.
+its id to `screencapture -l`, which captures that one window and nothing else; a title picks one
+of several windows, the frontmost otherwise. The result is a file an agent can read back.
 
 It exists because two defects were invisible any other way -- a build that drew no text and a
 build that drew no icons, neither of which produced an error -- and each was diagnosed from one
