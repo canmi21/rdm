@@ -89,7 +89,7 @@ impl Rdm {
 							.flex()
 							.items_center()
 							.justify_between()
-							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Add URL"))
+							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Add Task"))
 							.child(crate::ui::icon_button(
 								p,
 								"add-close",

@@ -43,6 +43,9 @@ pub enum Icon {
 	Space,
 	Gamepad,
 	Globe,
+	Presentation,
+	FileSpreadsheet,
+	Text,
 }
 
 impl Icon {
@@ -87,15 +90,21 @@ impl Icon {
 			Icon::Space => "icons/space.svg",
 			Icon::Gamepad => "icons/gamepad-2.svg",
 			Icon::Globe => "icons/globe.svg",
+			Icon::Presentation => "icons/presentation.svg",
+			Icon::FileSpreadsheet => "icons/file-spreadsheet.svg",
+			Icon::Text => "icons/text-initial.svg",
 		}
 	}
 
 	/// What a category may be drawn with: the defaults' icons and a few more file shapes. A short
 	/// list on purpose; the whole of Lucide would be a picker nobody finishes scrolling.
-	pub const CATEGORY_CHOICES: [Icon; 14] = [
+	pub const CATEGORY_CHOICES: [Icon; 17] = [
 		Icon::Film,
 		Icon::Music,
 		Icon::FileText,
+		Icon::Text,
+		Icon::Presentation,
+		Icon::FileSpreadsheet,
 		Icon::Archive,
 		Icon::Package,
 		Icon::File,
@@ -126,6 +135,9 @@ impl Icon {
 			Icon::Terminal => "terminal",
 			Icon::Gamepad => "gamepad-2",
 			Icon::Globe => "globe",
+			Icon::Presentation => "presentation",
+			Icon::FileSpreadsheet => "file-spreadsheet",
+			Icon::Text => "text-initial",
 			other => other.path().trim_start_matches("icons/").trim_end_matches(".svg"),
 		}
 	}
@@ -156,7 +168,7 @@ impl Icon {
 	}
 }
 
-/// The colour is a parameter, not inherited: an untinted svg paints nothing. See spec/icons.md.
+/// The color is a parameter, not inherited: an untinted svg paints nothing. See spec/icons.md.
 pub fn icon(icon: Icon, color: impl Into<Hsla>) -> Svg {
 	svg().path(icon.path()).size_4().flex_none().text_color(color)
 }

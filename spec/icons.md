@@ -6,10 +6,10 @@ Icons are [Lucide](https://lucide.dev), the set Zed itself draws with, under its
 which travels with the files. One set, so every glyph shares a stroke weight and an optical
 size; the toolbar, the rows and the status marks all read as one hand.
 
-Every icon takes its colour as an argument. GPUI paints an svg only when `text_color` is set
+Every icon takes its color as an argument. GPUI paints an svg only when `text_color` is set
 on the svg element itself and never inherits it from the text around it, so an untinted icon
 is a blank square that raises no error -- which is how the first build looked. Making the
-colour a parameter of `ui::icon::icon` turns that silent failure into a type error.
+color a parameter of `ui::icon::icon` turns that silent failure into a type error.
 
 ## Declared in the source, fetched by a task
 

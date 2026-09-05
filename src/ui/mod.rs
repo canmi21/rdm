@@ -71,7 +71,7 @@ pub fn icon_button(
 		.items_center()
 		.justify_center()
 		.size_5()
-		// The svg carries its own colour, so hovering the button cannot recolour it by inheritance;
+		// The svg carries its own color, so hovering the button cannot recolor it by inheritance;
 		// a group lets the icon watch its parent instead.
 		.group("icon-button")
 		.child(

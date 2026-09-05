@@ -12,12 +12,15 @@ use crate::app::{CategoryForm, CategorySheet, PresetForm, Rdm};
 use crate::download::{Category, Combine, pattern_for_rule};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::text_input::TextInput;
-use crate::ui::theme::Palette;
+use crate::ui::theme::{Palette, Tint, format_hex, parse_color};
 use crate::ui::tooltip::tooltip;
 use crate::ui::{button, icon_button, sidebar, status_bar, toolbar};
 
 /// The pattern field's placeholder: one worked example, and what the engine allows, as a comment.
 const PATTERN_EXAMPLE: &str = r"^(?!.*\.mp4$).*$  // lookahead and lookbehind are supported";
+
+/// The color field's placeholder: the shapes it reads, the most written first.
+const COLOR_EXAMPLES: &str = "#3b4252, rgb(59, 66, 82), hsl(220, 16%, 28%)";
 
 /// Under the pattern field.
 const ADVANCED_HINT: &str = "Enter a regular expression to match against whole file names.";
@@ -55,6 +58,20 @@ impl Rdm {
 						.on_confirm(submit(&rdm))
 				})
 			};
+			// The color it would get anyway, shown so the swatch is never blank.
+			let color = Tint::cycle(self.categories.iter().map(|c| c.id).max().unwrap_or(0) + 1).rgb();
+			let custom = cx.new(|cx| {
+				TextInput::new(COLOR_EXAMPLES, cx).on_cancel(Self::escape_to_presets(&rdm)).on_confirm({
+					let rdm = rdm.clone();
+					move |text, _, cx| {
+						if let Some(color) = parse_color(text) {
+							rdm.update(cx, |this, cx| this.choose_color(color, cx));
+						}
+					}
+				})
+			});
+			// The dot beside the field previews what is typed, so the form redraws as it changes.
+			cx.observe(&custom, |_, _, cx| cx.notify()).detach();
 			let form = CategoryForm {
 				name: field("Name", cx),
 				extensions: field("Extensions: rs, py, ts", cx),
@@ -64,6 +81,9 @@ impl Rdm {
 				ignore_space: false,
 				pattern: field(PATTERN_EXAMPLE, cx),
 				icon: Icon::Code,
+				color,
+				color_open: false,
+				custom,
 				advanced: false,
 			};
 			self.category_sheet = Some(CategorySheet::Custom(form));
@@ -113,10 +133,30 @@ impl Rdm {
 					});
 				})
 		});
+		// The user's own color follows the category: the field starts with what was written last.
+		let saved = self
+			.categories
+			.iter()
+			.find(|c| c.id == id)
+			.and_then(|c| c.custom_color.clone())
+			.unwrap_or_default();
+		let custom = cx.new(|cx| {
+			let mut input =
+				TextInput::new(COLOR_EXAMPLES, cx).on_cancel(Self::escape_to_presets(&rdm)).on_confirm({
+					let rdm = rdm.clone();
+					move |text, _, cx| {
+						let text = text.to_owned();
+						rdm.update(cx, |this, cx| this.set_category_custom_color(id, &text, cx));
+					}
+				});
+			input.set_content(&saved, cx);
+			input
+		});
+		cx.observe(&custom, |_, _, cx| cx.notify()).detach();
 		if let Some(window) = window {
 			window.focus(&add.read(cx).focus(), cx);
 		}
-		self.category_sheet = Some(CategorySheet::Preset(PresetForm { id, add }));
+		self.category_sheet = Some(CategorySheet::Preset(PresetForm { id, add, custom }));
 		cx.notify();
 	}
 
@@ -135,6 +175,30 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// The swatch beside the new category's name opens and closes the picker under it. A preset
+	/// being edited shows its picker always.
+	pub(crate) fn toggle_color_picker(&mut self, cx: &mut Context<Self>) {
+		if let Some(CategorySheet::Custom(form)) = &mut self.category_sheet {
+			form.color_open = !form.color_open;
+			cx.notify();
+		}
+	}
+
+	/// A swatch pressed: the face's color. On the preset face the color is the category's and
+	/// is written at once. The field is left as the user wrote it; a named hue does not erase
+	/// their own.
+	pub(crate) fn choose_color(&mut self, color: u32, cx: &mut Context<Self>) {
+		match &mut self.category_sheet {
+			Some(CategorySheet::Custom(form)) => form.color = color,
+			Some(CategorySheet::Preset(form)) => {
+				let id = form.id;
+				self.set_category_color(id, color, cx);
+			}
+			_ => return,
+		}
+		cx.notify();
+	}
+
 	/// A click outside closes the sheet only while there is nothing to lose. The presets act at
 	/// once, so that face always closes; a preset's list applies each change as it is made, so
 	/// its editor closes unless something is typed in its field; the custom form closes only
@@ -144,7 +208,15 @@ impl Rdm {
 		let clean = match &self.category_sheet {
 			None | Some(CategorySheet::Presets { .. }) => true,
 			Some(CategorySheet::Reorder) => false,
-			Some(CategorySheet::Preset(form)) => form.add.read(cx).content.trim().is_empty(),
+			Some(CategorySheet::Preset(form)) => {
+				let saved = self
+					.categories
+					.iter()
+					.find(|c| c.id == form.id)
+					.and_then(|c| c.custom_color.as_deref())
+					.unwrap_or_default();
+				form.add.read(cx).content.trim().is_empty() && form.custom.read(cx).content.trim() == saved
+			}
 			Some(CategorySheet::Custom(form)) => {
 				form.name.read(cx).content.trim().is_empty()
 					&& form.extensions.read(cx).content.trim().is_empty()
@@ -154,6 +226,8 @@ impl Rdm {
 					&& !form.match_case
 					&& !form.ignore_space
 					&& form.icon == Icon::Code
+					&& !form.color_open
+					&& form.custom.read(cx).content.trim().is_empty()
 			}
 		};
 		if clean {
@@ -251,7 +325,8 @@ impl Rdm {
 		let Some(form) = self.form() else { return };
 		let name = form.name.read(cx).content.to_string();
 		let pattern = self.effective_pattern(form, cx);
-		if self.add_category(&name, form.icon, &pattern, cx).is_ok() {
+		let custom = Some(form.custom.read(cx).content.trim().to_owned()).filter(|t| !t.is_empty());
+		if self.add_category(&name, form.icon, Some(form.color), custom, &pattern, cx).is_ok() {
 			self.close_category_sheet(cx);
 		}
 	}
@@ -484,9 +559,10 @@ impl Rdm {
 	fn preset_face(&self, form: &PresetForm, cx: &mut Context<Self>) -> gpui::Deferred {
 		let p = self.palette;
 		let id = form.id;
-		let Some((preset, overrides)) =
-			self.categories.iter().find(|c| c.id == id).and_then(|c| c.preset.as_ref())
-		else {
+		let Some(category) = self.categories.iter().find(|c| c.id == id) else {
+			return deferred(div()).priority(2);
+		};
+		let Some((preset, overrides)) = category.preset.as_ref() else {
 			return deferred(div()).priority(2);
 		};
 		// A built-in extension switches off and back; an added one is simply dropped.
@@ -519,11 +595,14 @@ impl Rdm {
 			})
 			.collect();
 		let changed = !overrides.is_empty();
+		let (icon_now, color_now) = (category.icon, category.color);
 		deferred(
 			backdrop(p).child(
 				self
 					.sheet_card("category-sheet", 480.0, true, cx)
 					.child(self.title_row(preset.name.into(), true, cx))
+					// The name alone above; every color it could wear on the line under it.
+					.child(self.color_row(color_now, form.custom.clone(), cx))
 					.child(section(p.muted, "Extensions"))
 					.child(div().flex().flex_wrap().gap_1().children(chips))
 					.child(
@@ -539,23 +618,31 @@ impl Rdm {
 								))
 							},
 						),
-					),
+					)
+					.child(section(p.muted, "Icon"))
+					.child(self.icon_picker(
+						icon_now,
+						move |this, choice, cx| this.set_category_icon(id, choice, cx),
+						cx,
+					)),
 			),
 		)
 		.priority(2)
 	}
 
-	fn custom_face(&self, form: &CategoryForm, cx: &mut Context<Self>) -> gpui::Deferred {
+	/// The fourteen glyphs a category may be drawn with, the chosen one lit.
+	fn icon_picker(
+		&self,
+		chosen: Icon,
+		on_pick: impl Fn(&mut Rdm, Icon, &mut Context<Rdm>) + Clone + 'static,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
 		let p = self.palette;
-		let report = self.pattern_report(form, cx);
-		let ready = !form.name.read(cx).content.trim().is_empty()
-			&& !self.effective_pattern(form, cx).is_empty()
-			&& report.is_ok();
-		let chosen = form.icon;
 		let icons: Vec<_> = Icon::CATEGORY_CHOICES
 			.into_iter()
 			.map(|choice| {
 				let on = choice == chosen;
+				let on_pick = on_pick.clone();
 				div()
 					.id(SharedString::from(format!("icon:{}", choice.name())))
 					.role(Role::RadioButton)
@@ -571,7 +658,7 @@ impl Rdm {
 					.group("icon-choice")
 					.tooltip(tooltip(choice.name()))
 					.when(on, |s| s.bg(p.selection))
-					.on_click(cx.listener(move |this, _, _, cx| this.choose_category_icon(choice, cx)))
+					.on_click(cx.listener(move |this, _, _, cx| on_pick(this, choice, cx)))
 					.child(
 						icon(choice, if on { p.text } else { p.muted })
 							.size_4()
@@ -579,6 +666,43 @@ impl Rdm {
 					)
 			})
 			.collect();
+		div().flex().flex_wrap().gap_1().children(icons)
+	}
+
+	/// The current color as a dot that opens the picker.
+	fn swatch(
+		&self,
+		id: &'static str,
+		color: u32,
+		open: bool,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
+		let p = self.palette;
+		div()
+			.id(id)
+			.role(Role::Button)
+			.aria_label("Color")
+			.debug_selector(|| "button:Color".to_owned())
+			.flex()
+			.flex_none()
+			.items_center()
+			.justify_center()
+			.size_6()
+			.rounded_sm()
+			.cursor_pointer()
+			.tooltip(tooltip("Color"))
+			.when(open, |s| s.bg(p.selection))
+			.when(!open, move |s| s.hover(move |s| s.bg(p.hover)))
+			.on_click(cx.listener(|this, _, _, cx| this.toggle_color_picker(cx)))
+			.child(div().size_3p5().rounded_full().bg(p.hue(color)))
+	}
+
+	fn custom_face(&self, form: &CategoryForm, cx: &mut Context<Self>) -> gpui::Deferred {
+		let p = self.palette;
+		let report = self.pattern_report(form, cx);
+		let ready = !form.name.read(cx).content.trim().is_empty()
+			&& !self.effective_pattern(form, cx).is_empty()
+			&& report.is_ok();
 		// Only Advanced reports: the basic fields always compile, and a count under them read as
 		// noise. The report shrinks and truncates; unbounded, a long engine message pushed the
 		// button clean out of the card, where a click on it read as a click outside.
@@ -614,12 +738,45 @@ impl Rdm {
 				.on_click(cx.listener(move |this, _, _, cx| this.set_combine(which, cx)))
 				.child(label)
 		};
+		let advanced_word = div()
+			.id("advanced")
+			.role(Role::Button)
+			.aria_label("Advanced")
+			.debug_selector(|| "button:Advanced".to_owned())
+			// Sized to its words: the rest of the row is not a way to open it.
+			.flex()
+			.flex_none()
+			.items_center()
+			.gap_1()
+			.text_xs()
+			.text_color(p.muted)
+			.cursor_pointer()
+			.hover(move |s| s.text_color(p.text))
+			.on_click(cx.listener(|this, _, window, cx| this.toggle_advanced(Some(window), cx)))
+			.child(icon(if advanced { Icon::ChevronDown } else { Icon::ChevronRight }, p.muted).size_3())
+			.child("Advanced");
+		let create = button(
+			p,
+			"category-confirm",
+			Icon::Plus,
+			"Create",
+			ready,
+			cx.listener(|this, _, _, cx| this.submit_category(cx)),
+		);
 		deferred(
 			backdrop(p).child(
 				self
 					.sheet_card("category-sheet", 560.0, true, cx)
 					.child(self.title_row("New category".into(), true, cx))
-					.child(form.name.clone())
+					.child(
+						div()
+							.flex()
+							.items_center()
+							.gap_2()
+							.child(div().flex_1().min_w_0().child(form.name.clone()))
+							.child(self.swatch("color", form.color, form.color_open, cx)),
+					)
+					.when(form.color_open, |s| s.child(self.color_row(form.color, form.custom.clone(), cx)))
 					.child(
 						div()
 							.flex()
@@ -655,47 +812,106 @@ impl Rdm {
 								cx.listener(|this, _, _, cx| this.toggle_ignore_space(cx)),
 							)),
 					)
-					.child(div().flex().flex_wrap().gap_1().children(icons))
-					.child(
-						div()
-							.id("advanced")
-							.role(Role::Button)
-							.aria_label("Advanced")
-							.debug_selector(|| "button:Advanced".to_owned())
-							.flex()
-							.items_center()
-							.gap_1()
-							.text_xs()
-							.text_color(p.muted)
-							.cursor_pointer()
-							.hover(move |s| s.text_color(p.text))
-							.on_click(cx.listener(|this, _, window, cx| this.toggle_advanced(Some(window), cx)))
-							.child(
-								icon(if advanced { Icon::ChevronDown } else { Icon::ChevronRight }, p.muted)
-									.size_3(),
+					.child(self.icon_picker(
+						form.icon,
+						|this, choice, cx| this.choose_category_icon(choice, cx),
+						cx,
+					))
+					// Closed, Advanced and Create share a line. Open, the pattern unfolds between
+					// them and Create goes to the bottom with the report.
+					.map(|s| {
+						if advanced {
+							s.child(div().flex().child(advanced_word))
+								.child(form.pattern.clone())
+								.child(section(p.muted, ADVANCED_HINT))
+								.child(div().flex().items_center().justify_between().child(verdict).child(create))
+						} else {
+							s.child(
+								div().flex().items_center().justify_between().child(advanced_word).child(create),
 							)
-							.child("Advanced"),
-					)
-					.when(advanced, |s| s.child(form.pattern.clone()).child(section(p.muted, ADVANCED_HINT)))
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.when(advanced, |s| s.child(verdict))
-							.when(!advanced, |s| s.child(div().flex_1()))
-							.child(button(
-								p,
-								"category-confirm",
-								Icon::Plus,
-								"Create",
-								ready,
-								cx.listener(|this, _, _, cx| this.submit_category(cx)),
-							)),
-					),
+						}
+					}),
 			),
 		)
 		.priority(2)
+	}
+
+	/// One line of every color a category could wear: the nine named hues, then a field for one
+	/// of the user's own -- hex, rgb() or hsl(), the placeholder showing each -- with a dot after
+	/// it that previews what is typed and, once it reads as a color, is a swatch like the others.
+	/// The field fills what the hues leave, so the line is the card's width.
+	fn color_row(
+		&self,
+		current: u32,
+		custom: gpui::Entity<TextInput>,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let swatches: Vec<_> = Tint::CYCLE
+			.into_iter()
+			.map(|tint| {
+				let color = tint.rgb();
+				let on = color == current;
+				let name = format_hex(color);
+				let selector = name.clone();
+				div()
+					.id(SharedString::from(format!("swatch:{name}")))
+					.role(Role::RadioButton)
+					.aria_label(format!("Color {name}"))
+					.aria_selected(on)
+					.debug_selector(move || format!("swatch:{selector}"))
+					.flex()
+					.flex_none()
+					.items_center()
+					.justify_center()
+					.size_6()
+					.rounded_sm()
+					.cursor_pointer()
+					.when(on, |s| s.bg(p.selection))
+					.on_click(cx.listener(move |this, _, _, cx| this.choose_color(color, cx)))
+					.child(div().size_3p5().rounded_full().bg(p.hue(color)))
+			})
+			.collect();
+		let typed = custom.read(cx).content.trim().to_owned();
+		let parsed = parse_color(&typed);
+		let on = parsed == Some(current);
+		let preview = div()
+			.id("swatch-custom")
+			.role(Role::RadioButton)
+			.aria_label("Your color")
+			.aria_selected(on)
+			.debug_selector(|| "swatch:custom".to_owned())
+			.flex()
+			.flex_none()
+			.items_center()
+			.justify_center()
+			.size_6()
+			.rounded_sm()
+			.tooltip(tooltip(if parsed.is_some() { "Your color" } else { "Not a color yet" }))
+			.when(on, |s| s.bg(p.selection))
+			.when_some(parsed, |s, color| {
+				s.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+					// Chosen from the dot, the text is kept with the category as if entered.
+					match &this.category_sheet {
+						Some(CategorySheet::Preset(form)) => {
+							let (id, text) = (form.id, typed.clone());
+							this.set_category_custom_color(id, &text, cx);
+						}
+						_ => this.choose_color(color, cx),
+					}
+				}))
+			})
+			.child(match parsed {
+				Some(color) => div().size_3p5().rounded_full().bg(p.hue(color)),
+				None => div().size_3p5().rounded_full().border_1().border_color(p.border),
+			});
+		div()
+			.flex()
+			.items_center()
+			.gap_1()
+			.children(swatches)
+			.child(div().flex_1().min_w_0().ml_1().child(custom))
+			.child(preview)
 	}
 }
 

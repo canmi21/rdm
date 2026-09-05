@@ -60,30 +60,27 @@ and a click, not a strip of the window. The sidebar answers "which downloads", t
 The view, sort and chip are not yet remembered across launches; that waits on there being any
 persistence at all.
 
-## Colour: Nord, through glass, drained when inactive
+## Color: Nord, through glass, drained when inactive
 
 The palette is [Nord](https://www.nordtheme.com), in `src/ui/theme.rs`, and every name there
-says what a colour is for -- `panel`, `border`, `muted`, `selection` -- never what it looks like.
-Status is the exception and is colour-coded on purpose: aurora green complete, orange paused,
+says what a color is for -- `panel`, `border`, `muted`, `selection` -- never what it looks like.
+Status is the exception and is color-coded on purpose: aurora green complete, orange paused,
 red failed, frost blue for downloading, grey queued, because a column of status words reads
-slower than a column of colours. Selection and hover are Nord's polar-night greys; the frost blue
+slower than a column of colors. Selection and hover are Nord's polar-night greys; the frost blue
 is reserved for progress that is moving.
 
-**Every filter and category owns a hue, shown only when asked.** All is snow white, the three
-states take their status colours, and each built-in category has one of Nord's nine accents --
-Video purple, Audio teal, Images yellow, Documents frost, Ebooks green, Code blue, Archives
-orange, Programs red, Disk images navy -- with a custom rule handed the next hue in a fixed
-cycle so nobody has to pick. In the sidebar an icon is grey until its row is chosen or hovered,
-then its own hue: a column of nine colours at rest is a rainbow, and a rainbow is noise. The
-list is the other way: a row's type icon always wears its category's hue, because there the
-colour is information -- which bucket this file fell into -- and the icons are one per row
-rather than one per line of a menu. Both go monochrome with the rest when the window is
-inactive.
+**Every filter and category owns a color, shown only when asked.** All Tasks is snow white,
+the three states take their status colors, and each built-in category starts with one of
+Nord's nine accents -- Video purple, Audio teal, Images yellow, Documents frost, Plain text
+teal, Presentations orange, Spreadsheets green, Ebooks green, Code blue, Archives orange,
+Programs red, Disk images navy -- with a custom rule handed the next hue in a fixed cycle so
+nobody has to pick. Any of them can be changed to a named hue or one the user writes; the
+color is a number on the category, so a written one is the same kind of thing as a named one.
 
 **The window is blurred, and only the sidebar lets it show.** `WindowBackgroundAppearance::Blurred`
 asks macOS for the blur behind a native window, but a native window is not transparent: Finder's
 content is opaque and its sidebar is a *material*, mostly opaque with a hint of the desktop's
-colour bleeding through. So the list and the toolbar are solid Nord and the sidebar carries the
+color bleeding through. So the list and the toolbar are solid Nord and the sidebar carries the
 one alpha in the palette, high enough that what shows through is a tint rather than a picture.
 A first cut with alpha on every surface read as a glass box, which is the look macOS 26 tried
 and 27 stepped back from; the effect wanted is the older, quieter one, and it does not come from
@@ -91,9 +88,9 @@ turning transparency up.
 
 **An inactive window gives up its hues.** The palette is built once per render from
 `Window::is_window_active`, and when the window does not have the keyboard every accent, status
-and selection colour collapses to the muted grey while the greys stay. macOS drains a background
+and selection color collapses to the muted grey while the greys stay. macOS drains a background
 window the same way; a download manager sits in the background most of its life, and a wall of
-colour it is not being looked at is noise on the desktop.
+color it is not being looked at is noise on the desktop.
 
 The density is Zed's: a 13px UI face with everything in rems of it, 26px table rows, a 36px
 toolbar. Not Zed's look -- the shapes, the glass and the palette are this application's.
@@ -108,11 +105,11 @@ brings that window forward rather than opening another. Secondary windows keep t
 documents, and the main window is the application, so closing the main window quits and closing a
 secondary one closes only itself.
 
-**Only a download gets a window; everything else is a sheet.** Settings and Add URL open as a
+**Only a download gets a window; everything else is a sheet.** Settings and Add Task open as a
 card over the dimmed list inside the main window. The distinction is whether the thing is worth
 keeping beside the list while the list moves: a download is, and its window follows it live; a
 form is filled in and dismissed, and a window for it is a window to find and close afterwards.
-Add URL was tried as a sheet first and read better than the window it replaced, so Settings
+Add Task was tried as a sheet first and read better than the window it replaced, so Settings
 followed.
 
 The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
@@ -123,7 +120,7 @@ them. Under the list, from the left: a summary of the collection, how many and h
 selected download as a link to its window; and at the corner, evenly spaced because they are
 looked for together, the status funnel, the view switch and the Settings gear.
 
-**The toolbar is two labelled buttons.** Add URL, and one button that says what the selection can
+**The toolbar is two labelled buttons.** Add Task, and one button that says what the selection can
 do next: Pause while it downloads, Resume while it is paused, queued or failed, Remove once it is
 complete, with a cross rather than the trash can so the two removes read differently. Four
 labelled buttons of which three were greyed at any moment spent the toolbar on saying no.
@@ -138,7 +135,7 @@ appears when asked is how an icon stays an icon.
 pressed -- the corner icons, the action icons, a menu row's icon -- brightens on hover and
 nothing else: it has no pressed state, and a background would promise one. A control that stays
 chosen -- a view segment, a sidebar filter, the funnel while a status is set -- keeps a
-background for the state and hovers by brightening too. GPUI's svg carries its own colour rather
+background for the state and hovers by brightening too. GPUI's svg carries its own color rather
 than inheriting the text's, so the icon watches its button through a group to brighten. The toolbar is left with actions on the selection and nothing else, which is
 what a toolbar is for; a view switch is not an action and was moved off it.
 
@@ -189,11 +186,22 @@ extensions, and a release may add to them. The user's changes are kept apart fro
 extensions added, and built-in ones removed -- and the list a preset runs with is the built-in
 one less the removals, then the additions in the order they were typed. So a release that adds
 an extension reaches every user who did not remove that one on purpose, and a file written by
-an older build, which spelled presets as patterns, is read as the preset whenever its name and
-pattern are one. Edit turns the chips into doors: a lit chip opens its list, where every
-extension is a chip that switches -- a built-in one off and back, struck through while off; an
-added one simply dropped -- with a field that adds more and Reset while anything has been
-changed. Each change applies and is written as it is made, like the preset switches themselves.
+an older build, which spelled presets as patterns, is read as the preset whenever its name is
+a preset's and its pattern is a plain list of extensions: whatever that list had beyond the
+built-in one is kept as additions, and nothing is marked removed, so the extensions added since
+arrive as they do for everyone. The lists aim to be complete for what a download manager
+meets -- every vendor's and every open format of the kind, and the newer ones like AVIF, JPEG
+XL and Zstandard -- because a file that lands in Other for want of one extension is a list's
+failure, not the user's. Presentations, Spreadsheets and Plain text are presets of their own;
+word processing and PDF stay under Documents.
+
+Edit turns the chips into doors: a lit chip opens its list. The name stands alone above; the
+line under it is every color the category could wear (see below); then every extension as a
+chip that switches -- a built-in one off and back, struck through while off; an added one
+simply dropped -- with a field that adds more and Reset while anything has been changed; then
+the icon picker. Each change applies and is written as it is made, like the preset switches
+themselves. A preset's icon and color are written to the file only when they are not the
+preset's own, so one the user left alone follows the application's choice.
 
 **Reorder happens in the sidebar, not in the sheet.** The sheet shrinks to one line with an
 arrow pointing left, and every wash in the window but the sidebar's categories goes
@@ -207,24 +215,40 @@ drag never ends it, since a drag begins on a row and the washes only answer pres
 themselves. The backdrop cannot cover the sidebar, so the sidebar dims its own filters with the
 same wash, which closes like the rest, and the backdrop is cut around it.
 
-**Add is a second level.** The custom form asks for a name, one of fourteen Lucide icons, and a
-basic rule in two fields with a switch between them: the extensions the category stands for,
-typed as `rs, py`, and text the name contains, joined by AND or OR when both are filled -- AND
-by default, since a rule that names both usually means both. After the text, two icon switches,
-both off to start: Match case, since a name typed from memory is more often right in its
-letters than in its capitals, and Ignore spaces, which lets any run of whitespace in the text
-match any run or none. The
+**Add is a second level.** The custom form asks for a name, with a swatch beside it for the
+color the icon will be lit in -- the next hue in the cycle to start with, so the swatch is
+never blank -- one of seventeen Lucide icons, and a basic rule in two fields with a switch
+between them: the extensions the category stands for, typed as `rs, py`, and text the name
+contains, joined by AND or OR when both are filled -- AND by default, since a rule that names
+both usually means both. After the text, two icon switches, both off to start: Match case,
+since a name typed from memory is more often right in its letters than in its capitals, and
+Ignore spaces, which lets any run of whitespace in the text match any run or none. The
 application spells all of it as the one regular expression that actually runs, the extensions
 always without regard to case, so nobody has to know what a regular expression is to make a
-category. **Advanced** -- the one word -- unfolds that pattern for editing, prefilled from the
-basic fields, for the rule they cannot say. The empty field shows one worked example with a
-comment after it saying that lookahead and lookbehind are supported; under the field, a
-sentence says the pattern is matched against whole file names, and a line reports what the
-rule would do right now: the engine's own error while it does not compile, or how many of the
-current downloads it catches. The report belongs to Advanced alone; under the basic fields it
-read as noise, since those always compile. The cross on the form, and on a preset's list, steps
-back to the presets, one level up, rather than out; the cross on the presets closes. The icon
-list is fourteen glyphs; the whole of Lucide would be a picker nobody finishes scrolling.
+category. **Advanced** -- the one word, sized to itself so the rest of its line is not a way to
+open it -- shares its line with Create while closed. Open, the pattern unfolds between them,
+prefilled from the basic fields, for the rule they cannot say, and Create moves to the bottom
+with the report. The empty field shows one worked example with a comment after it saying that
+lookahead and lookbehind are supported; under the field, a sentence says the pattern is
+matched against whole file names, and a line reports what the rule would do right now: the
+engine's own error while it does not compile, or how many of the current downloads it catches.
+The report belongs to Advanced alone; under the basic fields it read as noise, since those
+always compile. The cross on the form, and on a preset's list, steps back to the presets, one
+level up, rather than out; the cross on the presets closes. The icon list is seventeen glyphs;
+the whole of Lucide would be a picker nobody finishes scrolling.
+
+**The color line is the same everywhere.** The nine named hues as swatches, then a field that
+fills the rest of the line for a color of the user's own, and after it a dot. The field reads
+what this stack has constructors for and nothing more: hex in every common length, with or
+without the hash, and the CSS functions `rgb()`, `rgba()`, `hsl()` and `hsla()`, alpha read and
+dropped; its placeholder shows one of each, the most written first, so the shapes need no
+explaining. The dot previews what is typed as it is typed, and once the text reads as a color
+the dot is a swatch like the nine: pressing it, or Enter in the field, chooses that color. The
+writing stays with the category, as written, so the user can move between a named hue and
+their own and back; on the new-category form it is kept only if the category is created. What
+the field does not read -- names like `red`, `oklch()` -- it shows as an empty dot and ignores,
+and that is the whole of the error handling: a color the user cannot see is one they will
+retype.
 
 Categories are read from `config.json` and written back when one is added, a preset switched
 or its list changed, or the order changed; see [state.md](state.md). Editing or removing a custom one from the window is not built; the
@@ -233,7 +257,7 @@ file is the way, for now.
 ## What is deliberately not there yet
 
 The rows are sample data advanced by a timer so the list moves; there is no transfer engine,
-no persistence, and the Settings window is labels with nothing behind them. Add URL is a sheet with one field over the dimmed list. It queues what is typed
+no persistence, and the Settings window is labels with nothing behind them. Add Task is a sheet with one field over the dimmed list. It queues what is typed
 under the address's last path segment; the engine will resolve the real name and size. Enter
 adds, Escape or a click outside closes. The mock
 rows that download loop back to zero when they fill, so there is always movement to look at. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are

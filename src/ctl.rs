@@ -20,7 +20,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
-	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | custom | advanced | reorder | \
+	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | reorder | \
 	move <id> <onto id>";
 
 pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
@@ -179,6 +179,19 @@ impl Rdm {
 				let Some(id) = id else { return failure("edit takes a preset's category id") };
 				self.open_preset_editor(id, None, cx);
 			}
+			"icon" => {
+				let (Some(id), Some(glyph)) = (id, rest.get(1).and_then(|g| Icon::by_name(g))) else {
+					return failure("icon takes a category id and one of the icon choices");
+				};
+				self.set_category_icon(id, glyph, cx);
+			}
+			"color" => {
+				let text = rest[1..].join(" ");
+				let Some(id) = id.filter(|_| crate::ui::theme::parse_color(&text).is_some()) else {
+					return failure("color takes a category id and a color: hex, rgb() or hsl()");
+				};
+				self.set_category_custom_color(id, &text, cx);
+			}
 			"extension" => {
 				let (Some(id), Some(extension)) = (id, rest.get(1)) else {
 					return failure("extension takes a category id, an extension and on or off");
@@ -204,7 +217,7 @@ impl Rdm {
 					return failure("icon is one of the category choices");
 				};
 				let pattern = rest[2..].join(" ");
-				if let Err(error) = self.add_category(name, glyph, &pattern, cx) {
+				if let Err(error) = self.add_category(name, glyph, None, None, &pattern, cx) {
 					return failure(&error);
 				}
 			}

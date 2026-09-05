@@ -83,13 +83,20 @@ pub struct CategoryForm {
 	pub ignore_space: bool,
 	pub pattern: Entity<TextInput>,
 	pub icon: Icon,
+	/// The color the icon will be lit in, `0xrrggbb`; the swatch beside the name opens the
+	/// picker, whose field takes a color written any way the stack reads.
+	pub color: u32,
+	pub color_open: bool,
+	pub custom: Entity<TextInput>,
 	pub advanced: bool,
 }
 
-/// A preset's extension list being edited: which category, and the field that adds to it.
+/// A preset being edited: which category, the field that adds to its list, and the field for
+/// a color of the user's own, which follows the category.
 pub struct PresetForm {
 	pub id: u64,
 	pub add: Entity<TextInput>,
+	pub custom: Entity<TextInput>,
 }
 
 /// The category sheet's faces: the presets with Edit, Reorder and Add under them; the one-line
@@ -134,7 +141,7 @@ pub struct Rdm {
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
 	pub(crate) settings_open: bool,
-	/// The Add URL sheet's field while the sheet is up.
+	/// The Add Task sheet's field while the sheet is up.
 	pub(crate) adding: Option<Entity<TextInput>>,
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
 	paths: Option<Paths>,
@@ -243,7 +250,7 @@ impl Rdm {
 	/// way the sidebar does. A plain file, muted, when no category claims it.
 	pub(crate) fn category_icon(&self, download: &Download) -> (Icon, gpui::Hsla) {
 		match self.category_shown(download) {
-			Some(c) => (c.icon, self.palette.tint(c.tint)),
+			Some(c) => (c.icon, self.palette.hue(c.color)),
 			None => (Icon::File, self.palette.muted),
 		}
 	}
@@ -253,6 +260,8 @@ impl Rdm {
 		&mut self,
 		name: &str,
 		icon: Icon,
+		color: Option<u32>,
+		custom_color: Option<String>,
 		pattern: &str,
 		cx: &mut Context<Self>,
 	) -> Result<(), String> {
@@ -266,7 +275,11 @@ impl Rdm {
 		if self.categories.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
 			return Err(format!("there is already a category called {name}"));
 		}
-		let category = Category::new(self.next_category_id(), name, icon, pattern.trim())?;
+		let mut category = Category::new(self.next_category_id(), name, icon, pattern.trim())?;
+		if let Some(color) = color {
+			category.color = color;
+		}
+		category.custom_color = custom_color.filter(|t| crate::ui::theme::parse_color(t).is_some());
 		self.insert_category(category, cx);
 		Ok(())
 	}
@@ -320,6 +333,34 @@ impl Rdm {
 	pub(crate) fn add_preset_extensions(&mut self, id: u64, text: &str, cx: &mut Context<Self>) {
 		for extension in download::split_extensions(text) {
 			self.set_preset_extension(id, &extension, true, cx);
+		}
+	}
+
+	pub(crate) fn set_category_icon(&mut self, id: u64, icon: Icon, cx: &mut Context<Self>) {
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			category.icon = icon;
+			self.save_config();
+			cx.notify();
+		}
+	}
+
+	pub(crate) fn set_category_color(&mut self, id: u64, color: u32, cx: &mut Context<Self>) {
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			category.color = color;
+			self.save_config();
+			cx.notify();
+		}
+	}
+
+	/// A color the user wrote for a category: kept as written beside the named ones, and made
+	/// the one in use. Text that is not a color is ignored.
+	pub(crate) fn set_category_custom_color(&mut self, id: u64, text: &str, cx: &mut Context<Self>) {
+		let Some(color) = crate::ui::theme::parse_color(text) else { return };
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			category.custom_color = Some(text.trim().to_owned());
+			category.color = color;
+			self.save_config();
+			cx.notify();
 		}
 	}
 
@@ -963,30 +1004,118 @@ mod tests {
 		});
 		click(&mut cx, "extension:mkv");
 		cx.update(|window, cx| {
-			add.update(cx, |input, cx| input.replace_text_in_range(None, "ts, m2ts", window, cx))
+			add.update(cx, |input, cx| input.replace_text_in_range(None, "xyz, zyx", window, cx))
 		});
 		// The tests bind no keys; main does. The action is what Enter is bound to.
 		cx.dispatch_action(crate::ui::text_input::Confirm);
 		cx.run_until_parked();
 		rdm.read_with(&cx, |rdm, _| {
 			let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
-			assert_eq!(video.extensions(), ["mp4", "mov", "webm", "avi", "ts", "m2ts"]);
+			let list = video.extensions();
+			assert!(!list.contains(&"mkv".to_owned()));
+			assert_eq!(&list[list.len() - 2..], ["xyz", "zyx"]);
 		});
 		assert_eq!(add.read_with(&cx, |input, _| input.content.to_string()), "", "the field clears");
-		click(&mut cx, "extension:ts");
+		click(&mut cx, "extension:xyz");
 		click(&mut cx, "extension:mkv");
 		rdm.read_with(&cx, |rdm, _| {
 			let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
-			assert_eq!(video.extensions(), ["mp4", "mkv", "mov", "webm", "avi", "m2ts"]);
+			let list = video.extensions();
+			assert!(list.contains(&"mkv".to_owned()) && !list.contains(&"xyz".to_owned()));
+			assert_eq!(list.last().map(String::as_str), Some("zyx"));
 		});
 		click(&mut cx, "button:Reset");
 		rdm.read_with(&cx, |rdm, _| {
 			let video = rdm.categories.iter().find(|c| c.name == "Video").unwrap();
-			assert_eq!(video.extensions(), ["mp4", "mkv", "mov", "webm", "avi"]);
+			assert_eq!(video.extensions(), Category::preset("Video").unwrap().extensions());
 		});
 		click(&mut cx, "button:Close");
 		rdm.read_with(&cx, |rdm, _| {
 			assert!(matches!(rdm.category_sheet, Some(CategorySheet::Presets { editing: false })))
+		});
+	}
+
+	#[gpui::test]
+	fn a_color_is_picked_from_a_swatch_or_written_and_kept(cx: &mut TestAppContext) {
+		use crate::ui::theme::Tint;
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		click(&mut cx, "button:Add");
+		assert!(cx.debug_bounds("swatch:#b48ead").is_none(), "the picker waits behind the swatch");
+		click(&mut cx, "button:Color");
+		click(&mut cx, "swatch:#b48ead");
+		let (name, extensions) = rdm.read_with(&cx, |rdm, _| {
+			let Some(CategorySheet::Custom(form)) = &rdm.category_sheet else { panic!("the form is up") };
+			assert_eq!(form.color, Tint::Purple.rgb());
+			(form.name.clone(), form.extensions.clone())
+		});
+		cx.update(|window, cx| {
+			name.update(cx, |input, cx| input.replace_text_in_range(None, "Plum", window, cx));
+			extensions.update(cx, |input, cx| input.replace_text_in_range(None, "plum", window, cx));
+		});
+		click(&mut cx, "button:Create");
+		rdm.read_with(&cx, |rdm, _| {
+			let plum = rdm.categories.iter().find(|c| c.name == "Plum").expect("added");
+			assert_eq!(plum.color, Tint::Purple.rgb());
+		});
+		// A preset's color, written; the writing stays with the category beside the named hues.
+		click(&mut cx, "button:New category");
+		click(&mut cx, "button:Edit");
+		click(&mut cx, "preset:Audio");
+		let custom = rdm.read_with(&cx, |rdm, _| {
+			let Some(CategorySheet::Preset(form)) = &rdm.category_sheet else { panic!("the list is up") };
+			form.custom.clone()
+		});
+		cx.update(|window, cx| {
+			window.focus(&custom.read(cx).focus(), cx);
+			custom.update(cx, |input, cx| {
+				input.replace_text_in_range(None, "rgb(170, 187, 204)", window, cx)
+			});
+		});
+		cx.dispatch_action(crate::ui::text_input::Confirm);
+		cx.run_until_parked();
+		click(&mut cx, "icon:globe");
+		let audio = |rdm: &Rdm| rdm.categories.iter().find(|c| c.name == "Audio").unwrap().clone();
+		rdm.read_with(&cx, |rdm, _| {
+			let audio = audio(rdm);
+			assert_eq!((audio.color, audio.icon), (0xaabbcc, Icon::Globe));
+			assert_eq!(audio.custom_color.as_deref(), Some("rgb(170, 187, 204)"), "as written");
+		});
+		click(&mut cx, "swatch:#8fbcbb");
+		rdm.read_with(&cx, |rdm, _| {
+			let audio = audio(rdm);
+			assert_eq!(audio.color, Tint::Teal.rgb());
+			assert!(audio.custom_color.is_some(), "a named hue does not erase the written one");
+		});
+		click(&mut cx, "swatch:custom");
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(audio(rdm).color, 0xaabbcc, "and it can be chosen again")
+		});
+		assert_eq!(
+			custom.read_with(&cx, |input, _| input.content.to_string()),
+			"rgb(170, 187, 204)",
+			"the field keeps the user's spelling"
+		);
+	}
+
+	#[gpui::test]
+	fn advanced_shares_a_line_with_create_until_it_opens(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		click(&mut cx, "button:Add");
+		let advanced = cx.debug_bounds("button:Advanced").unwrap();
+		let create = cx.debug_bounds("button:Create").unwrap();
+		assert!(
+			(f32::from(advanced.center().y) - f32::from(create.center().y)).abs() < 1.0,
+			"one line while closed"
+		);
+		let card = cx.debug_bounds("category-sheet").unwrap();
+		assert!(advanced.size.width < card.size.width / 3.0, "Advanced is only as wide as its words");
+		click(&mut cx, "button:Advanced");
+		let create_open = cx.debug_bounds("button:Create").unwrap();
+		assert!(create_open.top() > cx.debug_bounds("button:Advanced").unwrap().bottom());
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(matches!(&rdm.category_sheet, Some(CategorySheet::Custom(f)) if f.advanced))
 		});
 	}
 

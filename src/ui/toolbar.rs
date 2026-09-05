@@ -8,7 +8,7 @@ use crate::ui::icon::Icon;
 /// The strip the traffic lights share; main.rs derives their offset from it.
 pub const HEIGHT: f32 = 36.0;
 
-/// Two labelled buttons: Add URL, and the one thing the selection can do next. Everything else
+/// Two labelled buttons: Add Task, and the one thing the selection can do next. Everything else
 /// is an icon in the status bar's corner.
 impl Rdm {
 	pub(crate) fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -35,7 +35,7 @@ impl Rdm {
 				p,
 				"add",
 				Icon::Plus,
-				"Add URL",
+				"Add Task",
 				true,
 				cx.listener(|this, _, window, cx| this.open_add(window, cx)),
 			))

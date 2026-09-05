@@ -52,7 +52,7 @@ impl Rdm {
 						p,
 						"bar-add",
 						Icon::Plus,
-						"Add URL",
+						"Add Task",
 						true,
 						cx.listener(|this, _, window, cx| this.open_add(window, cx)),
 					))

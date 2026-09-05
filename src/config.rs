@@ -8,9 +8,10 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::download::{Category, Overrides};
+use crate::download::{Category, Overrides, extensions_of_pattern};
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
+use crate::ui::theme::{format_hex, parse_color};
 
 pub const VERSION: u64 = 1;
 
@@ -21,10 +22,12 @@ pub struct Config {
 	pub categories: Vec<CategoryConfig>,
 }
 
-/// A category as the file spells it. A custom rule carries its pattern as written. A preset
-/// carries its name under `preset` and the user's changes to its list -- extensions added, and
-/// built-in ones removed -- and no pattern, since the pattern is derived from the list the
-/// application ships, which a release may extend. A file from before presets were kept this way
+/// A category as the file spells it. A custom rule carries its pattern as written and its
+/// color as hex. A preset carries its name under `preset` and the user's changes to its list
+/// -- extensions added, and built-in ones removed -- and no pattern, since the pattern is
+/// derived from the list the application ships, which a release may extend; its icon is
+/// written always and its color only when it is not the preset's own, so a preset the user
+/// left alone follows the application's choice. A file from before presets were kept this way
 /// spells them as patterns; one whose name and pattern are a preset's is read as that preset.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CategoryConfig {
@@ -32,6 +35,13 @@ pub struct CategoryConfig {
 	pub icon: String,
 	#[serde(default, skip_serializing_if = "String::is_empty")]
 	pub pattern: String,
+	/// `#rrggbb`; absent for a preset drawn in its own color.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub color: Option<String>,
+	/// A color the user wrote, as written; offered beside the named ones whether or not it is
+	/// the one in use.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub custom_color: Option<String>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub preset: Option<String>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -61,17 +71,41 @@ impl Config {
 			.enumerate()
 			.filter_map(|(i, c)| {
 				let id = i as u64 + 1;
-				let overrides = Overrides { added: c.added.clone(), removed: c.removed.clone() };
+				let mut overrides = Overrides { added: c.added.clone(), removed: c.removed.clone() };
+				// A file from before presets kept their lists spells one as its pattern. A preset's
+				// name over a plain list of extensions is that preset, with whatever the list had
+				// beyond the built-in one kept as additions; nothing is marked removed, so the
+				// extensions a release added since arrive as they do for everyone.
 				let preset = c.preset.as_deref().or_else(|| {
 					let preset = Category::find_preset(&c.name)?;
-					(Category::preset(preset.name)?.pattern == c.pattern).then_some(preset.name)
+					let old = extensions_of_pattern(&c.pattern)?;
+					let base = preset.base();
+					overrides.added.extend(old.into_iter().filter(|e| !base.contains(e)));
+					Some(preset.name)
 				});
-				if let Some(category) = preset.and_then(|name| Category::from_preset(id, name, overrides)) {
+				let color = c.color.as_deref().and_then(parse_color);
+				let custom = c.custom_color.clone().filter(|text| parse_color(text).is_some());
+				if let Some(mut category) =
+					preset.and_then(|name| Category::from_preset(id, name, overrides))
+				{
+					if let Some(icon) = Icon::by_name(&c.icon) {
+						category.icon = icon;
+					}
+					if let Some(color) = color {
+						category.color = color;
+					}
+					category.custom_color = custom;
 					return Some(category);
 				}
 				let icon = Icon::by_name(&c.icon).unwrap_or(Icon::File);
 				match Category::new(id, &c.name, icon, &c.pattern) {
-					Ok(category) => Some(category),
+					Ok(mut category) => {
+						if let Some(color) = color {
+							category.color = color;
+						}
+						category.custom_color = custom;
+						Some(category)
+					}
 					Err(error) => {
 						eprintln!(
 							"config.json: category {:?} skipped, its pattern does not compile: {error}",
@@ -96,6 +130,8 @@ impl From<&Category> for CategoryConfig {
 				name: c.name.clone(),
 				icon: c.icon.name().to_owned(),
 				pattern: String::new(),
+				color: (c.color != preset.tint.rgb()).then(|| format_hex(c.color)),
+				custom_color: c.custom_color.clone(),
 				preset: Some(preset.name.to_owned()),
 				added: overrides.added.clone(),
 				removed: overrides.removed.clone(),
@@ -104,6 +140,9 @@ impl From<&Category> for CategoryConfig {
 				name: c.name.clone(),
 				icon: c.icon.name().to_owned(),
 				pattern: c.pattern.clone(),
+				// Always written: the cycle it started in is by position, which reordering moves.
+				color: Some(format_hex(c.color)),
+				custom_color: c.custom_color.clone(),
 				preset: None,
 				added: Vec::new(),
 				removed: Vec::new(),
@@ -176,21 +215,30 @@ mod tests {
 
 	#[test]
 	fn a_preset_is_read_by_name_with_its_changes_and_an_old_file_by_its_pattern() {
-		let text = r#"{ "version": 1, "categories": [
-			{ "name": "Video", "icon": "film", "preset": "Video", "added": ["ts"], "removed": ["mkv"] },
-			{ "name": "Audio", "icon": "music", "pattern": "(?i)\\.(mp3|flac|aac|wav|m4a|ogg)$" },
+		let text = r##"{ "version": 1, "categories": [
+			{ "name": "Video", "icon": "disc", "color": "#abc", "custom_color": "rgb(1, 2, 3)", "preset": "Video", "added": ["xyz"], "removed": ["mkv"] },
+			{ "name": "Audio", "icon": "music", "pattern": "(?i)\\.(mp3|flac|aac|wav|m4a|ogg|xyz)$" },
 			{ "name": "Films", "icon": "film", "pattern": "(?i)\\.(mp4)$" }
-		] }"#;
+		] }"##;
 		let categories = parse(text).unwrap().categories();
-		assert_eq!(categories[0].extensions(), ["mp4", "mov", "webm", "avi", "ts"]);
+		let video = categories[0].extensions();
+		assert!(!video.contains(&"mkv".to_owned()) && video.last() == Some(&"xyz".to_owned()));
+		assert_eq!((categories[0].icon, categories[0].color), (Icon::Disc, 0xaabbcc), "overrides hold");
+		assert_eq!(categories[0].custom_color.as_deref(), Some("rgb(1, 2, 3)"), "kept as written");
 		assert!(
 			categories[1].preset.is_some(),
 			"a preset's name and pattern from before is that preset"
 		);
+		let audio = categories[1].extensions();
+		assert!(audio.contains(&"opus".to_owned()), "the built-in list has grown under it");
+		assert_eq!(audio.last().map(String::as_str), Some("xyz"), "what it had beyond is kept");
 		assert!(categories[2].preset.is_none(), "a custom rule stays a custom rule");
 		let written = Config::from_categories(&categories);
-		assert_eq!(written.categories[0].added, ["ts"]);
+		assert_eq!(written.categories[0].added, ["xyz"]);
 		assert_eq!(written.categories[0].pattern, "", "a preset's pattern is not written");
+		assert_eq!(written.categories[0].color.as_deref(), Some("#aabbcc"));
+		assert_eq!(written.categories[1].color, None, "a preset in its own color writes none");
+		assert!(written.categories[2].color.is_some(), "a custom rule always writes its color");
 		assert_eq!(written.categories[1].preset.as_deref(), Some("Audio"));
 		assert_eq!(parse(&serde_json::to_string(&written).unwrap()).unwrap(), written);
 	}

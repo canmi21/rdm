@@ -92,8 +92,12 @@ pub struct Category {
 	/// compiled form, or None for the catch-all.
 	pub pattern: String,
 	regex: Option<fancy_regex::Regex>,
-	/// The hue its icon shows when lit; a preset's own, a custom rule's from the cycle.
-	pub tint: crate::ui::theme::Tint,
+	/// The color its icon shows when lit, as `0xrrggbb`: a preset's own or the next in the
+	/// cycle to start with, and whatever the user picked or typed after that.
+	pub color: u32,
+	/// A color the user wrote for this category, as they wrote it, kept beside the named ones so
+	/// it can be chosen again after a named one was.
+	pub custom_color: Option<String>,
 	/// Which preset this is, with the user's changes to its list; None for a custom rule.
 	pub preset: Option<(&'static Preset, Overrides)>,
 }
@@ -111,14 +115,15 @@ impl Category {
 		} else {
 			Some(fancy_regex::Regex::new(pattern).map_err(|e| e.to_string())?)
 		};
-		let tint = if pattern.is_empty() { Tint::Snow } else { Tint::cycle(id) };
+		let color = if pattern.is_empty() { Tint::Snow } else { Tint::cycle(id) }.rgb();
 		Ok(Category {
 			id,
 			name: name.to_owned(),
 			icon,
 			pattern: pattern.to_owned(),
 			regex,
-			tint,
+			color,
+			custom_color: None,
 			preset: None,
 		})
 	}
@@ -134,7 +139,13 @@ impl Category {
 
 	/// The presets a user picks from. The seed is all of them plus Other; a user who wants fewer
 	/// removes them, and one who wants more writes a custom one or adds to a preset's list.
-	pub const PRESETS: [Preset; 9] = {
+	///
+	/// The lists aim to be complete for what a download manager meets rather than short: every
+	/// vendor's and every open format for the kind, the older ones still in circulation, and the
+	/// newer ones -- AVIF, JPEG XL, HEIF, Zstandard, MSIX -- that a list written a few years ago
+	/// would miss. A file that two lists describe is in both categories, so overlap is not a
+	/// problem to solve; a disk image is also a program when it installs one.
+	pub const PRESETS: [Preset; 12] = {
 		use crate::ui::icon::Icon;
 		use crate::ui::theme::Tint;
 		[
@@ -142,51 +153,85 @@ impl Category {
 				name: "Video",
 				icon: Icon::Film,
 				tint: Tint::Purple,
-				extensions: "mp4 mkv mov webm avi",
+				extensions: "mp4 m4v mkv mov webm avi wmv flv f4v ts m2ts mts mpg mpeg mpe m2v vob \
+					3gp 3g2 ogv ogm rm rmvb asf divx mxf hevc h264 h265 av1",
 			},
 			Preset {
 				name: "Audio",
 				icon: Icon::Music,
 				tint: Tint::Teal,
-				extensions: "mp3 flac aac wav m4a ogg",
+				extensions: "mp3 flac aac m4a m4b m4p wav aiff aif aifc ogg oga opus wma alac ape wv \
+					dsf dff mka mid midi amr ac3 dts caf tta mpc spx au ra",
 			},
 			Preset {
 				name: "Images",
 				icon: Icon::Image,
 				tint: Tint::Yellow,
-				extensions: "jpg jpeg png gif webp svg heic",
+				extensions: "jpg jpeg jpe jfif png apng gif webp avif heic heif heics heifs jxl svg svgz \
+					tif tiff bmp dib ico icns psd psb xcf raw dng cr2 cr3 nef nrw arw orf rw2 raf pef \
+					srw exr hdr tga pcx ppm pgm pbm pnm",
 			},
 			Preset {
 				name: "Documents",
 				icon: Icon::FileText,
 				tint: Tint::Frost,
-				extensions: "pdf doc docx txt md pptx xlsx",
+				extensions: "pdf rtf doc docx docm dot dotx dotm odt ott fodt pages wpd wps abw tex xps \
+					oxps",
+			},
+			Preset {
+				name: "Plain text",
+				icon: Icon::Text,
+				tint: Tint::Teal,
+				extensions: "txt text md markdown mdx rst adoc asciidoc org log nfo",
+			},
+			Preset {
+				name: "Presentations",
+				icon: Icon::Presentation,
+				tint: Tint::Orange,
+				extensions: "ppt pptx pptm pps ppsx ppsm pot potx potm odp otp fodp key",
+			},
+			Preset {
+				name: "Spreadsheets",
+				icon: Icon::FileSpreadsheet,
+				tint: Tint::Green,
+				extensions: "xls xlsx xlsm xlsb xlt xltx xltm ods ots fods numbers csv tsv",
 			},
 			Preset {
 				name: "Ebooks",
 				icon: Icon::BookOpen,
 				tint: Tint::Green,
-				extensions: "epub mobi azw3",
+				extensions: "epub mobi azw azw3 azw4 kfx kpf prc fb2 fb3 lit lrf pdb djvu djv cbz cbr cb7 \
+					cbt ibooks",
 			},
 			Preset {
 				name: "Code",
 				icon: Icon::Code,
 				tint: Tint::Blue,
-				extensions: "rs py ts js go c h cpp java json toml yaml",
+				extensions: "rs py ts tsx js jsx mjs cjs go c h cpp hpp cc cxx hh java kt kts swift m mm \
+					cs fs rb php pl lua dart scala hs ex exs erl clj zig sh bash zsh fish ps1 sql json \
+					toml yaml yml xml html htm css scss less vue svelte ipynb",
 			},
 			Preset {
 				name: "Archives",
 				icon: Icon::Archive,
 				tint: Tint::Orange,
-				extensions: "zip tar gz xz 7z rar",
+				extensions: "zip zipx 7z rar tar gz tgz bz2 tbz2 xz txz zst tzst lz lz4 lzma tlz z cab \
+					arj lha lzh sit sitx ace",
 			},
 			Preset {
 				name: "Programs",
 				icon: Icon::Package,
 				tint: Tint::Red,
-				extensions: "dmg pkg app exe msi deb rpm",
+				extensions: "dmg pkg mpkg app exe msi msix msixbundle appx appxbundle deb rpm appimage \
+					flatpak snap apk aab xapk ipa jar run",
 			},
-			Preset { name: "Disk images", icon: Icon::Disc, tint: Tint::Navy, extensions: "iso img" },
+			Preset {
+				name: "Disk images",
+				icon: Icon::Disc,
+				tint: Tint::Navy,
+				extensions: "iso img dmg bin cue nrg mdf mds toast cdr vhd vhdx vmdk vdi qcow qcow2 wim \
+					esd hdd sparseimage sparsebundle",
+			},
 		]
 	};
 
@@ -199,11 +244,12 @@ impl Category {
 		let preset = Category::find_preset(name)?;
 		let pattern = pattern_for_extensions(&merged_extensions(&preset.base(), &overrides).join(" "));
 		let mut category = Category::new(id, preset.name, preset.icon, &pattern).ok()?;
-		category.tint = preset.tint;
+		category.color = preset.tint.rgb();
 		category.preset = Some((preset, overrides));
 		Some(category)
 	}
 
+	#[cfg(test)]
 	pub fn preset(name: &str) -> Option<Category> {
 		Category::from_preset(0, name, Overrides::default())
 	}
@@ -269,6 +315,17 @@ impl Category {
 	pub fn is_catch_all(&self) -> bool {
 		self.regex.is_none()
 	}
+}
+
+/// The extensions a pattern of the shape `pattern_for_extensions` writes stands for; None for
+/// any other pattern. How a file from before presets kept their lists is recognised.
+pub fn extensions_of_pattern(pattern: &str) -> Option<Vec<String>> {
+	let inner = pattern.strip_prefix(r"(?i)\.(")?.strip_suffix(")$")?;
+	let list: Vec<String> = inner.split('|').map(|e| e.replace('\\', "")).collect();
+	if list.is_empty() || list.iter().any(|e| e.is_empty() || e.contains(['(', ')', '[', '.'])) {
+		return None;
+	}
+	Some(list)
 }
 
 /// `rs, py` or `rs py` as a list: trimmed, a leading dot dropped, lowercase, empties gone.
@@ -396,7 +453,7 @@ impl Filter {
 	/// The state filters' names; a category's is the category's own.
 	pub fn label(self, categories: &[Category]) -> String {
 		match self {
-			Filter::All => "All".to_owned(),
+			Filter::All => "All Tasks".to_owned(),
 			Filter::Downloading => "Downloading".to_owned(),
 			Filter::Unfinished => "Unfinished".to_owned(),
 			Filter::Completed => "Completed".to_owned(),
@@ -406,15 +463,17 @@ impl Filter {
 		}
 	}
 
-	/// The hue a filter's icon shows when lit: All is white, the states take their status colours,
-	/// a category its own.
-	pub fn tint(self, categories: &[Category]) -> Tint {
+	/// The color a filter's icon shows when lit: All is white, the states take their status
+	/// colors, a category its own.
+	pub fn color(self, categories: &[Category]) -> u32 {
 		match self {
-			Filter::All => Tint::Snow,
-			Filter::Downloading => Tint::Frost,
-			Filter::Unfinished => Tint::Yellow,
-			Filter::Completed => Tint::Green,
-			Filter::Category(id) => categories.iter().find(|c| c.id == id).map_or(Tint::Snow, |c| c.tint),
+			Filter::All => Tint::Snow.rgb(),
+			Filter::Downloading => Tint::Frost.rgb(),
+			Filter::Unfinished => Tint::Yellow.rgb(),
+			Filter::Completed => Tint::Green.rgb(),
+			Filter::Category(id) => {
+				categories.iter().find(|c| c.id == id).map_or(Tint::Snow.rgb(), |c| c.color)
+			}
 		}
 	}
 
@@ -613,20 +672,28 @@ mod tests {
 	}
 
 	#[test]
+	fn a_pattern_of_extensions_reads_back_as_its_list() {
+		assert_eq!(extensions_of_pattern(r"(?i)\.(rs|c\+\+)$").unwrap(), ["rs", "c++"]);
+		assert_eq!(extensions_of_pattern(r"(?i)^ubuntu"), None);
+		assert_eq!(extensions_of_pattern(r"(?i)\.(a|(b))$"), None);
+	}
+
+	#[test]
 	fn a_preset_keeps_the_built_in_list_apart_from_the_users_changes() {
 		let mut video = Category::preset("Video").unwrap();
 		video.set_extension("mkv", false);
-		video.set_extension("ts", true);
-		video.set_extension(".TS", true);
-		assert_eq!(video.extensions(), ["mp4", "mov", "webm", "avi", "ts"]);
-		assert!(!video.matches(&named("a.mkv")) && video.matches(&named("a.ts")));
+		video.set_extension("xyz", true);
+		video.set_extension(".XYZ", true);
+		let list = video.extensions();
+		assert!(!list.contains(&"mkv".to_owned()) && list.last() == Some(&"xyz".to_owned()));
+		assert!(!video.matches(&named("a.mkv")) && video.matches(&named("a.xyz")));
 		let (_, overrides) = video.preset.clone().unwrap();
 		assert_eq!(
 			(overrides.added, overrides.removed),
-			(vec!["ts".to_owned()], vec!["mkv".to_owned()])
+			(vec!["xyz".to_owned()], vec!["mkv".to_owned()])
 		);
 		video.set_extension("mkv", true);
-		video.set_extension("ts", false);
+		video.set_extension("xyz", false);
 		assert!(video.preset.as_ref().unwrap().1.is_empty());
 		video.reset_preset();
 		assert_eq!(video.pattern, Category::preset("Video").unwrap().pattern);

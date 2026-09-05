@@ -31,7 +31,7 @@ no longer exists. The mirror's readme still says one dependency is enough; it is
 
 `gpui_platform` is depended on with `features = ["font-kit"]`. Without it the macOS backend
 draws no glyphs at all and says so once at warn level through `log` -- and with nothing
-listening, the first build of this application was a window of coloured bars and no words.
+listening, the first build of this application was a window of colored bars and no words.
 `env_logger` is installed at warn level in `main` so the next message of that kind reaches the
 terminal instead of nowhere.
 
@@ -41,8 +41,8 @@ The crate source is on disk under `~/.cargo/registry` once fetched, and Zed's `c
 are the best documentation there is. Two facts learned from it that are not written anywhere
 else:
 
-- `Svg` paints only when the colour is set on the svg element itself; it does not inherit the
-  surrounding text colour. See [icons.md](icons.md).
+- `Svg` paints only when the color is set on the svg element itself; it does not inherit the
+  surrounding text color. See [icons.md](icons.md).
 - gpui_macos sizes the traffic-light strip to `button height + 2 * y` and hangs it from the top
   of the window, so the `y` in `TitlebarOptions::traffic_light_position` is the padding on both
   sides. See [ui.md](ui.md).

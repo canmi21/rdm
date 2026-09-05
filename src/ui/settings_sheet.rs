@@ -1,4 +1,4 @@
-//! Settings are a sheet inside the main window, like Add URL; only a download gets a window of
+//! Settings are a sheet inside the main window, like Add Task; only a download gets a window of
 //! its own, because a download is a thing to keep beside the list while it moves.
 
 use gpui::{Context, IntoElement, deferred, div, prelude::*, px};
