@@ -11,6 +11,14 @@ pub const APPLICATION: &str = "rdm";
 /// state directory.
 pub const BUNDLE_ID: &str = "app.canmi.rdm";
 
+/// Which build this is, read at compile time from the release workflow's environment: the run
+/// number, which only grows, and the commit. None in a build made by hand. Every build of one
+/// day's version differs in these alone, and the update check compares the number and nothing
+/// else. See spec/release.md.
+pub const BUILD: Option<&str> = option_env!("GITHUB_RUN_NUMBER");
+pub const COMMIT: Option<&str> = option_env!("GITHUB_SHA");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[cfg(test)]
 mod tests {
 	use super::*;

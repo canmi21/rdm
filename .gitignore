@@ -11,3 +11,6 @@
 # wrote a set into the root and three commits carried them before it was caught.
 *.downloading
 *.rdm
+
+# What pkgs/package.sh wraps a release build into; the workflow uploads it, nothing commits it.
+/dist

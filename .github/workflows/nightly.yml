@@ -1,0 +1,128 @@
+# Every push to main becomes the nightly: one build per system, then one job that publishes
+# them together under the moving `nightly` tag. Do not rename this file: the run number the
+# builds are ordered by belongs to the workflow's file name and starts again from one under a
+# new one. See spec/release.md.
+name: nightly
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A push while the last one is still building cancels it: only the newest commit is worth a
+# nightly, and two publishing at once would race for the tag.
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      # One system failing to build is that system's problem; the others finish and their
+      # files are kept as artifacts to look at. Publishing waits for all four.
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: macos-arm64 }
+          - { os: windows-latest, target: windows-x64 }
+          - { os: ubuntu-latest, target: linux-x64 }
+          # ARM has no rolling label; move this to the next LTS when GitHub offers it.
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # What GPUI links against on Linux: the keyboard, the two display protocols, fonts,
+      # sound and Vulkan. Ubuntu's LTS is the glibc baseline a build asks of the machine it
+      # runs on.
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libx11-xcb-dev \
+            libxcb1-dev libfontconfig1-dev libfreetype-dev libasound2-dev libvulkan-dev \
+            libssl-dev pkg-config cmake clang
+
+      # aws-lc, under rustls, assembles part of itself and needs nasm to.
+      - name: Windows assembler
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+
+      - name: Name the build by the day
+        shell: bash
+        run: python3 pkgs/version.py
+
+      - name: Lucide icons
+        shell: bash
+        run: python3 .mise/tasks/icons
+
+      - name: Test
+        shell: bash
+        run: cargo test
+
+      - name: Build
+        shell: bash
+        run: cargo build --release
+
+      - name: Package
+        shell: bash
+        run: pkgs/package.sh ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      # A run that was cancelled late, or that ran long, must not overwrite a newer one's
+      # files: the build number only moves forward.
+      - name: Only forward
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          published=$(gh release download nightly --pattern latest.json --output - 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"])' || echo 0)
+          echo "published build $published, this run ${{ github.run_number }}"
+          if [ "${{ github.run_number }}" -le "$published" ]; then
+            echo "a newer build is already published; nothing to do"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: latest.json
+        if: env.SKIP != '1'
+        run: python3 pkgs/latest.py nightly "$(cat dist/version.txt)" "${{ github.run_number }}" "${{ github.sha }}"
+
+      - name: Move the tag
+        if: env.SKIP != '1'
+        run: |
+          git tag -f nightly "${{ github.sha }}"
+          git push -f origin nightly
+
+      - name: Upload
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload nightly dist/rdm-* dist/latest.json --clobber
+          gh release edit nightly --target "${{ github.sha }}" --prerelease

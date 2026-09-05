@@ -72,6 +72,11 @@ struct CategoryState {
 
 #[derive(Serialize)]
 struct State<'a> {
+	/// The build as identity.rs knows it: the version, and the run number and commit when made
+	/// by the release workflow.
+	version: &'static str,
+	build: Option<&'static str>,
+	commit: Option<&'static str>,
 	filter: String,
 	categories: Vec<CategoryState>,
 	status: Option<&'static str>,
@@ -101,6 +106,9 @@ impl Rdm {
 			.collect();
 		let settings = self.settings_open();
 		let state = State {
+			version: crate::identity::VERSION,
+			build: crate::identity::BUILD,
+			commit: crate::identity::COMMIT,
 			filter: self.filter.label(&self.categories),
 			categories: self
 				.categories
