@@ -5,7 +5,7 @@ mod add_dialog;
 pub mod download_window;
 pub mod icon;
 pub mod list;
-pub mod settings_window;
+mod settings_sheet;
 pub mod sidebar;
 mod status_bar;
 pub mod text_input;

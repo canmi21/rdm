@@ -1,0 +1,72 @@
+//! Settings are a sheet inside the main window, like Add URL; only a download gets a window of
+//! its own, because a download is a thing to keep beside the list while it moves.
+
+use gpui::{Context, IntoElement, deferred, div, prelude::*, px};
+
+use crate::app::Rdm;
+use crate::ui::icon::Icon;
+use crate::ui::icon_button;
+
+// TODO: every row here is a label until there is a setting behind it and a store to keep it in.
+const ROWS: [(&str, &str); 4] = [
+	("Download folder", "~/Downloads"),
+	("Concurrent downloads", "3"),
+	("Speed limit", "Off"),
+	("On completion", "Do nothing"),
+];
+
+impl Rdm {
+	pub(crate) fn toggle_settings(&mut self, open: bool, cx: &mut Context<Self>) {
+		self.settings_open = open;
+		cx.notify();
+	}
+
+	pub(crate) fn settings_sheet(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let rows = ROWS.iter().map(|(name, value)| {
+			div()
+				.flex()
+				.justify_between()
+				.items_center()
+				.py_1p5()
+				.border_b_1()
+				.border_color(p.border)
+				.child(*name)
+				.child(div().text_color(p.muted).child(*value))
+		});
+		deferred(
+			div().absolute().inset_0().flex().items_center().justify_center().bg(p.dim).child(
+				div()
+					.id("settings-sheet")
+					.flex()
+					.flex_col()
+					.gap_2()
+					.w(px(440.0))
+					.p_4()
+					.rounded_lg()
+					.border_1()
+					.border_color(p.border)
+					.bg(p.panel)
+					.shadow_lg()
+					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.toggle_settings(false, cx)))
+					.child(
+						div()
+							.flex()
+							.items_center()
+							.justify_between()
+							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Settings"))
+							.child(icon_button(
+								p,
+								"settings-close",
+								Icon::X,
+								"Close",
+								true,
+								cx.listener(|this, _, _, cx| this.toggle_settings(false, cx)),
+							)),
+					)
+					.children(rows),
+			),
+		)
+		.priority(2)
+	}
+}

@@ -66,7 +66,7 @@ struct State<'a> {
 	ascending: bool,
 	view: View,
 	selected: Option<u64>,
-	/// Downloads with a window open, and whether Settings is.
+	/// Downloads with a window open, and whether the Settings sheet is up.
 	windows: Vec<u64>,
 	settings: bool,
 	downloads: &'a [Download],
@@ -84,7 +84,7 @@ impl Rdm {
 			.filter(|(_, handle)| handle.update(cx, |_, _, _| ()).is_ok())
 			.map(|(id, _)| *id)
 			.collect();
-		let settings = self.settings.as_ref().is_some_and(|h| h.update(cx, |_, _, _| ()).is_ok());
+		let settings = self.settings_open;
 		let state = State {
 			filter: self.filter.label(),
 			status: self.status.map(Status::label),
@@ -127,7 +127,7 @@ impl Rdm {
 					_ => self.remove(id, cx),
 				}
 			}
-			"settings" => self.open_settings(cx),
+			"settings" => self.toggle_settings(!self.settings_open, cx),
 			"filter" => match Filter::all().find(|f| f.label().eq_ignore_ascii_case(&label)) {
 				Some(filter) => self.set_filter(filter, cx),
 				None => return failure("filter takes a sidebar label"),

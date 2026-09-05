@@ -13,7 +13,6 @@ use serde::Serialize;
 
 use crate::download::{self, Download, Filter, Status};
 use crate::ui::download_window::DownloadWindow;
-use crate::ui::settings_window::SettingsWindow;
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{self, Palette};
 
@@ -86,7 +85,7 @@ pub struct Rdm {
 	/// The windows opened beside this one. A handle stays here after its window closes and is
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
-	pub(crate) settings: Option<WindowHandle<SettingsWindow>>,
+	pub(crate) settings_open: bool,
 	/// The Add URL sheet's field while the sheet is up.
 	pub(crate) adding: Option<Entity<TextInput>>,
 	_tick: Task<()>,
@@ -122,7 +121,7 @@ impl Rdm {
 			palette: theme::palette(true),
 			viewport: gpui::Size::default(),
 			open: HashMap::new(),
-			settings: None,
+			settings_open: false,
 			adding: None,
 			_tick: tick,
 		}
@@ -331,20 +330,6 @@ impl Rdm {
 		});
 	}
 
-	pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
-		if let Some(handle) = &self.settings
-			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
-		{
-			return;
-		}
-		let rdm = cx.entity();
-		cx.defer(move |cx| {
-			let options = child_window(cx, "Settings", size(px(420.0), px(200.0)));
-			let handle = cx.open_window(options, |_, cx| cx.new(|_| SettingsWindow)).ok();
-			rdm.update(cx, |this, _| this.settings = handle);
-		});
-	}
-
 	// TODO: the mock loops a download back to the start when it fills, so there is always movement
 	// to look at; the engine will complete it instead.
 	fn advance(&mut self) {
@@ -386,6 +371,7 @@ impl Render for Rdm {
 			.child(self.render_status_bar(cx))
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when_some(self.adding.clone(), |s, input| s.child(self.add_dialog(input, cx)))
+			.when(self.settings_open, |s| s.child(self.settings_sheet(cx)))
 	}
 }
 

@@ -99,7 +99,7 @@ impl Rdm {
 						Icon::Settings,
 						"Settings",
 						true,
-						cx.listener(|this, _, _, cx| this.open_settings(cx)),
+						cx.listener(|this, _, _, cx| this.toggle_settings(true, cx)),
 					)),
 			)
 	}

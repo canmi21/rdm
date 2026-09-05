@@ -91,10 +91,16 @@ A native application opens windows freely, and rdm does: the main window is the 
 else, and anything about one item gets a window of its own. Double-clicking a row, or the name at
 the right of the status bar, opens that download in a window that follows it live -- progress,
 speed, remaining time, and the same pause, resume and remove actions -- and a second double-click
-brings that window forward rather than opening another. The gear at the toolbar's right opens
-Settings the same way. Secondary windows keep the system titlebar: they are documents, and the
-main window is the application, so closing the main window quits and closing a secondary one
-closes only itself.
+brings that window forward rather than opening another. Secondary windows keep the system titlebar: they are
+documents, and the main window is the application, so closing the main window quits and closing a
+secondary one closes only itself.
+
+**Only a download gets a window; everything else is a sheet.** Settings and Add URL open as a
+card over the dimmed list inside the main window. The distinction is whether the thing is worth
+keeping beside the list while the list moves: a download is, and its window follows it live; a
+form is filled in and dismissed, and a window for it is a window to find and close afterwards.
+Add URL was tried as a sheet first and read better than the window it replaced, so Settings
+followed.
 
 The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
 was in the way whenever nothing was selected. The status bar it became is an editor's: one line
@@ -102,7 +108,7 @@ across the whole window, split where the sidebar is. Under the sidebar, the four
 pause, resume, remove -- as icons that are always there and lit only when the selection allows
 them. Under the list, from the left: a summary of the collection, how many and how fast; the
 selected download as a link to its window; and at the corner, evenly spaced because they are
-looked for together, the status funnel, the view switch and Settings.
+looked for together, the status funnel, the view switch and the Settings gear.
 
 **The toolbar is two labelled buttons.** Add URL, and one button that says what the selection can
 do next: Pause while it downloads, Resume while it is paused, queued or failed, Remove once it is
@@ -127,9 +133,7 @@ the update, in `Rdm::open_download`.
 ## What is deliberately not there yet
 
 The rows are sample data advanced by a timer so the list moves; there is no transfer engine,
-no persistence, and the Settings window is labels with nothing behind them. Add URL is the one
-thing that is not a window: a sheet inside the main window, one field over the dimmed list, tried
-this way to see how it reads against the windows everything else opens. It queues what is typed
+no persistence, and the Settings window is labels with nothing behind them. Add URL is a sheet with one field over the dimmed list. It queues what is typed
 under the address's last path segment; the engine will resolve the real name and size. Enter
 adds, Escape or a click outside closes. The mock
 rows that download loop back to zero when they fill, so there is always movement to look at. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
