@@ -185,13 +185,18 @@ impl Rdm {
 		self.resizing = Some(Resize { column, from_x: at, from_width: self.width(column) });
 	}
 
-	/// Called for every pointer move over the window while a drag is on; a no-op otherwise.
-	pub(crate) fn resize_to(&mut self, at: gpui::Pixels, cx: &mut Context<Self>) {
-		if let Some(resize) = self.resizing {
-			let width = resize.from_width + f32::from(at - resize.from_x);
-			self.widths[resize.column.index()] = width.max(Column::MIN);
-			cx.notify();
+	/// Called for every pointer move over the window. The handle is a column's left edge and the
+	/// table is anchored at its right, so moving the boundary right narrows the column. A move
+	/// with the button up ends the drag: the release happened outside the window, unseen.
+	pub(crate) fn resize_to(&mut self, at: gpui::Pixels, pressed: bool, cx: &mut Context<Self>) {
+		let Some(resize) = self.resizing else { return };
+		if !pressed {
+			self.end_resize(cx);
+			return;
 		}
+		let width = resize.from_width - f32::from(at - resize.from_x);
+		self.widths[resize.column.index()] = width.max(Column::MIN);
+		cx.notify();
 	}
 
 	pub(crate) fn end_resize(&mut self, cx: &mut Context<Self>) {
@@ -348,11 +353,9 @@ impl Render for Rdm {
 			.text_size(px(13.0))
 			.bg(p.window)
 			.text_color(p.text)
-			.on_mouse_move(
-				cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-					this.resize_to(event.position.x, cx)
-				}),
-			)
+			.on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+				this.resize_to(event.position.x, event.pressed_button == Some(gpui::MouseButton::Left), cx)
+			}))
 			.on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| this.end_resize(cx)))
 			.child(self.render_toolbar(cx))
 			.child(
@@ -464,7 +467,11 @@ mod tests {
 			click_count: 1,
 		});
 		rdm.read_with(&cx, |rdm, _| {
-			assert_eq!(rdm.width(Column::Size), before + 40.0);
+			assert_eq!(
+				rdm.width(Column::Size),
+				before - 40.0,
+				"the boundary followed the pointer right, so the column narrowed"
+			);
 			assert!(rdm.resizing.is_none(), "the drag ends with the button");
 		});
 	}

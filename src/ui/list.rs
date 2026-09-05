@@ -62,20 +62,22 @@ impl Rdm {
 			)
 	}
 
-	/// Column titles that sort, each followed by a handle that drags its width. The ordered column
-	/// carries a chevron in a slot every title reserves, so ordering by another does not shift it.
+	/// Column titles that sort, each preceded by a handle on its left edge: the table is anchored
+	/// at its right, so the left edge is the one that can move, and dragging the boundary right
+	/// narrows the column as the pointer expects. The ordered column carries a chevron in a slot
+	/// every title reserves, so ordering by another does not shift it.
 	fn header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let cells: Vec<_> = COLUMNS
 			.iter()
 			.flat_map(|(column, key, title)| {
 				[
+					self.resize_handle(*column, cx).into_any_element(),
 					self
-						.header_cell(*key, title, cx)
+						.header_cell(*key, title, true, cx)
 						.w(px(self.width(*column)))
 						.justify_end()
 						.into_any_element(),
-					self.resize_handle(*column, cx).into_any_element(),
 				]
 			})
 			.collect();
@@ -91,20 +93,23 @@ impl Rdm {
 			.border_b_1()
 			.border_color(p.border)
 			.child(div().w(px(14.0)).flex_none())
-			.child(div().w(px(12.0)).flex_none())
-			.child(self.header_cell(SortKey::Name, "Name", cx).flex_1().min_w_0())
+			.child(self.header_cell(SortKey::Name, "Name", false, cx).flex_1().min_w_0().pl(px(12.0)))
 			.children(cells)
 	}
 
+	/// The chevron's slot sits on the side the text is not aligned to, so the title's edge is the
+	/// column's edge and lines up with the cells below.
 	fn header_cell(
 		&self,
 		key: SortKey,
 		title: &'static str,
+		end: bool,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		let p = self.palette;
 		let active = self.sort == key;
 		let chevron = if self.ascending { Icon::ChevronUp } else { Icon::ChevronDown };
+		let slot = div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3()));
 		div()
 			.id(SharedString::from(format!("sort:{title}")))
 			.role(Role::ColumnHeader)
@@ -118,11 +123,10 @@ impl Rdm {
 			.when(active, |s| s.text_color(p.text))
 			.hover(move |s| s.text_color(p.text))
 			.on_click(cx.listener(move |this, _, _, cx| this.sort_by(key, cx)))
-			.child(title)
-			.child(div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3())))
+			.map(|s| if end { s.child(slot).child(title) } else { s.child(title).child(slot) })
 	}
 
-	/// The gap between two columns, draggable: the column to its left follows the pointer.
+	/// The boundary at a column's left edge, draggable: the column follows the pointer.
 	fn resize_handle(&self, column: Column, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let dragging = self.resizing.is_some_and(|r| r.column == column);
@@ -172,10 +176,10 @@ impl Rdm {
 	fn table_row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let tint = status_color(p, download.status);
-		// Every fixed cell is followed by the same 12px the header spends on a drag handle, so the
+		// Every fixed cell is preceded by the same 12px the header spends on a drag handle, so the
 		// columns line up under their titles.
 		let cell = |column: Column| {
-			div().w(px(self.width(column) + 12.0)).pr(px(12.0)).flex_none().flex().justify_end().text_xs()
+			div().w(px(self.width(column) + 12.0)).pl(px(12.0)).flex_none().flex().justify_end().text_xs()
 		};
 		self
 			.item(download, cx)
@@ -184,8 +188,7 @@ impl Rdm {
 			.h(px(26.0))
 			.px_2()
 			.child(icon(Icon::for_kind(download.kind()), p.muted).size_3p5())
-			.child(div().w(px(12.0)).flex_none())
-			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
+			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child(download.name.clone()))
 			.child(cell(Column::Size).text_color(p.muted).whitespace_nowrap().child(size_cell(download)))
 			.child(
 				cell(Column::Progress).items_center().gap_2().child(progress_bar(p, download, tint)).child(

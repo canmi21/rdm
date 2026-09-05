@@ -36,10 +36,14 @@ launcher's. The other two trade completeness for density or for a glance.
 **The table's header sorts, and its columns are dragged to width.** Clicking a column title orders
 by it; clicking it again flips the direction, marked by a chevron in a slot every title reserves,
 so ordering by another column does not push its neighbours over -- it did, and the header jumped.
-The default order is the Added column, ascending. Between titles sits a handle that drags the
-column to its left; the widths live on the view, and every row spends the same twelve points on
-the handle's gap so cells stay under their titles. A drag is tracked on the window root, not on
-the handle, because the pointer leaves the handle the moment it moves. A funnel at the
+The default order is the Added column, ascending. A handle sits at each column's left edge and
+drags that column: the table is anchored at its right and the name column absorbs the rest, so a
+column's left edge is the one that can move, and a boundary that follows the pointer is what a
+drag means -- the first cut put the handle on the right and read as reversed. The widths live on
+the view, and every row spends the same twelve points on the handle's gap so cells stay under
+their titles. A drag is tracked on the window root, not on the handle, because the pointer leaves
+the handle the moment it moves; a move with the button up ends it, since a release outside the
+window is never seen and would otherwise leave the next pointer movement resizing on its own. A funnel at the
 status bar's corner opens a menu of statuses that cuts within whatever the sidebar selected --
 one at a time, with All to clear it -- and the funnel stays lit, naming the status, while one is
 chosen. The statuses were a row of chips above the list first, then a row in the status bar, and
