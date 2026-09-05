@@ -3,3 +3,6 @@
 
 # OS and editor noise.
 .DS_Store
+
+# Fetched by `mise run icons` from the list in src/ui/icon.rs; vendored content, not source.
+/assets/icons/

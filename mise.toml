@@ -1,13 +1,18 @@
+# Anything that builds the binary depends on icons, so a fresh clone needs no step before it runs;
+# the fetch skips every file already on disk, so it costs nothing after the first time.
 [tasks.check]
 description = "Type-check the crate and its targets"
+depends = ["icons"]
 run = "cargo check --all-targets"
 
 [tasks.lint]
 description = "Lint the crate, warnings denied"
+depends = ["icons"]
 run = "cargo clippy --all-targets -- -D warnings"
 
 [tasks.test]
 description = "Run the test suite"
+depends = ["icons"]
 run = "cargo test"
 
 [tasks.verify]
@@ -25,4 +30,5 @@ watchexec = "2"
 # account of both.
 [tasks.dev]
 description = "Open the window, rebuilding and reopening it as the source changes"
+depends = ["icons"]
 run = "watchexec --restart --project-origin . --exts rs,toml -- cargo run"

@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+#MISE description="Fetch the Lucide icons the source names into assets/icons: `icons [--check]`"
+"""The icons are not committed; the list of them is, in `src/ui/icon.rs`, and this fetches it.
+
+`Icon::path` names every file the binary embeds, so that match is the declaration and there is
+no second list to keep in step with it. This reads those paths out of the source, downloads
+each from Lucide at the pinned release below, and writes the licence beside them. It is quick
+to skip: a file already on disk is not fetched again, so `check` and `dev` can depend on it and
+pay nothing on a machine that has them.
+
+`--check` reports what is missing without fetching, for a run with no network.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+import sys
+import urllib.error
+import urllib.request
+
+sys.dont_write_bytecode = True
+
+# An exact release rather than `main`: an icon is vendored content, and a redraw upstream would
+# otherwise change the binary on the next fresh clone with nothing in this repository saying so.
+# Raise it on purpose, and look at what changed.
+LUCIDE = "1.41.0"
+RAW = f"https://raw.githubusercontent.com/lucide-icons/lucide/{LUCIDE}"
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SOURCE = ROOT / "src" / "ui" / "icon.rs"
+ASSETS = ROOT / "assets"
+PATH = re.compile(r'"(icons/[a-z0-9-]+\.svg)"')
+
+
+def declared() -> list[str]:
+	found = sorted(set(PATH.findall(SOURCE.read_text())))
+	if not found:
+		raise SystemExit(f"error: no icon paths found in {SOURCE.relative_to(ROOT)}")
+	return found
+
+
+def fetch(url: str, target: pathlib.Path) -> None:
+	try:
+		with urllib.request.urlopen(url, timeout=20) as response:
+			target.write_bytes(response.read())
+	except urllib.error.HTTPError as error:
+		raise SystemExit(f"error: {url} -> {error.code}; is the icon named as Lucide names it?") from error
+
+
+def main(argv: list[str]) -> int:
+	check = "--check" in argv
+	wanted = [(f"{RAW}/{path}", ASSETS / path) for path in declared()]
+	wanted.append((f"{RAW}/LICENSE", ASSETS / "icons" / "LICENSE"))
+	missing = [(url, target) for url, target in wanted if not target.is_file()]
+	if check:
+		for _, target in missing:
+			print(f"missing {target.relative_to(ROOT)}")
+		print(f"{len(wanted) - len(missing)} of {len(wanted)} present")
+		return 1 if missing else 0
+	for url, target in missing:
+		target.parent.mkdir(parents=True, exist_ok=True)
+		print(f"fetching {target.relative_to(ROOT)}")
+		fetch(url, target)
+	print(f"{len(missing)} fetched, {len(wanted)} present")
+	return 0
+
+
+if __name__ == "__main__":
+	raise SystemExit(main(sys.argv[1:]))
