@@ -1,5 +1,5 @@
 use gpui::{
-	ClickEvent, Context, Div, Hsla, IntoElement, SharedString, Stateful, div, prelude::*, px,
+	ClickEvent, Context, Div, Hsla, IntoElement, Role, SharedString, Stateful, div, prelude::*, px,
 	relative,
 };
 
@@ -82,11 +82,12 @@ impl Rdm {
 					self.downloads.iter().filter(|d| self.filter.matches(d) && d.status == status).count();
 				chip(
 					p,
-					status.label(),
+					SharedString::from(format!("chip:{}", status.label())),
 					format!("{} {count}", status.label()),
 					self.status == Some(status),
 					cx.listener(move |this, _, _, cx| this.toggle_status(status, cx)),
 				)
+				.debug_selector(|| format!("chip:{}", status.label()))
 			})
 			.collect();
 		div().flex().items_center().gap_1().px_3().pt_2().pb_1().children(chips)
@@ -125,7 +126,10 @@ impl Rdm {
 		let active = self.sort == key;
 		let chevron = if self.ascending { Icon::ChevronUp } else { Icon::ChevronDown };
 		div()
-			.id(title)
+			.id(SharedString::from(format!("sort:{title}")))
+			.role(Role::ColumnHeader)
+			.aria_label(format!("Sort by {title}"))
+			.debug_selector(|| format!("sort:{title}"))
 			.flex()
 			.items_center()
 			.gap_0p5()
@@ -144,6 +148,10 @@ impl Rdm {
 		let selected = self.selected == Some(id);
 		div()
 			.id(("download", id))
+			.role(Role::ListItem)
+			.aria_label(download.name.clone())
+			.aria_selected(selected)
+			.debug_selector(|| format!("row:{id}"))
 			.rounded_sm()
 			.cursor_pointer()
 			.when(selected, |s| s.bg(p.selection))

@@ -10,7 +10,7 @@ mod status_bar;
 pub mod theme;
 pub mod toolbar;
 
-use gpui::{ClickEvent, Div, ElementId, Stateful, div, prelude::*};
+use gpui::{ClickEvent, Div, ElementId, Role, Stateful, div, prelude::*};
 
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
@@ -27,6 +27,9 @@ pub fn button(
 	let color = if enabled { p.text } else { p.muted };
 	let base = div()
 		.id(id)
+		.role(Role::Button)
+		.aria_label(label)
+		.debug_selector(|| format!("button:{label}"))
 		.flex()
 		.items_center()
 		.gap_1()
@@ -43,15 +46,19 @@ pub fn button(
 	}
 }
 
-/// An icon alone, for the toolbar's corners.
+/// An icon alone, for the toolbar's corners; the label is what assistive technology reads.
 pub fn icon_button(
 	p: Palette,
 	id: impl Into<ElementId>,
 	glyph: Icon,
+	label: &'static str,
 	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
 	div()
 		.id(id)
+		.role(Role::Button)
+		.aria_label(label)
+		.debug_selector(|| format!("button:{label}"))
 		.flex()
 		.items_center()
 		.justify_center()
@@ -71,8 +78,12 @@ pub fn chip(
 	on: bool,
 	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
+	let label = label.into();
 	div()
 		.id(id)
+		.role(Role::CheckBox)
+		.aria_label(label.clone())
+		.aria_toggled(if on { gpui::Toggled::True } else { gpui::Toggled::False })
 		.px_1p5()
 		.py_px()
 		.rounded_sm()
@@ -82,5 +93,5 @@ pub fn chip(
 		.when(on, |s| s.bg(p.selection))
 		.when(!on, move |s| s.hover(move |s| s.bg(p.hover)))
 		.on_click(on_click)
-		.child(label.into())
+		.child(label)
 }

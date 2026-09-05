@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, Role, div, prelude::*, px};
 
 use crate::app::{Rdm, View};
 use crate::download::Status;
@@ -65,6 +65,7 @@ impl Rdm {
 				p,
 				"settings",
 				Icon::Settings,
+				"Settings",
 				cx.listener(|this, _, _, cx| this.open_settings(cx)),
 			))
 	}
@@ -80,6 +81,10 @@ impl Rdm {
 				let color = if active { p.text } else { p.muted };
 				div()
 					.id(view_id(view))
+					.role(Role::RadioButton)
+					.aria_label(format!("View: {view:?}"))
+					.aria_selected(active)
+					.debug_selector(|| format!("view:{view:?}"))
 					.flex()
 					.items_center()
 					.justify_center()

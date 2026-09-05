@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, Role, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::download::{Status, format_speed};
@@ -35,6 +35,9 @@ impl Rdm {
 				s.child(
 					div()
 						.id("open-selected")
+						.role(Role::Button)
+						.aria_label("Open selected")
+						.debug_selector(|| "button:Open selected".to_owned())
 						.flex()
 						.items_center()
 						.gap_1()

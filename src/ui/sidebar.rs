@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, Role, SharedString, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::download::{Filter, Kind};
@@ -28,7 +28,11 @@ impl Rdm {
 		let active = self.filter == filter;
 		let count = self.downloads.iter().filter(|d| filter.matches(d)).count();
 		div()
-			.id(filter.label())
+			.id(SharedString::from(format!("filter:{}", filter.label())))
+			.role(Role::Tab)
+			.aria_label(format!("Filter: {}", filter.label()))
+			.aria_selected(active)
+			.debug_selector(|| format!("filter:{}", filter.label()))
 			.flex()
 			.justify_between()
 			.items_center()
