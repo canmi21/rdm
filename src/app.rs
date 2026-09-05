@@ -261,8 +261,24 @@ impl Rdm {
 	/// at launch and whenever the folder changes; true when a row was added.
 	pub(crate) fn import_strays(&mut self) -> bool {
 		let Some(directory) = self.paths.as_ref().map(|p| p.downloads.clone()) else { return false };
+		let found = engine::control::find(&directory);
+		self.import_found(found)
+	}
+
+	/// The same, for the files the watcher named: each that is one of a download's two files is
+	/// looked at on its own, so a change to one file costs one look and not a read of the folder.
+	pub(crate) fn import_paths(&mut self, paths: &[std::path::PathBuf]) -> bool {
+		let mut targets: Vec<std::path::PathBuf> =
+			paths.iter().filter_map(|p| engine::control::target_of(p)).collect();
+		targets.sort();
+		targets.dedup();
+		let found = targets.iter().filter_map(|t| engine::control::find_one(t)).collect();
+		self.import_found(found)
+	}
+
+	fn import_found(&mut self, found: Vec<engine::Found>) -> bool {
 		let mut added = false;
-		for found in engine::control::find(&directory) {
+		for found in found {
 			let name = found.target.file_name().map(|n| n.to_string_lossy().into_owned());
 			let Some(name) = name else { continue };
 			if self.downloads.iter().any(|d| d.name == name || d.url == found.control.url) {
@@ -629,8 +645,11 @@ impl Rdm {
 			self.apply(event);
 			changed = true;
 		}
-		// The folder changed and has been quiet since: look for plans that arrived.
-		if self.watcher.as_ref().is_some_and(|w| w.try_signal()) && self.import_strays() {
+		// The folder changed and has been quiet since: look at the files that changed, and only
+		// those, for a plan that arrived.
+		if let Some(paths) = self.watcher.as_ref().and_then(|w| w.try_signal())
+			&& self.import_paths(&paths)
+		{
 			changed = true;
 		}
 		if changed {

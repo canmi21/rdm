@@ -40,6 +40,12 @@ spend more on setup than transfer. This is what "automatic" multi-connection mea
 non-automatic mode cuts the span into `max` equal pieces at the start, and single-connection is
 `max = 1`.
 
+The segments sit in the plan in the order they were made, not the order they lie in the file:
+a stolen half is made after the segments on either side of it. Anything that judges a plan --
+the check that it covers its span exactly once before a plan from disk is believed -- sorts
+by position first. The first version of that check did not, and refused every plan a
+multi-connection download had written.
+
 The planner is pure arithmetic in `engine/segments.rs`, tested without a network. It is also what is
 serialised beside a partial file so that a download survives the process; the file's shape is
 the planner's, and the reasons above are why it can be.

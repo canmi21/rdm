@@ -134,8 +134,12 @@ impl Plan {
 	/// the span exactly once, in order, and none claims more than its length. A plan that fails
 	/// this is not one to continue from.
 	pub fn is_consistent(&self) -> bool {
+		// Segments sit in the vector in the order they were made, and a stolen half is made
+		// after the segments it lies between; only their positions are in order.
+		let mut segments = self.segments.clone();
+		segments.sort_by_key(|s| s.span.start);
 		let mut at = self.span.start;
-		for segment in &self.segments {
+		for segment in &segments {
 			if segment.span.start != at
 				|| segment.span.end < segment.span.start
 				|| segment.done > segment.span.len()
@@ -231,6 +235,18 @@ mod tests {
 		short.segments.pop();
 		assert!(!short.is_consistent(), "the span is not covered");
 		assert!(!Plan { span: Span::new(0, 10), segments: vec![] }.is_consistent());
+		// A plan that grew by stealing has its later segments out of positional order, and is
+		// consistent all the same; a real one was refused before this was checked.
+		let mut grown = Plan::whole(Span::new(0, 1000));
+		grown.segments[0].done = 100;
+		grown.steal(10);
+		grown.segments[1].done = 50;
+		grown.steal(10);
+		assert!(
+			grown.segments[2].span.start > grown.segments[1].span.start
+				|| grown.segments[1].span.start > grown.segments[0].span.start
+		);
+		assert!(grown.is_consistent());
 	}
 
 	#[test]

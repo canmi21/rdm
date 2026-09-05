@@ -3,7 +3,8 @@
 //! files is one rescan and not a hundred. Reads and other events that change nothing are
 //! dropped before they are counted. See spec/state.md.
 
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -17,19 +18,19 @@ pub const QUIET: Duration = Duration::from_millis(210);
 /// A folder under watch. Dropping it stops the watch; the signal channel then closes.
 pub struct Watcher {
 	_watcher: notify::RecommendedWatcher,
-	signals: mpsc::Receiver<()>,
+	signals: mpsc::Receiver<Vec<PathBuf>>,
 }
 
 impl Watcher {
 	/// Watches `directory`, not its subfolders. `try_signal` answers once per quiet spell that
-	/// followed a change.
+	/// followed a change, with the paths that changed.
 	pub fn new(directory: &Path) -> notify::Result<Watcher> {
 		let (events, incoming) = mpsc::channel();
 		let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
 			if let Ok(event) = event
 				&& matters(&event.kind)
 			{
-				let _ = events.send(());
+				let _ = events.send(event.paths);
 			}
 		})?;
 		watcher.watch(directory, RecursiveMode::NonRecursive)?;
@@ -38,13 +39,15 @@ impl Watcher {
 		Ok(Watcher { _watcher: watcher, signals: receiver })
 	}
 
-	/// True once for each burst of changes that has ended.
-	pub fn try_signal(&self) -> bool {
-		let mut any = false;
-		while self.signals.try_recv().is_ok() {
-			any = true;
+	/// The paths touched by every burst of changes that has ended since the last call, each
+	/// once; None when none has. The paths are what the platform named, so the caller looks at
+	/// those files alone rather than at the folder.
+	pub fn try_signal(&self) -> Option<Vec<PathBuf>> {
+		let mut paths = BTreeSet::new();
+		while let Ok(burst) = self.signals.try_recv() {
+			paths.extend(burst);
 		}
-		any
+		(!paths.is_empty()).then(|| paths.into_iter().collect())
 	}
 }
 
@@ -60,15 +63,17 @@ fn matters(kind: &EventKind) -> bool {
 	}
 }
 
-/// Each event starts, or restarts, the quiet timer; the signal goes out when it runs down. Ends
-/// when the event channel closes, which is when the watcher is dropped.
-fn debounce(incoming: mpsc::Receiver<()>, signals: mpsc::Sender<()>) {
-	while incoming.recv().is_ok() {
+/// Each event starts, or restarts, the quiet timer, and its paths join the burst's; the burst
+/// goes out when the timer runs down. Ends when the event channel closes, which is when the
+/// watcher is dropped.
+fn debounce(incoming: mpsc::Receiver<Vec<PathBuf>>, signals: mpsc::Sender<Vec<PathBuf>>) {
+	while let Ok(first) = incoming.recv() {
+		let mut burst: BTreeSet<PathBuf> = first.into_iter().collect();
 		loop {
 			match incoming.recv_timeout(QUIET) {
-				Ok(()) => continue,
+				Ok(more) => burst.extend(more),
 				Err(mpsc::RecvTimeoutError::Timeout) => {
-					let _ = signals.send(());
+					let _ = signals.send(burst.into_iter().collect());
 					break;
 				}
 				Err(mpsc::RecvTimeoutError::Disconnected) => return,
@@ -81,15 +86,15 @@ fn debounce(incoming: mpsc::Receiver<()>, signals: mpsc::Sender<()>) {
 mod tests {
 	use super::*;
 
-	fn wait_for_signal(watcher: &Watcher, within: Duration) -> bool {
+	fn wait_for_signal(watcher: &Watcher, within: Duration) -> Option<Vec<PathBuf>> {
 		let deadline = std::time::Instant::now() + within;
 		while std::time::Instant::now() < deadline {
-			if watcher.try_signal() {
-				return true;
+			if let Some(paths) = watcher.try_signal() {
+				return Some(paths);
 			}
 			thread::sleep(Duration::from_millis(10));
 		}
-		false
+		None
 	}
 
 	#[test]
@@ -100,16 +105,19 @@ mod tests {
 		let watcher = Watcher::new(&dir).unwrap();
 		// The platform needs a moment to start delivering.
 		thread::sleep(Duration::from_millis(300));
-		assert!(!watcher.try_signal(), "nothing has happened");
+		assert!(watcher.try_signal().is_none(), "nothing has happened");
 		for i in 0..20 {
 			std::fs::write(dir.join(format!("file-{i}.rdm")), b"x").unwrap();
 			thread::sleep(Duration::from_millis(5));
 		}
-		assert!(wait_for_signal(&watcher, Duration::from_secs(5)), "the burst ended and was reported");
+		let paths =
+			wait_for_signal(&watcher, Duration::from_secs(5)).expect("the burst ended and was reported");
+		assert!(paths.len() >= 20 && paths.iter().any(|p| p.ends_with("file-7.rdm")), "{paths:?}");
 		thread::sleep(QUIET * 2);
-		assert!(!watcher.try_signal(), "one burst, one signal");
+		assert!(watcher.try_signal().is_none(), "one burst, one signal");
 		std::fs::remove_file(dir.join("file-0.rdm")).unwrap();
-		assert!(wait_for_signal(&watcher, Duration::from_secs(5)), "a removal counts");
+		let paths = wait_for_signal(&watcher, Duration::from_secs(5)).expect("a removal counts");
+		assert!(paths.iter().any(|p| p.ends_with("file-0.rdm")), "{paths:?}");
 	}
 
 	#[test]

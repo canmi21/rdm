@@ -67,8 +67,10 @@ what is created, written or removed in the download folder -- FSEvents on macOS,
 folder is read again only when the timer runs down, so a copy of a hundred files is one scan
 and not a hundred, while a single file dropped in shows up at once. Reads, changes to metadata
 alone and the catch-all events a platform sends for what it cannot name are dropped before
-they are counted, since none of them puts a plan in the folder or takes one out. The scan is
-the same one that runs at launch.
+they are counted, since none of them puts a plan in the folder or takes one out. The events
+carry the paths they are about, and those alone are looked at -- each that is one of a
+download's two files is judged by the rules above, on its own -- rather than the folder being
+read again; the read of the whole folder is for launch, when nothing yet says what is there.
 
 Sort order and the sidebar's filter are not remembered: a launch starts at newest-first and All,
 because a filter left on from last time reads as downloads having vanished.

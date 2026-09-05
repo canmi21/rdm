@@ -109,29 +109,37 @@ pub struct Found {
 /// meant to keep is not this code's to delete, and one it cannot read is one it cannot judge.
 pub fn find(directory: &Path) -> Vec<Found> {
 	let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
-	let suffix = format!(".{CONTROL}");
-	let mut found: Vec<Found> = entries
-		.flatten()
-		.filter_map(|entry| {
-			let path = entry.path();
-			let name = path.file_name()?.to_str()?;
-			let target = path.with_file_name(name.strip_suffix(&suffix)?);
-			let control = load(&target).ok()??;
-			if !control.plan.is_consistent() {
-				return None;
-			}
-			let written = control.plan.segments.iter().map(|s| s.position()).max().unwrap_or(0)
-				- control.plan.span.start;
-			let part = std::fs::metadata(part_path(&target)).ok()?;
-			if part.len() < written {
-				return None;
-			}
-			let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
-			Some(Found { target, control, modified })
-		})
-		.collect();
-	found.sort_by(|a, b| a.target.cmp(&b.target));
-	found
+	// Both of a download's files name the same target, so the targets are gathered first.
+	let targets: std::collections::BTreeSet<PathBuf> =
+		entries.flatten().filter_map(|entry| target_of(&entry.path())).collect();
+	targets.iter().filter_map(|target| find_one(target)).collect()
+}
+
+/// The download whose files these would be: `movie.mkv.rdm` and `movie.mkv.downloading` both
+/// answer `movie.mkv`; any other name answers nothing.
+pub fn target_of(path: &Path) -> Option<PathBuf> {
+	let name = path.file_name()?.to_str()?;
+	let stem =
+		name.strip_suffix(&format!(".{CONTROL}")).or_else(|| name.strip_suffix(&format!(".{PART}")))?;
+	(!stem.is_empty()).then(|| path.with_file_name(stem))
+}
+
+/// One download by where it would land, if its two files are there and can be continued; the
+/// rules `find` applies, for one path, so a change to a single file costs one look and not a
+/// read of the folder.
+pub fn find_one(target: &Path) -> Option<Found> {
+	let control = load(target).ok()??;
+	if !control.plan.is_consistent() {
+		return None;
+	}
+	let written =
+		control.plan.segments.iter().map(|s| s.position()).max().unwrap_or(0) - control.plan.span.start;
+	let part = std::fs::metadata(part_path(target)).ok()?;
+	if part.len() < written {
+		return None;
+	}
+	let modified = std::fs::metadata(control_path(target)).ok().and_then(|m| m.modified().ok());
+	Some(Found { target: target.to_path_buf(), control, modified })
 }
 
 #[cfg(test)]
@@ -212,6 +220,16 @@ mod tests {
 				&& control_path(&dir.join("broken.bin")).exists()
 		);
 		assert!(control_path(&dir.join("alone.bin")).exists() && dir.join("note.rdm").exists());
+		// One at a time, from either of its files.
+		assert_eq!(target_of(Path::new("/d/movie.mkv.rdm")), Some(PathBuf::from("/d/movie.mkv")));
+		assert_eq!(
+			target_of(Path::new("/d/movie.mkv.downloading")),
+			Some(PathBuf::from("/d/movie.mkv"))
+		);
+		assert_eq!(target_of(Path::new("/d/movie.mkv")), None);
+		assert_eq!(target_of(Path::new("/d/.rdm")), None);
+		assert!(find_one(&dir.join("good.bin")).is_some());
+		assert!(find_one(&dir.join("short.bin")).is_none());
 	}
 
 	#[test]
