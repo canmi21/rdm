@@ -4,6 +4,7 @@
 pub mod add_dialog;
 mod category_sheet;
 pub mod download_window;
+pub mod first_mouse;
 pub mod guide;
 pub mod icon;
 pub mod list;

@@ -174,7 +174,7 @@ impl Rdm {
 				self.category_sheet = Some(CategorySheet::Presets { editing: false });
 				cx.notify();
 			}
-			"reorder" => self.start_reorder(None, cx),
+			"reorder" => self.start_reorder(cx),
 			"edit" => {
 				let Some(id) = id else { return failure("edit takes a preset's category id") };
 				self.open_preset_editor(id, None, cx);

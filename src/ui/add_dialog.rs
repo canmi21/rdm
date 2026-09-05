@@ -71,7 +71,7 @@ impl Rdm {
 				let input = cx.new(|cx| {
 					let mut input = TextInput::new("https://", cx)
 						.on_confirm(move |_, _, cx| rdm.update(cx, |this, cx| this.submit_add(cx)))
-						.on_cancel(move |_, cx| cancel.update(cx, |this, cx| this.close_add(cx)));
+						.on_cancel(move |_, cx| cancel.update(cx, |this, cx| this.dismiss_add(cx)));
 					if let Some(url) = &pasted {
 						input.set_content(url.as_str(), cx);
 					}
@@ -90,6 +90,9 @@ impl Rdm {
 	/// A click outside closes the sheet only while nothing has been typed and nothing is being
 	/// looked at; typed text is kept until the cross is pressed. See spec/ui.md.
 	pub(crate) fn dismiss_add(&mut self, cx: &mut Context<Self>) {
+		if self.guide.is_some() {
+			return;
+		}
 		let clean = self.adding.as_ref().is_none_or(|sheet| {
 			sheet.input.read(cx).content.trim().is_empty()
 				&& sheet.checking.is_none()

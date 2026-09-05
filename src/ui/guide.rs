@@ -1,17 +1,19 @@
-//! A few lines of guidance laid over whatever sheet is up, with one button that takes them
-//! away again. Over the sheet rather than inside it, so the form does not move under the
-//! pointer; inside the window rather than a window of its own, so it is where the eye already
-//! is and goes away with one press. See spec/ui.md.
+//! A few lines of guidance laid over whatever sheet is up. Over the sheet rather than inside
+//! it, so the form does not move under the pointer; inside the window rather than a window of
+//! its own, so it is where the eye already is. It has nothing to save, so it goes away like any
+//! clean sheet: the cross, Escape, or a press outside it. See spec/ui.md.
 
 use gpui::{Context, IntoElement, deferred, div, prelude::*, px};
 
 use crate::app::Rdm;
-use crate::ui::button;
 use crate::ui::icon::Icon;
+use crate::ui::icon_button;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Guide {
 	pub title: &'static str,
+	/// What the guide is about, in one sentence under the title.
+	pub about: &'static str,
 	pub lines: &'static [&'static str],
 }
 
@@ -27,7 +29,7 @@ impl Rdm {
 	}
 
 	/// Above every sheet, on a backdrop that takes every press so the form beneath cannot be
-	/// touched through it; only OK closes it, since it was asked for.
+	/// touched through it. A press on the backdrop closes the guide and nothing else.
 	pub(crate) fn guide_sheet(
 		&self,
 		guide: Guide,
@@ -49,7 +51,23 @@ impl Rdm {
 					.border_color(p.border)
 					.bg(p.panel)
 					.shadow_lg()
-					.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(guide.title))
+					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_guide(cx)))
+					.child(
+						div()
+							.flex()
+							.items_center()
+							.justify_between()
+							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(guide.title))
+							.child(icon_button(
+								p,
+								"guide-close",
+								Icon::X,
+								"Close",
+								true,
+								cx.listener(|this, _, _, cx| this.close_guide(cx)),
+							)),
+					)
+					.child(div().text_xs().child(guide.about))
 					.child(
 						div()
 							.flex()
@@ -58,15 +76,7 @@ impl Rdm {
 							.text_xs()
 							.text_color(p.muted)
 							.children(guide.lines.iter().map(|line| div().child(*line))),
-					)
-					.child(div().flex().justify_end().child(button(
-						p,
-						"guide-ok",
-						Icon::CircleCheck,
-						"OK",
-						true,
-						cx.listener(|this, _, _, cx| this.close_guide(cx)),
-					))),
+					),
 			),
 		)
 		.priority(3)

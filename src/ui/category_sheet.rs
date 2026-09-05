@@ -4,9 +4,7 @@
 //! Add opens the custom form: a name, an icon, extensions and text the name contains -- or,
 //! under Advanced, the regular expression written out.
 
-use gpui::{
-	Context, IntoElement, KeyDownEvent, Role, SharedString, Window, deferred, div, prelude::*, px,
-};
+use gpui::{Context, IntoElement, Role, SharedString, Window, deferred, div, prelude::*, px};
 
 use crate::app::{CategoryForm, CategorySheet, PresetForm, Rdm};
 use crate::download::{Category, Combine, pattern_for_rule};
@@ -46,9 +44,10 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// Escape in a field: the sheet's rule, the same as a press outside it.
 	fn escape_to_presets(rdm: &gpui::Entity<Rdm>) -> impl Fn(&mut Window, &mut gpui::App) + 'static {
 		let rdm = rdm.clone();
-		move |_, cx| rdm.update(cx, |this, cx| this.back_to_presets(cx))
+		move |_, cx| rdm.update(cx, |this, cx| this.dismiss_category_sheet(cx))
 	}
 
 	/// Add on the presets face: the custom form, with the name focused. The control socket has no
@@ -172,12 +171,8 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Reorder takes the keyboard so Escape can finish it; nothing else on the face wants it.
-	pub(crate) fn start_reorder(&mut self, window: Option<&mut Window>, cx: &mut Context<Self>) {
+	pub(crate) fn start_reorder(&mut self, cx: &mut Context<Self>) {
 		self.category_sheet = Some(CategorySheet::Reorder);
-		if let Some(window) = window {
-			window.focus(&self.reorder_focus, cx);
-		}
 		cx.notify();
 	}
 
@@ -211,15 +206,19 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// A click outside closes the sheet only while there is nothing to lose. The presets act at
-	/// once, so that face always closes; a preset's list applies each change as it is made, so
-	/// its editor closes unless something is typed in its field; the custom form closes only
-	/// while nothing has been typed or switched. Reorder has no card to press outside of in this
-	/// sense: its washes close it themselves, and the sidebar is the work. See spec/ui.md.
+	/// A click outside, or Escape, closes the sheet only while there is nothing to lose. The
+	/// presets act at once, and so does every drop while reordering, so those faces always
+	/// close; a preset's list applies each change as it is made, so its editor closes unless
+	/// something is typed in its field; the custom form closes only while nothing has been typed
+	/// or switched. See spec/ui.md.
 	pub(crate) fn dismiss_category_sheet(&mut self, cx: &mut Context<Self>) {
+		// A press under the guide is a press on the guide's backdrop, not outside this sheet.
+		if self.guide.is_some() {
+			return;
+		}
 		let clean = match &self.category_sheet {
-			None | Some(CategorySheet::Presets { .. }) => true,
-			Some(CategorySheet::Reorder) => false,
+			// The presets act at once, and so does every drop while reordering.
+			None | Some(CategorySheet::Presets { .. }) | Some(CategorySheet::Reorder) => true,
 			Some(CategorySheet::Preset(form)) => {
 				let saved = self
 					.categories
@@ -288,7 +287,14 @@ impl Rdm {
 	}
 
 	pub(crate) fn show_color_guide(&mut self, cx: &mut Context<Self>) {
-		self.show_guide(crate::ui::guide::Guide { title: "Colors", lines: &COLOR_GUIDE }, cx);
+		self.show_guide(
+			crate::ui::guide::Guide {
+				title: "Colors",
+				about: "A color of your own goes in the field beside the swatches, written any of these ways; Enter or the dot after it makes it the category's.",
+				lines: &COLOR_GUIDE,
+			},
+			cx,
+		);
 	}
 
 	pub(crate) fn toggle_ignore_space(&mut self, cx: &mut Context<Self>) {
@@ -496,7 +502,7 @@ impl Rdm {
 										"reorder",
 										"Reorder",
 										false,
-										cx.listener(|this, _, window, cx| this.start_reorder(Some(window), cx)),
+										cx.listener(|this, _, _, cx| this.start_reorder(cx)),
 									)),
 							)
 							.child(button(
@@ -545,12 +551,6 @@ impl Rdm {
 						.child(
 							self
 								.sheet_card("category-sheet", 400.0, false, cx)
-								.track_focus(&self.reorder_focus)
-								.on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-									if event.keystroke.key == "escape" {
-										this.close_category_sheet(cx);
-									}
-								}))
 								// The card is not outside: a press on it stays on it.
 								.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
 								.flex_row()

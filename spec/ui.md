@@ -161,6 +161,25 @@ the update, in `Rdm::open_download`.
 
 ## A sheet is modal, and a click outside closes it only while it is clean
 
+**One rule for every sheet, and Escape follows it.** A sheet with nothing unsaved -- nothing
+typed, nothing switched from how it came, or every change already applied and written --
+closes from Escape or from a press outside it. Once it holds something unsaved, only its cross
+closes it, and Escape in one of its fields does no more than a press outside would. Escape is
+answered by the topmost sheet alone, since that is the one a press outside would reach; a
+press on the guide's backdrop is a press on the guide, not on the form beneath it, and the
+form's own press-outside is told so. Escape reaches the sheets because the window's root holds
+the keyboard whenever nothing else does: a key travels the focus path and nowhere at all when
+there is none, so the root takes focus back at every frame that finds it empty.
+
+**The press that brings the window back does nothing else.** Coming from another
+application, the first press asked for the window, not for the row, button or backdrop under
+the pointer -- and a sheet closed by that press, or a row selected by it, was the wrong answer
+to the wrong question. The platform marks that press, and an element drawn first in the root
+swallows it in the capture phase before anything else sees it. An element, not a listener on
+the root, because a listener fires only while its element is hovered and a sheet's backdrop
+takes that away.
+
+
 A sheet lies over a backdrop that takes every mouse event, so nothing behind it can be pressed
 through it. Without that, a press on the sheet was also a press on whatever row lay under the
 pointer -- two presets toggled twice became a double-click on a row and opened its window from

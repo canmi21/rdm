@@ -135,8 +135,9 @@ pub struct Rdm {
 	pub(crate) category_sheet: Option<CategorySheet>,
 	/// A few lines of guidance laid over whatever sheet is up, until OK is pressed.
 	pub(crate) guide: Option<crate::ui::guide::Guide>,
-	/// Holds the keyboard while the categories are being reordered, so Escape can finish.
-	pub(crate) reorder_focus: gpui::FocusHandle,
+	/// Holds the keyboard whenever nothing else does, so Escape always has somewhere to land:
+	/// a key goes along the focus path and nowhere at all when there is none.
+	root_focus: gpui::FocusHandle,
 	pub(crate) filter: Filter,
 	/// A second cut within the sidebar's filter, from the chips above the list.
 	pub(crate) status: Option<Status>,
@@ -233,7 +234,7 @@ impl Rdm {
 			categories: config.categories(),
 			category_sheet: None,
 			guide: None,
-			reorder_focus: cx.focus_handle(),
+			root_focus: cx.focus_handle(),
 			filter: Filter::All,
 			status: None,
 			filter_open: false,
@@ -641,6 +642,24 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// The one rule every sheet keeps: Escape, or a press outside it, closes it while it has
+	/// nothing unsaved -- nothing typed, nothing switched away from how it came -- and once it
+	/// has, only its cross does. Escape is answered by the topmost sheet alone, since that is the
+	/// one the press outside would reach.
+	pub(crate) fn escape(&mut self, cx: &mut Context<Self>) {
+		if self.guide.is_some() {
+			self.close_guide(cx);
+		} else if self.adding.is_some() {
+			self.dismiss_add(cx);
+		} else if self.category_sheet.is_some() {
+			self.dismiss_category_sheet(cx);
+		} else if self.settings_open {
+			self.toggle_settings(false, cx);
+		} else if self.filter_open {
+			self.toggle_filter_menu(false, cx);
+		}
+	}
+
 	/// Every event the engine has sent since the last look, applied to the rows.
 	fn pump_events(&mut self, cx: &mut Context<Self>) {
 		let mut changed = false;
@@ -892,6 +911,10 @@ impl Render for Rdm {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.palette = theme::palette(window.is_window_active());
 		self.viewport = window.viewport_size();
+		// A field that closed took the focus with it; the root takes it back so keys still land.
+		if window.focused(cx).is_none() {
+			window.focus(&self.root_focus, cx);
+		}
 		let p = self.palette;
 		div()
 			.flex()
@@ -901,10 +924,19 @@ impl Render for Rdm {
 			.text_size(px(13.0))
 			.bg(p.window)
 			.text_color(p.text)
+			.track_focus(&self.root_focus)
 			.on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
 				this.resize_to(event.position.x, event.pressed_button == Some(gpui::MouseButton::Left), cx)
 			}))
 			.on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| this.end_resize(cx)))
+			// Escape reaches here when no field took it: the topmost sheet is asked to go.
+			.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+				if event.keystroke.key == "escape" {
+					this.escape(cx);
+				}
+			}))
+			// First, so its listener is the first of the frame; see first_mouse.rs.
+			.child(crate::ui::first_mouse::FirstMouseGuard)
 			.child(self.render_toolbar(cx))
 			.child(
 				div()
@@ -1589,25 +1621,92 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn the_question_mark_lays_the_guide_over_the_form_and_ok_takes_it_away(cx: &mut TestAppContext) {
+	fn the_guide_lies_over_the_form_and_leaves_it_alone(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "button:New category");
 		click(&mut cx, "button:Add");
+		let name = rdm.read_with(&cx, |rdm, _| {
+			let Some(CategorySheet::Custom(form)) = &rdm.category_sheet else { panic!("the form is up") };
+			form.name.clone()
+		});
+		cx.update(|window, cx| {
+			name.update(cx, |input, cx| input.replace_text_in_range(None, "Kept", window, cx));
+		});
 		click(&mut cx, "button:Color");
 		click(&mut cx, "button:Color formats");
 		assert_eq!(cx.windows().len(), 1, "no window of its own");
 		assert!(cx.debug_bounds("guide").is_some());
-		let card = cx.debug_bounds("category-sheet").unwrap().center();
-		cx.simulate_click(card, Modifiers::default());
-		rdm.read_with(&cx, |rdm, _| assert!(rdm.guide.is_some(), "only OK closes it"));
-		click(&mut cx, "button:OK");
+		// A press outside the guide closes the guide, and does not reach the form under it.
+		let row = cx.debug_bounds("row:3").unwrap().center();
+		cx.simulate_click(row, Modifiers::default());
 		rdm.read_with(&cx, |rdm, _| {
-			assert!(rdm.guide.is_none());
-			assert!(
-				matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))),
-				"the form is where it was"
-			);
+			assert!(rdm.guide.is_none(), "the guide has nothing to keep");
+			assert!(matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))), "the form stays");
+			assert_eq!(rdm.selected, None, "and the row behind was not pressed");
 		});
+		click(&mut cx, "button:Color formats");
+		cx.simulate_keystrokes("escape");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.guide.is_none(), "Escape closes the guide");
+			assert!(rdm.category_sheet.is_some(), "and only the guide: the form has text in it");
+		});
+		cx.simulate_keystrokes("escape");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_sheet.is_some(), "a form with text is closed by its cross alone")
+		});
+		click(&mut cx, "button:Close");
+		click(&mut cx, "button:Close");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none()));
+	}
+
+	#[gpui::test]
+	fn the_press_that_brings_the_window_back_does_nothing_else(cx: &mut TestAppContext) {
+		use gpui::{MouseButton, MouseDownEvent, MouseUpEvent};
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		let row = cx.debug_bounds("row:3").unwrap().center();
+		let press = |cx: &mut VisualTestContext, first_mouse: bool| {
+			cx.simulate_event(MouseDownEvent {
+				button: MouseButton::Left,
+				position: row,
+				modifiers: Modifiers::default(),
+				click_count: 1,
+				first_mouse,
+			});
+			cx.simulate_event(MouseUpEvent {
+				button: MouseButton::Left,
+				position: row,
+				modifiers: Modifiers::default(),
+				click_count: 1,
+			});
+		};
+		press(&mut cx, true);
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_sheet.is_some(), "the first press only brought the window back");
+		});
+		press(&mut cx, false);
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none(), "the next press counts"));
+		press(&mut cx, true);
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, None, "nor does a row take it"));
+		press(&mut cx, false);
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, Some(3)));
+	}
+
+	#[gpui::test]
+	fn escape_closes_whatever_clean_sheet_is_on_top(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:New category");
+		cx.simulate_keystrokes("escape");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.category_sheet.is_none(), "the presets have nothing to keep")
+		});
+		click(&mut cx, "button:Settings");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.settings_open));
+		cx.simulate_keystrokes("escape");
+		rdm.read_with(&cx, |rdm, _| assert!(!rdm.settings_open));
+		click(&mut cx, "button:Add Task");
+		cx.simulate_keystrokes("escape");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_none(), "an empty Add Task goes too"));
 	}
 
 	#[gpui::test]
