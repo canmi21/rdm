@@ -6,6 +6,7 @@
 
 pub mod client;
 pub mod control;
+pub mod engine;
 pub mod error;
 pub mod limiter;
 pub mod probe;
@@ -14,14 +15,17 @@ pub mod settings;
 pub mod task;
 #[cfg(test)]
 pub mod testing;
+pub mod verify;
 pub mod worker;
 pub mod writer;
 
 pub use control::Control;
+pub use engine::{Engine, EngineSettings, Event, Snapshot, Status, TaskId};
 pub use error::{Error, Result};
 pub use limiter::Limiter;
 pub use probe::{Probe, probe};
 pub use segments::{Plan, Segment, Span};
 pub use settings::{Connections, HttpVersion, Settings};
 pub use task::{Finished, Handle, Progress, Request};
+pub use verify::Checksum;
 pub use writer::Writer;

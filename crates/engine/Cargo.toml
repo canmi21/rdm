@@ -33,6 +33,8 @@ url = "2"
 # Paused time lets the limiter's tests measure seconds of waiting in no time at all.
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
+tokio-util = "0.7"
+reqwest = "0.13"
 
 [lints]
 workspace = true

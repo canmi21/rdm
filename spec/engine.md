@@ -145,3 +145,37 @@ the plan is written so the download can be picked up later. Cancelling is the sa
 plan stays beside the partial file, and a cancelled download is a paused one until somebody
 discards its files. The plan is also written every half second while connections run, and at
 every segment's end, so a crash loses at most a moment.
+
+## The engine is a queue, and the window talks to it in three ways
+
+`Engine` is what the application holds: it starts the runtime, keeps the downloads, runs at
+most `max_active` of them at once and starts the next as one ends, and carries the limit on
+their sum. The window talks to it three ways and no other. **Commands** -- add, pause, resume,
+remove, the limits -- are plain calls that return at once. **Events** -- started, progress at
+an interval, completed, failed, paused, removed -- arrive on a standard channel the window
+reads at its own pace; the sender never blocks, so a slow window costs the engine nothing.
+**Snapshots** answer for any download's state on request, for the frame that needs a number now
+rather than the last one sent. Nothing crosses the boundary as a future, so the window's
+executor is never the engine's concern.
+
+Pause cancels the connections and keeps the plan; resume queues the download again and a new
+run continues from the plan. Remove forgets the download and, when asked, discards the partial
+file and plan -- once the download has actually stopped, since it writes its plan on the way
+out and a plan written after the discard would be a ghost. A completed file is never deleted
+by the engine; it is the user's.
+
+## After the last byte
+
+A checksum the caller supplies -- SHA-256, SHA-512 or MD5, written any of the ways people write
+them -- is checked against the finished file, and a file that fails is deleted, because a file
+that is not what it should be is worth nothing and a retry must not find it and stop. The
+file's kind is read from its first bytes with `infer`, which knows a PNG from a ZIP better than
+the extension the server chose, and is reported in the snapshot for the window to draw.
+
+## Three tests reach the network
+
+`tests/mirror.rs` downloads public test files that have been served with ranges for years --
+20 MB over plain HTTP, 100 MB over HTTPS -- with several connections, compares a split download
+with a single-connection one byte for byte, and checks a range against the slice of the whole.
+They are ignored by default and run with `--ignored`; each is bounded by a timeout so a mirror
+that is down fails the test rather than hanging it.
