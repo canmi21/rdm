@@ -5,8 +5,9 @@ use gpui::{Context, Role, deferred, div, prelude::*};
 
 use crate::app::Rdm;
 use crate::category::Combine;
+use crate::ui::backdrop;
 use crate::ui::button;
-use crate::ui::category_sheet::{CategoryForm, backdrop, section, toggle};
+use crate::ui::category_sheet::{CategoryForm, section, toggle};
 use crate::ui::icon::{Icon, icon};
 
 /// Under the pattern field.

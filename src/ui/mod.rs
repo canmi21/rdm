@@ -16,11 +16,36 @@ pub mod theme;
 pub mod toolbar;
 pub mod tooltip;
 
-use gpui::{ClickEvent, Div, ElementId, Role, SharedString, Stateful, div, prelude::*};
+use gpui::{
+	ClickEvent, Div, ElementId, MouseButton, Role, SharedString, Stateful, div, prelude::*,
+};
 
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::theme::Palette;
 use crate::ui::tooltip::tooltip;
+
+/// The wash under every sheet. It takes every mouse event, so nothing behind the sheet can be
+/// pressed through it; and a press that lands on nothing focusable -- the card, a button, a
+/// row -- takes the keyboard away from whatever field had it. GPUI moves focus only onto a
+/// focusable element that is pressed and never off one on its own, and the sheet occludes the
+/// window's root, which would otherwise be the focusable thing under the press; so the wash
+/// blurs instead, and the root takes the keyboard back at the next frame. A field pressed
+/// claims the press first and says so, which is what `default_prevented` reports.
+pub fn backdrop(p: Palette) -> Div {
+	div()
+		.absolute()
+		.inset_0()
+		.occlude()
+		.flex()
+		.items_center()
+		.justify_center()
+		.bg(p.dim)
+		.on_mouse_down(MouseButton::Left, |_, window, _| {
+			if !window.default_prevented() {
+				window.blur();
+			}
+		})
+}
 
 /// An icon with its label. Disabled ones stay in the layout but neither react nor invite a click.
 pub fn button(

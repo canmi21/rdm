@@ -200,6 +200,18 @@ form's own press-outside is told so. Escape reaches the sheets because the windo
 the keyboard whenever nothing else does: a key travels the focus path and nowhere at all when
 there is none, so the root takes focus back at every frame that finds it empty.
 
+**A field holds the keyboard until something else is pressed, and a form's first field holds
+it from the start.** GPUI moves focus only onto a focusable element that is pressed, never off
+one on its own; and a sheet's backdrop occludes the window's root, which is the focusable thing
+a press on the card would otherwise reach. So with one field on a sheet, no press anywhere on
+the sheet took the keyboard from it. The backdrop under every sheet now answers a press that
+no field claimed by dropping the focus, and the root takes it back at the next frame: a press
+on the card, a button or a row leaves the field, as it does in a native window. Which field
+starts with the keyboard is the sheet's decision, not the framework's -- nothing is focused
+unless asked -- and the rule is by what the sheet is for: a form is opened to be filled in, so
+Add Task, the custom category and a preset's list focus their first field; Settings is a place
+to look around, so nothing in it takes the keyboard until pressed.
+
 **The press that brings the window back does nothing else.** Coming from another
 application, the first press asked for the window, not for the row, button or backdrop under
 the pointer -- and a sheet closed by that press, or a row selected by it, was the wrong answer

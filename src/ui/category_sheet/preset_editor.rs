@@ -5,7 +5,8 @@ use gpui::{Context, Role, SharedString, deferred, div, prelude::*};
 
 use crate::app::Rdm;
 use crate::category::Category;
-use crate::ui::category_sheet::{PresetForm, backdrop, section, word};
+use crate::ui::backdrop;
+use crate::ui::category_sheet::{PresetForm, section, word};
 
 impl Rdm {
 	/// A preset's list: the built-in extensions and the added ones as chips that switch, a field

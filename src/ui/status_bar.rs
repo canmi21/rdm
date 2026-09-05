@@ -101,7 +101,7 @@ impl Rdm {
 						Icon::Settings,
 						"Settings",
 						true,
-						cx.listener(|this, _, window, cx| this.open_settings(Some(window), cx)),
+						cx.listener(|this, _, _, cx| this.open_settings(cx)),
 					)),
 			)
 	}

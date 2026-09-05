@@ -347,7 +347,9 @@ fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut Test
 		form.add.clone()
 	});
 	click(&mut cx, "extension:mkv");
+	// The press on the chip took the keyboard from the field; a user presses the field again.
 	cx.update(|window, cx| {
+		window.focus(&add.read(cx).focus(), cx);
 		add.update(cx, |input, cx| input.replace_text_in_range(None, "xyz, zyx", window, cx))
 	});
 	// The tests bind no keys; main does. The action is what Enter is bound to.
@@ -734,6 +736,42 @@ fn escape_closes_whatever_clean_sheet_is_on_top(cx: &mut TestAppContext) {
 	click(&mut cx, "button:Add Task");
 	cx.simulate_keystrokes("escape");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_none(), "an empty Add Task goes too"));
+}
+
+#[gpui::test]
+fn a_press_on_a_sheet_that_lands_on_no_field_drops_the_fields_focus(cx: &mut TestAppContext) {
+	use gpui::{point, px};
+	let (rdm, mut cx) = open(cx);
+	click(&mut cx, "button:New category");
+	click(&mut cx, "button:Add");
+	let name = rdm.read_with(&cx, |rdm, _| {
+		let Some(CategorySheet::Custom(form)) = &rdm.category_sheet else { panic!("the form is up") };
+		form.name.clone()
+	});
+	let focused =
+		|cx: &mut VisualTestContext| cx.update(|window, cx| name.read(cx).focus().is_focused(window));
+	assert!(focused(&mut cx), "a form opens with its first field ready to type into");
+	// The card's padding: inside the sheet, on nothing.
+	let card = cx.debug_bounds("category-sheet").expect("the form's card");
+	cx.simulate_click(point(card.origin.x + px(6.0), card.origin.y + px(6.0)), Modifiers::default());
+	assert!(!focused(&mut cx), "a press on the card takes the keyboard away from the field");
+	cx.update(|window, cx| window.focus(&name.read(cx).focus(), cx));
+	click(&mut cx, "toggle:Match case");
+	assert!(!focused(&mut cx), "so does a press on a control");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(matches!(rdm.category_sheet, Some(CategorySheet::Custom(_))), "the form stays");
+	});
+	// The switch made the form dirty, so only its cross leaves it, back to the presets, which
+	// hold nothing and close from Escape.
+	click(&mut cx, "button:Close");
+	cx.simulate_keystrokes("escape");
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.category_sheet.is_none()));
+	click(&mut cx, "button:Settings");
+	let search = rdm.read_with(&cx, |rdm, _| rdm.settings.as_ref().unwrap().search.clone());
+	assert!(
+		!cx.update(|window, cx| search.read(cx).focus().is_focused(window)),
+		"Settings is a place, not a form: nothing in it takes the keyboard on opening"
+	);
 }
 
 #[gpui::test]

@@ -5,14 +5,12 @@
 //! shows what matches under its section's name, so a setting is found without knowing where
 //! it was filed. See spec/ui.md.
 
-use gpui::{
-	Context, Entity, IntoElement, Role, SharedString, Window, deferred, div, prelude::*, px,
-};
+use gpui::{Context, Entity, IntoElement, Role, SharedString, deferred, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::ui::icon::{Icon, hover_icon};
-use crate::ui::icon_button;
 use crate::ui::text_input::TextInput;
+use crate::ui::{backdrop, icon_button};
 
 // TODO: every value row here is a label until there is a setting behind it and a store to keep it
 // in; the folder is the one the engine writes to, the rest are the engine's defaults, read only.
@@ -70,9 +68,10 @@ impl Rdm {
 		self.settings.is_some()
 	}
 
-	/// Opens on General with the search field ready to type into, when there is a window to
-	/// give it the keyboard; the control socket has none.
-	pub(crate) fn open_settings(&mut self, window: Option<&mut Window>, cx: &mut Context<Self>) {
+	/// Opens on General. The search field is not given the keyboard: Settings is a place to look
+	/// around, not a form to fill in, so the keyboard stays with the window until the field is
+	/// pressed. See spec/ui.md.
+	pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
 		if self.settings.is_none() {
 			let rdm = cx.entity();
 			let search = cx.new(|cx| {
@@ -82,9 +81,6 @@ impl Rdm {
 			});
 			self.settings = Some(SettingsSheet { section: Section::General, search });
 		}
-		if let (Some(window), Some(sheet)) = (window, &self.settings) {
-			window.focus(&sheet.search.read(cx).focus(), cx);
-		}
 		cx.notify();
 	}
 
@@ -93,9 +89,9 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// The control socket's verb, which has no window to focus.
+	/// The control socket's verb.
 	pub(crate) fn toggle_settings(&mut self, open: bool, cx: &mut Context<Self>) {
-		if open { self.open_settings(None, cx) } else { self.close_settings(cx) }
+		if open { self.open_settings(cx) } else { self.close_settings(cx) }
 	}
 
 	pub(crate) fn set_settings_section(&mut self, section: Section, cx: &mut Context<Self>) {
@@ -225,7 +221,7 @@ impl Rdm {
 		}
 
 		deferred(
-			div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim).child(
+			backdrop(p).child(
 				div()
 					.id("settings-sheet")
 					.debug_selector(|| "settings-sheet".to_owned())

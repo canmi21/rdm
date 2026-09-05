@@ -7,7 +7,7 @@ use gpui::{Context, IntoElement, deferred, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::ui::icon::Icon;
-use crate::ui::icon_button;
+use crate::ui::{backdrop, icon_button};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Guide {
@@ -37,7 +37,7 @@ impl Rdm {
 	) -> impl IntoElement + use<> {
 		let p = self.palette;
 		deferred(
-			div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim).child(
+			backdrop(p).child(
 				div()
 					.id("guide")
 					.debug_selector(|| "guide".to_owned())

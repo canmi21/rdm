@@ -136,11 +136,6 @@ impl Rdm {
 	}
 }
 
-/// The wash over the whole window that the presets, preset and custom faces sit on.
-fn backdrop(p: Palette) -> gpui::Div {
-	div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim)
-}
-
 fn section(color: gpui::Hsla, title: &'static str) -> impl IntoElement {
 	div().text_xs().text_color(color).child(title)
 }

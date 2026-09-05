@@ -5,7 +5,8 @@ use gpui::{Context, Role, SharedString, deferred, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::category::Category;
-use crate::ui::category_sheet::{backdrop, section, word};
+use crate::ui::backdrop;
+use crate::ui::category_sheet::{section, word};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::{button, sidebar, status_bar, toolbar};
 

@@ -10,6 +10,7 @@ use reqwest::Url;
 
 use crate::app::Rdm;
 use crate::engine::{Inspection, Link};
+use crate::ui::backdrop;
 use crate::ui::button;
 use crate::ui::icon::{Icon, icon};
 use crate::ui::text_input::TextInput;
@@ -178,7 +179,7 @@ impl Rdm {
 		let ready = typed && !checking;
 		deferred(
 			// The backdrop takes every mouse event, so nothing behind the sheet can be pressed through it.
-			div().absolute().inset_0().occlude().flex().items_center().justify_center().bg(p.dim).child(
+			backdrop(p).child(
 				div()
 					.id("add-dialog")
 					.flex()
