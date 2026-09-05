@@ -272,6 +272,7 @@ async fn schedule(
 			let grew = grew.clone();
 			let base = plan.lock().unwrap().span.start;
 			let received = received.clone();
+			let done = handle.progress.clone();
 			// Spread across the sources by segment, and on to the next source with each retry.
 			let source = &sources[(index + attempts[index] as usize) % sources.len()];
 			let primary = source == &probed.url;
@@ -288,12 +289,16 @@ async fn schedule(
 				limits: vec![handle.limit.clone(), global.clone()],
 				idle_timeout: settings.idle_timeout,
 				cancel: handle.cancel.clone(),
+				// Counted as the bytes land, so a progress report between the ticks below is
+				// current: a download shorter than a tick once reported nothing but its end, and
+				// on Linux, whose sleeps are punctual, a half-second test file was exactly that.
 				progress: Arc::new(move |n| {
 					if n == 0 {
 						allowed.fetch_add(1, Ordering::Relaxed);
 						grew.notify_one();
 					} else {
 						received.fetch_add(n as u64, Ordering::Relaxed);
+						done.done.fetch_add(n as u64, Ordering::Relaxed);
 					}
 				}),
 			};
