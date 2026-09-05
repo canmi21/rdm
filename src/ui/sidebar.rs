@@ -5,7 +5,7 @@ use gpui::{
 
 use crate::app::{DraggedCategory, Rdm};
 use crate::download::Filter;
-use crate::ui::icon::{Icon, icon};
+use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::icon_button;
 use crate::ui::theme::Palette;
 
@@ -120,9 +120,8 @@ impl Rdm {
 			.when(!active, move |s| s.hover(move |s| s.bg(p.hover)))
 			.on_click(cx.listener(move |this, _, _, cx| this.set_filter(filter, cx)))
 			.child(
-				icon(glyph, if lit { tint } else { p.muted })
-					.size_3p5()
-					.when(!lit, move |s| s.group_hover("filter-row", move |s| s.text_color(tint))),
+				hover_icon(glyph, "filter-row", if lit { tint } else { p.muted }, (!lit).then_some(tint))
+					.size_3p5(),
 			)
 			.child(div().flex_1().child(label))
 			.child(div().text_xs().text_color(p.muted).child(count.to_string()))

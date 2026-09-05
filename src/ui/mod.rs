@@ -18,7 +18,7 @@ pub mod tooltip;
 
 use gpui::{ClickEvent, Div, ElementId, Role, SharedString, Stateful, div, prelude::*};
 
-use crate::ui::icon::{Icon, icon};
+use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::theme::Palette;
 use crate::ui::tooltip::tooltip;
 
@@ -73,13 +73,15 @@ pub fn icon_button(
 		.items_center()
 		.justify_center()
 		.size_5()
-		// The svg carries its own color, so hovering the button cannot recolor it by inheritance;
-		// a group lets the icon watch its parent instead.
 		.group("icon-button")
 		.child(
-			icon(glyph, if enabled { p.muted } else { p.border })
-				.size_3p5()
-				.when(enabled, move |s| s.group_hover("icon-button", move |s| s.text_color(p.text))),
+			hover_icon(
+				glyph,
+				"icon-button",
+				if enabled { p.muted } else { p.border },
+				enabled.then_some(p.text),
+			)
+			.size_3p5(),
 		);
 	if enabled { base.cursor_pointer().tooltip(tooltip(label)).on_click(on_click) } else { base }
 }
@@ -119,7 +121,7 @@ pub fn menu_row(
 		.when(!on, move |s| s.hover(move |s| s.bg(p.hover)))
 		.group("menu-row")
 		.on_click(on_click)
-		.child(icon(glyph, glyph_color).size_3().group_hover("menu-row", move |s| s.text_color(tint)))
+		.child(hover_icon(glyph, "menu-row", glyph_color, Some(tint)).size_3())
 		.child(div().flex_1().child(label))
 		.child(div().text_color(p.muted).child(count.to_string()))
 }

@@ -5,7 +5,7 @@ use gpui::{
 
 use crate::app::{Rdm, View};
 use crate::download::{Status, format_speed};
-use crate::ui::icon::{Icon, icon};
+use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::theme::Tint;
 use crate::ui::tooltip::tooltip;
 use crate::ui::{icon_button, menu_row, sidebar};
@@ -131,9 +131,13 @@ impl Rdm {
 			.hover(move |s| s.text_color(p.text))
 			.on_click(cx.listener(move |this, _, _, cx| this.toggle_filter_menu(!open, cx)))
 			.child(
-				icon(Icon::Funnel, if lit { p.accent } else { p.muted })
-					.size_3p5()
-					.when(!lit, move |s| s.group_hover("funnel", move |s| s.text_color(p.text))),
+				hover_icon(
+					Icon::Funnel,
+					"funnel",
+					if lit { p.accent } else { p.muted },
+					(!lit).then_some(p.text),
+				)
+				.size_3p5(),
 			)
 			.when_some(self.status, |s, status| s.child(status.label()))
 	}
@@ -222,11 +226,7 @@ impl Rdm {
 					.tooltip(tooltip(format!("{view:?}")))
 					.when(active, |s| s.bg(p.selection))
 					.on_click(cx.listener(move |this, _, _, cx| this.set_view(view, cx)))
-					.child(
-						icon(view_icon(view), color)
-							.size_3p5()
-							.when(!active, move |s| s.group_hover("view", move |s| s.text_color(p.text))),
-					)
+					.child(hover_icon(view_icon(view), "view", color, (!active).then_some(p.text)).size_3p5())
 			})
 			.collect()
 	}

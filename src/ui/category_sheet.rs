@@ -8,7 +8,7 @@ use gpui::{Context, IntoElement, Role, SharedString, Window, deferred, div, prel
 
 use crate::app::{CategoryForm, CategorySheet, PresetForm, Rdm};
 use crate::download::{Category, Combine, pattern_for_rule};
-use crate::ui::icon::{Icon, icon};
+use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{Palette, Tint, format_hex, parse_color};
 use crate::ui::tooltip::tooltip;
@@ -676,9 +676,13 @@ impl Rdm {
 					.when(on, |s| s.bg(p.selection))
 					.on_click(cx.listener(move |this, _, _, cx| on_pick(this, choice, cx)))
 					.child(
-						icon(choice, if on { p.text } else { p.muted })
-							.size_4()
-							.when(!on, move |s| s.group_hover("icon-choice", move |s| s.text_color(p.text))),
+						hover_icon(
+							choice,
+							"icon-choice",
+							if on { p.text } else { p.muted },
+							(!on).then_some(p.text),
+						)
+						.size_4(),
 					)
 			})
 			.collect();
@@ -946,11 +950,7 @@ impl Rdm {
 					.group("color-help")
 					.tooltip(tooltip(COLOR_RULE))
 					.on_click(cx.listener(|this, _, _, cx| this.show_color_guide(cx)))
-					.child(
-						icon(Icon::CircleQuestion, p.muted)
-							.size_4()
-							.group_hover("color-help", move |s| s.text_color(p.text)),
-					),
+					.child(hover_icon(Icon::CircleQuestion, "color-help", p.muted, Some(p.text)).size_4()),
 			)
 	}
 }
@@ -1013,8 +1013,7 @@ fn toggle(
 		.when(on, |s| s.bg(p.selection))
 		.on_click(on_click)
 		.child(
-			icon(glyph, if on { p.text } else { p.muted })
-				.size_4()
-				.when(!on, move |s| s.group_hover("toggle", move |s| s.text_color(p.text))),
+			hover_icon(glyph, "toggle", if on { p.text } else { p.muted }, (!on).then_some(p.text))
+				.size_4(),
 		)
 }

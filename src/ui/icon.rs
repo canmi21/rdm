@@ -172,3 +172,15 @@ impl Icon {
 pub fn icon(icon: Icon, color: impl Into<Hsla>) -> Svg {
 	svg().path(icon.path()).size_4().flex_none().text_color(color)
 }
+
+/// An icon inside a control that brightens it on hover. The svg carries its own color and
+/// cannot inherit the control's, so it watches the control through the named group instead:
+/// `color` at rest, `hover` while the pointer is on the group. None leaves it alone, for a
+/// control that is chosen or disabled and has nothing to show for a hover.
+pub fn hover_icon(icon: Icon, group: &'static str, color: Hsla, hover: Option<Hsla>) -> Svg {
+	let svg = self::icon(icon, color);
+	match hover {
+		Some(hover) => svg.group_hover(group, move |s| s.text_color(hover)),
+		None => svg,
+	}
+}
