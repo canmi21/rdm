@@ -14,8 +14,9 @@ use crate::engine::segments::Plan;
 /// for the rule.
 pub const VERSION: u64 = 1;
 
-/// The suffix of a file still being written, and of the control file beside it.
-pub const PART: &str = "part";
+/// The suffix of a file still being written, and of the control file beside it. The first says
+/// what it is to anyone who sees it in a folder; the second names the application.
+pub const PART: &str = "downloading";
 pub const CONTROL: &str = "rdm";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,7 +42,7 @@ impl Control {
 	}
 }
 
-/// `movie.mkv` -> `movie.mkv.part`: where the bytes go until the download is complete.
+/// `movie.mkv` -> `movie.mkv.downloading`: where the bytes go until the download is complete.
 pub fn part_path(target: &Path) -> PathBuf {
 	with_suffix(target, PART)
 }
@@ -106,7 +107,7 @@ mod tests {
 	#[test]
 	fn the_paths_hang_off_the_target() {
 		let target = Path::new("/downloads/movie.mkv");
-		assert_eq!(part_path(target), Path::new("/downloads/movie.mkv.part"));
+		assert_eq!(part_path(target), Path::new("/downloads/movie.mkv.downloading"));
 		assert_eq!(control_path(target), Path::new("/downloads/movie.mkv.rdm"));
 	}
 

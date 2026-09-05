@@ -37,10 +37,22 @@ Three files, because three kinds of writing:
   there but cannot be read is left exactly as it is and the seed is used for the run, so a hand
   edit that went wrong is not corrected away. It carries the same integer version with the same
   rule as `state.json`, and the two share one reader.
-- **`internal.sqlite`** will hold the downloads themselves once they persist: many rows, appended
-  and updated one at a time, which is what a database is for and what a JSON file rewritten whole
-  is not. The name is decided now, beside the other, so the two are one decision; the file does
-  not exist until the store does.
+- **`internal.sqlite`** holds the downloads themselves: one row each -- the address, the page it
+  was found on, the name, the size and how much has landed, the status, when it was added,
+  where the finished file went, and why it failed if it did. Many rows, appended and updated one
+  at a time, which is what a database is for and what a JSON file rewritten whole is not. A row
+  is written as it changes and read back at launch; one that was moving or waiting when the
+  window closed is queued again and the engine continues it from the plan beside its partial
+  file, and one that was paused, failed or done is left as it was. Ids are the store's, one
+  above the highest ever used, and the engine takes them as its own, so nothing maps between
+  the two and a removed row's id is never handed out again while a partial file might still
+  carry it. The schema's version is SQLite's `user_version`, under the same rule as
+  `state.json`'s. Speed is not kept; it is a number about now.
+
+A download in flight leaves two files beside where it will land, both the engine's and neither
+the window's: `name.downloading`, the bytes, and `name.rdm`, the plan -- which segments there
+are and how far each has come. The first suffix says what the file is to anyone who meets it in
+a folder; the second names the application. See [engine.md](engine.md).
 
 Sort order and the sidebar's filter are not remembered: a launch starts at newest-first and All,
 because a filter left on from last time reads as downloads having vanished.

@@ -22,8 +22,6 @@ pub struct Paths {
 	/// `config.json`: what the user shaped and may edit by hand -- the categories, later the settings.
 	pub config: PathBuf,
 	/// `internal.sqlite`: the downloads themselves, once they persist; rows, appended and updated.
-	// TODO: opened by the store that does not exist yet; named now so the two files are decided together.
-	#[expect(dead_code)]
 	pub database: PathBuf,
 	/// Where downloads land: the platform's Downloads folder as the user has it -- the XDG
 	/// user-dirs entry on Linux, the known folder on Windows, `~/Downloads` on macOS, which

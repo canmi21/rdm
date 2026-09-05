@@ -90,7 +90,7 @@ request.
 
 ## One file, written at offsets
 
-Every connection writes into the same partial file, `name.part`, at its own offset with a
+Every connection writes into the same partial file, `name.downloading`, at its own offset with a
 positioned write -- `pwrite` underneath -- so there is no shared cursor, no lock between
 connections and nothing to merge at the end: the last byte lands and the file is renamed. The
 file is grown to its full length before the first byte when the size is known and

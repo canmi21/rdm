@@ -42,6 +42,21 @@ impl Status {
 			Status::Failed => "Failed",
 		}
 	}
+
+	/// The word the database keeps, and back. Lowercase, so a hand query reads naturally.
+	pub fn name(self) -> &'static str {
+		match self {
+			Status::Queued => "queued",
+			Status::Downloading => "downloading",
+			Status::Paused => "paused",
+			Status::Completed => "completed",
+			Status::Failed => "failed",
+		}
+	}
+
+	pub fn parse(name: &str) -> Option<Status> {
+		Status::ALL.into_iter().find(|s| s.name() == name)
+	}
 }
 
 /// A built-in category: a name, an icon and the extensions it starts with. The list is the
@@ -431,6 +446,10 @@ pub struct Download {
 	pub speed: u64,
 	pub status: Status,
 	pub added: DateTime<Local>,
+	/// The page the address was found on, when it came from one.
+	pub source: Option<String>,
+	/// Where the finished file landed, once it has.
+	pub path: Option<String>,
 	/// Why it failed, in the engine's words, while it is failed.
 	pub error: Option<String>,
 }
@@ -546,6 +565,8 @@ pub fn sample() -> Vec<Download> {
 		status,
 		// Spread over the past days so the Added column has something to order by.
 		added: now - chrono::Duration::hours(id as i64 * 7),
+		source: None,
+		path: None,
 		error: None,
 	};
 	vec![

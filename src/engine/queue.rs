@@ -129,10 +129,17 @@ impl Engine {
 
 	/// Queues a download; it starts when fewer than `max_active` are running.
 	pub fn add(&self, request: Request, checksum: Option<Checksum>) -> TaskId {
-		let id = {
+		let id = TaskId(self.inner.lock().unwrap().next);
+		self.add_with_id(id, request, checksum);
+		id
+	}
+
+	/// Queues a download under an id the caller chose -- the row's id in its own store, so the
+	/// two never need mapping. Ids handed out afterwards continue above it.
+	pub fn add_with_id(&self, id: TaskId, request: Request, checksum: Option<Checksum>) {
+		{
 			let mut inner = self.inner.lock().unwrap();
-			let id = TaskId(inner.next);
-			inner.next += 1;
+			inner.next = inner.next.max(id.0 + 1);
 			inner.entries.insert(
 				id,
 				Entry {
@@ -144,10 +151,12 @@ impl Engine {
 					running: None,
 				},
 			);
-			id
-		};
+		}
 		self.pump();
-		id
+	}
+
+	pub fn contains(&self, id: TaskId) -> bool {
+		self.inner.lock().unwrap().entries.contains_key(&id)
 	}
 
 	/// Stops the connections and keeps the plan; `resume` picks it up.

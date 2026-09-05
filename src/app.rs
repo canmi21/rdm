@@ -15,6 +15,7 @@ use crate::config::{self, Config};
 use crate::download::{self, Category, Combine, Download, Filter, Status, categories_of};
 use crate::engine::{self, Engine, Event, TaskId};
 use crate::state::{self, Frame, Paths, State};
+use crate::store::Store;
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::icon::Icon;
 use crate::ui::text_input::TextInput;
@@ -123,6 +124,9 @@ pub struct Rdm {
 	pub(crate) engine: Engine,
 	/// The engine's events, drained a few times a second by the pump below.
 	events: std::sync::mpsc::Receiver<Event>,
+	/// The rows between launches; None when the platform gave no place to keep them, or the
+	/// database could not be opened, in which case the list lives for the session.
+	store: Option<Store>,
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
 	pub(crate) category_sheet: Option<CategorySheet>,
@@ -184,10 +188,35 @@ impl Rdm {
 				}
 			}
 		});
+		// The rows a previous run left. One that was moving or waiting when the window closed is
+		// handed back to the engine, which continues from the plan beside its partial file; one
+		// that was paused, failed or done is left as it was.
+		let store = paths.as_ref().and_then(|p| match Store::open(&p.database) {
+			Ok(store) => Some(store),
+			Err(error) => {
+				eprintln!("downloads will not be kept: {error:#}");
+				None
+			}
+		});
+		let mut downloads = store.as_ref().and_then(|s| s.load().ok()).unwrap_or_default();
+		let directory =
+			paths.as_ref().map(|p| p.downloads.clone()).unwrap_or_else(|| std::path::PathBuf::from("."));
+		for download in &mut downloads {
+			if matches!(download.status, Status::Queued | Status::Downloading)
+				&& let Ok(url) = reqwest::Url::parse(&download.url)
+			{
+				download.status = Status::Queued;
+				download.speed = 0;
+				let mut request = engine::Request::new(url, directory.clone());
+				request.file_name = Some(download.name.clone());
+				engine.add_with_id(TaskId(download.id), request, None);
+			}
+		}
 		Self {
-			downloads: Vec::new(),
+			downloads,
 			engine,
 			events,
+			store,
 			categories: config.categories(),
 			category_sheet: None,
 			reorder_focus: cx.focus_handle(),
@@ -555,7 +584,29 @@ impl Rdm {
 		self.poll_add(cx);
 	}
 
+	/// The row as it now is, written to the store.
+	fn persist(&self, id: u64) {
+		if let (Some(store), Some(download)) = (&self.store, self.downloads.iter().find(|d| d.id == id))
+			&& let Err(error) = store.save(download)
+		{
+			eprintln!("could not keep download {id}: {error:#}");
+		}
+	}
+
 	fn apply(&mut self, event: Event) {
+		let touched = match &event {
+			Event::Started(id)
+			| Event::Completed(id, _)
+			| Event::Failed(id, _)
+			| Event::Paused(id)
+			| Event::Removed(id) => id.0,
+			Event::Progress(s) => s.id.0,
+		};
+		self.apply_event(event);
+		self.persist(touched);
+	}
+
+	fn apply_event(&mut self, event: Event) {
 		fn row(downloads: &mut [Download], id: TaskId) -> Option<&mut Download> {
 			downloads.iter_mut().find(|d| d.id == id.0)
 		}
@@ -588,6 +639,7 @@ impl Rdm {
 					if let Some(name) = finished.path.file_name() {
 						d.name = name.to_string_lossy().into_owned();
 					}
+					d.path = Some(finished.path.to_string_lossy().into_owned());
 				}
 			}
 			Event::Failed(id, message) => {
@@ -611,16 +663,19 @@ impl Rdm {
 	/// for the control socket. What is not an address is dropped.
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
 		if let Some(parsed) = crate::ui::add_dialog::parse_address(url) {
-			self.add_request(parsed, None, cx);
+			self.add_request(parsed, None, None, cx);
 		}
 	}
 
 	/// A new download, handed to the engine and shown at once under `name` or the address's
-	/// last path segment; the probe's name replaces it as soon as it is known.
+	/// last path segment; the probe's name replaces it as soon as it is known. `source` is the
+	/// page it was found on, if any. The id is the store's next, so it is never reused while a
+	/// partial file might still carry it.
 	pub(crate) fn add_request(
 		&mut self,
 		url: reqwest::Url,
 		name: Option<String>,
+		source: Option<String>,
 		cx: &mut Context<Self>,
 	) {
 		let directory = self
@@ -628,7 +683,13 @@ impl Rdm {
 			.as_ref()
 			.map(|p| p.downloads.clone())
 			.unwrap_or_else(|| std::path::PathBuf::from("."));
-		let id = self.engine.add(engine::Request::new(url.clone(), directory), None).0;
+		let id = self
+			.store
+			.as_ref()
+			.and_then(|s| s.next_id().ok())
+			.unwrap_or(0)
+			.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
+		self.engine.add_with_id(TaskId(id), engine::Request::new(url.clone(), directory), None);
 		let name = name.unwrap_or_else(|| {
 			url
 				.path_segments()
@@ -646,8 +707,11 @@ impl Rdm {
 			speed: 0,
 			status: Status::Queued,
 			added: chrono::Local::now(),
+			source,
+			path: None,
 			error: None,
 		});
+		self.persist(id);
 		self.selected = Some(id);
 		cx.notify();
 	}
@@ -677,15 +741,30 @@ impl Rdm {
 			download.status = Status::Paused;
 			download.speed = 0;
 			self.engine.pause(TaskId(id));
+			self.persist(id);
 			cx.notify();
 		}
 	}
 
 	pub(crate) fn resume(&mut self, id: u64, cx: &mut Context<Self>) {
+		let directory = self
+			.paths
+			.as_ref()
+			.map(|p| p.downloads.clone())
+			.unwrap_or_else(|| std::path::PathBuf::from("."));
 		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
 			download.status = Status::Queued;
 			download.error = None;
-			self.engine.resume(TaskId(id));
+			// A row from an earlier run is not in the engine yet; it is queued afresh and the
+			// engine picks up the plan beside its partial file.
+			if self.engine.contains(TaskId(id)) {
+				self.engine.resume(TaskId(id));
+			} else if let Ok(url) = reqwest::Url::parse(&download.url) {
+				let mut request = engine::Request::new(url, directory);
+				request.file_name = Some(download.name.clone());
+				self.engine.add_with_id(TaskId(id), request, None);
+			}
+			self.persist(id);
 			cx.notify();
 		}
 	}
@@ -699,6 +778,11 @@ impl Rdm {
 		}
 		self.open.remove(&id);
 		self.engine.remove(TaskId(id), true);
+		if let Some(store) = &self.store
+			&& let Err(error) = store.remove(id)
+		{
+			eprintln!("could not forget download {id}: {error:#}");
+		}
 		cx.notify();
 	}
 
@@ -1298,6 +1382,63 @@ mod tests {
 		});
 		click(&mut cx, "button:Close");
 		rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_none()));
+	}
+
+	#[gpui::test]
+	fn the_rows_come_back_from_the_store_and_the_unfinished_are_queued_again(
+		cx: &mut TestAppContext,
+	) {
+		let dir = std::env::temp_dir().join(format!("rdm-app-store-{}", std::process::id()));
+		let _ = std::fs::remove_dir_all(&dir);
+		std::fs::create_dir_all(&dir).unwrap();
+		let paths = || Paths {
+			state: dir.join("state.json"),
+			config: dir.join("config.json"),
+			database: dir.join("internal.sqlite"),
+			downloads: dir.join("downloads"),
+		};
+		{
+			let store = Store::open(&paths().database).unwrap();
+			let mut rows = crate::download::sample();
+			rows.truncate(4);
+			// Downloading, Completed, Paused, Queued in the sample's first four.
+			for row in &rows {
+				store.save(row).unwrap();
+			}
+		}
+		let window = cx.update(|cx| {
+			cx.open_window(Default::default(), |window, cx| {
+				cx.new(|cx| {
+					let (engine, events) = Engine::new(engine::EngineSettings::default()).unwrap();
+					Rdm::new(State::default(), Config::seed(), Some(paths()), engine, events, window, cx)
+				})
+			})
+			.unwrap()
+		});
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+		let rdm = window.root(&mut cx).unwrap();
+		rdm.read_with(&cx, |rdm, _| {
+			let status: Vec<Status> = rdm.downloads.iter().map(|d| d.status).collect();
+			assert_eq!(
+				status,
+				[Status::Queued, Status::Completed, Status::Paused, Status::Queued],
+				"the one that was moving is queued again; the rest are as they were"
+			);
+			assert!(rdm.engine.contains(TaskId(1)) && rdm.engine.contains(TaskId(4)));
+			assert!(!rdm.engine.contains(TaskId(2)) && !rdm.engine.contains(TaskId(3)));
+		});
+		// Resuming a paused row from before hands it to the engine afresh.
+		rdm.update(&mut cx, |rdm, cx| rdm.resume(3, cx));
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.engine.contains(TaskId(3))));
+		// A new row takes an id above every id the store has seen.
+		rdm.update(&mut cx, |rdm, cx| rdm.add_url("https://example.org/new.bin", cx));
+		let store = Store::open(&paths().database).unwrap();
+		let rows = store.load().unwrap();
+		assert_eq!(rows.len(), 5);
+		assert_eq!(rows[4].id, 5);
+		assert_eq!(rows[2].status, Status::Queued, "the resume was written");
+		rdm.update(&mut cx, |rdm, cx| rdm.remove(2, cx));
+		assert_eq!(store.load().unwrap().len(), 4, "a removed row is gone from the store");
 	}
 
 	#[gpui::test]

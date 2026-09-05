@@ -137,7 +137,7 @@ impl Rdm {
 			}
 			Ok(inspection) => {
 				let name = inspection.probe.file_name.clone();
-				self.add_request(url, Some(name), cx);
+				self.add_request(url, Some(name), None, cx);
 				self.close_add(cx);
 			}
 			Err(message) => sheet.error = Some(message),
@@ -149,7 +149,7 @@ impl Rdm {
 	fn add_page_anyway(&mut self, cx: &mut Context<Self>) {
 		let Some(page) = self.adding.as_ref().and_then(|s| s.page.as_ref()) else { return };
 		let url = page.url.clone();
-		self.add_request(url, None, cx);
+		self.add_request(url, None, None, cx);
 		self.close_add(cx);
 	}
 
@@ -160,8 +160,9 @@ impl Rdm {
 		if page.added.contains(&index) {
 			return;
 		}
+		let source = page.url.to_string();
 		page.added.push(index);
-		self.add_request(link.url, Some(link.name), cx);
+		self.add_request(link.url, Some(link.name), Some(source), cx);
 	}
 
 	/// Drawn over everything from the window root; a click outside the sheet closes it.

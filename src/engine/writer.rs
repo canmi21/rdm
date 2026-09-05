@@ -23,7 +23,7 @@ pub struct Writer {
 }
 
 impl Writer {
-	/// Opens `target.part`, creating it, and grows it to `length` when asked to preallocate:
+	/// Opens `target.downloading`, creating it, and grows it to `length` when asked to preallocate:
 	/// a full disk then fails here, at the start, rather than at the last byte, and every
 	/// segment can be written at its offset from the first moment. An existing partial file is
 	/// kept -- that is what resuming is -- and only grown, never cut.

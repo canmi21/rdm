@@ -7,6 +7,7 @@ mod download;
 mod engine;
 mod identity;
 mod state;
+mod store;
 mod ui;
 
 use gpui::{
