@@ -9,10 +9,6 @@ use crate::engine::{self, Connections, Limiter, Request, Settings};
 use crate::testing::scratch;
 use reqwest::Url;
 
-fn handle() -> engine::Handle {
-	engine::Handle::new()
-}
-
 async fn fetch(
 	url: &str,
 	connections: Connections,
@@ -24,7 +20,7 @@ async fn fetch(
 	request.range = range;
 	tokio::time::timeout(
 		Duration::from_secs(180),
-		engine::task::run(request, &handle(), Limiter::unlimited()),
+		engine::task::run(request, &engine::Handle::new(), Limiter::unlimited()),
 	)
 	.await
 	.expect("finished within three minutes")

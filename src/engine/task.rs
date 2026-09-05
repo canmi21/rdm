@@ -383,16 +383,8 @@ pub fn discard(directory: &Path, file_name: &str) {
 mod tests {
 	use super::*;
 	use crate::engine::settings::Connections;
-	use crate::engine::testing::{Options, TestServer};
+	use crate::engine::testing::{Options, TestServer, body};
 	use crate::testing::scratch;
-
-	fn body(len: usize) -> Vec<u8> {
-		(0..len).map(|i| (i % 251) as u8).collect()
-	}
-
-	fn handle() -> Handle {
-		Handle::new()
-	}
 
 	fn request(server: &TestServer, dir: &Path, path: &str, connections: Connections) -> Request {
 		let mut request = Request::new(server.url(path), dir);
@@ -408,7 +400,7 @@ mod tests {
 		let server = TestServer::start(data.clone(), Options::default());
 		let dir = scratch("single");
 		let req = request(&server, &dir, "/files/one.bin", Connections { min: 1, max: 1, auto: false });
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(done.path, dir.join("one.bin"));
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		assert!(!control::control_path(&done.path).exists(), "the plan is removed when done");
@@ -424,7 +416,7 @@ mod tests {
 		);
 		let dir = scratch("grow");
 		let req = request(&server, &dir, "/big.bin", Connections { min: 1, max: 4, auto: true });
-		let h = handle();
+		let h = Handle::new();
 		// The engine's own count of connections in flight, sampled while it runs; the server's
 		// count runs high, since a connection dropped by a worker stays open on that side until
 		// its writes fail.
@@ -457,7 +449,7 @@ mod tests {
 		let server = TestServer::start(data.clone(), Options::default());
 		let dir = scratch("fixed");
 		let req = request(&server, &dir, "/f.bin", Connections { min: 3, max: 3, auto: false });
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		let starts: Vec<u64> =
 			server.requests().iter().skip(1).filter_map(|r| r.range.map(|(s, _)| s)).collect();
@@ -465,7 +457,7 @@ mod tests {
 
 		let plain = TestServer::start(data.clone(), Options { ranges: false, ..Options::default() });
 		let req = request(&plain, &dir, "/plain.bin", Connections { min: 3, max: 3, auto: false });
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		assert_eq!(plain.peak_connections(), 1);
 	}
@@ -479,7 +471,7 @@ mod tests {
 		);
 		let dir = scratch("retry");
 		let req = request(&server, &dir, "/r.bin", Connections { min: 1, max: 1, auto: false });
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		let starts: Vec<u64> =
 			server.requests().iter().skip(1).filter_map(|r| r.range.map(|(s, _)| s)).collect();
@@ -508,7 +500,7 @@ mod tests {
 		);
 		let dir = scratch("resume");
 		let req = request(&server, &dir, "/res.bin", Connections { min: 2, max: 2, auto: false });
-		let h = handle();
+		let h = Handle::new();
 		let cancel = h.cancel.clone();
 		tokio::spawn(async move {
 			tokio::time::sleep(Duration::from_millis(60)).await;
@@ -521,7 +513,7 @@ mod tests {
 		let done_before = saved.plan.done();
 		assert!(done_before > 0 && done_before < data.len() as u64, "stopped part way: {done_before}");
 		let requests_before = server.requests().len();
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		let all = server.requests();
 		let resumed: Vec<_> = all.iter().skip(requests_before + 1).collect();
@@ -548,7 +540,7 @@ mod tests {
 		);
 		let dir = scratch("changed");
 		let req = request(&server, &dir, "/c.bin", Connections { min: 1, max: 1, auto: false });
-		let h = handle();
+		let h = Handle::new();
 		let cancel = h.cancel.clone();
 		tokio::spawn(async move {
 			tokio::time::sleep(Duration::from_millis(40)).await;
@@ -559,7 +551,7 @@ mod tests {
 		server.set_body(fresh.clone());
 		server.set_options(|o| o.etag = Some("\"v2\"".into()));
 		// The probe sees a new validator, the old plan is discarded, and the new file is fetched whole.
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), fresh);
 	}
 
@@ -570,21 +562,21 @@ mod tests {
 		let dir = scratch("range");
 		let mut req = request(&server, &dir, "/part.bin", Connections { min: 1, max: 2, auto: true });
 		req.range = Some((2000, Some(5000)));
-		let done = run(req.clone(), &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req.clone(), &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), &data[2000..5000]);
 		assert_eq!(done.size, 3000);
 		req.range = Some((9000, None));
-		let tail = run(req.clone(), &handle(), Limiter::unlimited()).await.unwrap();
+		let tail = run(req.clone(), &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&tail.path).unwrap(), &data[9000..]);
 		req.range = Some((20_000, None));
 		assert!(matches!(
-			run(req.clone(), &handle(), Limiter::unlimited()).await,
+			run(req.clone(), &Handle::new(), Limiter::unlimited()).await,
 			Err(Error::OutOfRange)
 		));
 		req.range = None;
 		req.settings.max_size = Some(5000);
 		assert!(matches!(
-			run(req, &handle(), Limiter::unlimited()).await,
+			run(req, &Handle::new(), Limiter::unlimited()).await,
 			Err(Error::TooLarge { size: 10_000, limit: 5000 })
 		));
 	}
@@ -598,7 +590,7 @@ mod tests {
 		);
 		let dir = scratch("chunked");
 		let req = request(&server, &dir, "/stream", Connections { min: 1, max: 4, auto: true });
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		assert_eq!(done.size, 33_333);
 	}
@@ -611,7 +603,7 @@ mod tests {
 		let mut req = request(&server, &dir, "/slow.bin", Connections { min: 2, max: 2, auto: false });
 		req.settings.speed_limit = Some(40_000);
 		let start = Instant::now();
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		let elapsed = start.elapsed();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		// One second's worth is in the bucket already; the other 80 000 bytes at 40 000/s are
@@ -634,7 +626,7 @@ mod tests {
 		let dir = scratch("mirror");
 		let mut req = request(&flaky, &dir, "/m.bin", Connections { min: 1, max: 1, auto: false });
 		req.mirrors = vec![mirror.url("/m.bin")];
-		let done = run(req, &handle(), Limiter::unlimited()).await.unwrap();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		assert!(
 			mirror.requests().iter().all(|r| r.if_range.is_none()),
@@ -648,7 +640,7 @@ mod tests {
 			TestServer::start(data.clone(), Options { fail_after: Some(4096), ..Options::default() });
 		let mut req = request(&flaky, &dir, "/n.bin", Connections { min: 1, max: 1, auto: false });
 		req.mirrors = vec![other.url("/n.bin")];
-		assert!(matches!(run(req, &handle(), Limiter::unlimited()).await, Err(Error::Changed)));
+		assert!(matches!(run(req, &Handle::new(), Limiter::unlimited()).await, Err(Error::Changed)));
 	}
 
 	#[tokio::test]
@@ -658,7 +650,7 @@ mod tests {
 		let dir = scratch("refused");
 		let req = request(&server, &dir, "/gone", Connections::default());
 		assert!(matches!(
-			run(req, &handle(), Limiter::unlimited()).await,
+			run(req, &Handle::new(), Limiter::unlimited()).await,
 			Err(Error::Refused { status: 404 })
 		));
 		assert_eq!(server.requests().len(), 1);

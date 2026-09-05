@@ -145,7 +145,7 @@ impl Engine {
 				Entry {
 					request,
 					checksum,
-					handle: Arc::new(fresh_handle()),
+					handle: Arc::new(Handle::new()),
 					status: Status::Queued,
 					kind: None,
 					running: None,
@@ -180,7 +180,7 @@ impl Engine {
 			let Some(entry) = inner.entries.get_mut(&id) else { return };
 			if matches!(entry.status, Status::Paused | Status::Failed(_)) {
 				entry.status = Status::Queued;
-				entry.handle = Arc::new(fresh_handle());
+				entry.handle = Arc::new(Handle::new());
 			}
 		}
 		self.pump();
@@ -369,10 +369,6 @@ impl Engine {
 	}
 }
 
-fn fresh_handle() -> Handle {
-	Handle::new()
-}
-
 fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
 	let p = &entry.handle.progress;
 	Snapshot {
@@ -400,12 +396,9 @@ fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
 mod tests {
 	use super::*;
 	use crate::engine::settings::Connections;
+	use crate::engine::testing::body;
 	use crate::engine::testing::{Options, TestServer};
 	use crate::testing::scratch;
-
-	fn body(len: usize) -> Vec<u8> {
-		(0..len).map(|i| (i % 253) as u8).collect()
-	}
 
 	fn wait_for(receiver: &mpsc::Receiver<Event>, mut want: impl FnMut(&Event) -> bool) -> Event {
 		let deadline = std::time::Instant::now() + Duration::from_secs(20);

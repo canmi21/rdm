@@ -12,6 +12,12 @@ use std::time::Duration;
 
 use reqwest::Url;
 
+/// A body of `len` bytes whose value says where it came from, so a byte landing at the wrong
+/// offset is caught by a plain comparison.
+pub fn body(len: usize) -> Vec<u8> {
+	(0..len).map(|i| (i % 251) as u8).collect()
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
 	/// Answer Range requests with 206; off, every request gets the whole body and 200.
