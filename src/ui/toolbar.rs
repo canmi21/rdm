@@ -14,7 +14,7 @@ impl Rdm {
 			.flex()
 			.items_center()
 			.gap_1()
-			.h(px(52.0))
+			.h(px(44.0))
 			// The traffic lights sit in this strip because the system titlebar is transparent.
 			.pl(px(80.0))
 			.pr_3()
