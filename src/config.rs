@@ -248,9 +248,15 @@ mod tests {
 		let text = r##"{ "version": 1, "categories": [
 			{ "name": "Video", "icon": "disc", "color": "#abc", "custom_color": "rgb(1, 2, 3)", "preset": "Video", "added": ["xyz"], "removed": ["mkv"] },
 			{ "name": "Audio", "icon": "music", "pattern": "(?i)\\.(mp3|flac|aac|wav|m4a|ogg|xyz)$" },
-			{ "name": "Films", "icon": "film", "pattern": "(?i)\\.(mp4)$" }
+			{ "name": "Films", "icon": "film", "pattern": "(?i)\\.(mp4)$" },
+			{ "name": "Ebooks", "icon": "code", "preset": "Ebooks" }
 		] }"##;
 		let categories = parse(text).unwrap().categories();
+		assert_eq!(
+			(categories[3].name.as_str(), categories[3].icon),
+			("eBooks", Icon::Code),
+			"a preset and an icon under the names an older file wrote"
+		);
 		let video = categories[0].extensions();
 		assert!(!video.contains(&"mkv".to_owned()) && video.last() == Some(&"xyz".to_owned()));
 		assert_eq!((categories[0].icon, categories[0].color), (Icon::Disc, 0xaabbcc), "overrides hold");

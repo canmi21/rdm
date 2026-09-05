@@ -225,7 +225,7 @@ impl Category {
 				extensions: "xls xlsx xlsm xlsb xlt xltx xltm ods ots fods numbers csv tsv",
 			},
 			Preset {
-				name: "Ebooks",
+				name: "eBooks",
 				icon: Icon::BookOpen,
 				tint: Tint::Green,
 				extensions: "epub mobi azw azw3 azw4 kfx kpf prc fb2 fb3 lit lrf pdb djvu djv cbz cbr cb7 \
@@ -264,6 +264,8 @@ impl Category {
 	};
 
 	pub fn find_preset(name: &str) -> Option<&'static Preset> {
+		// The spelling a config.json carried before the preset was renamed is still that preset.
+		let name = if name == "Ebooks" { "eBooks" } else { name };
 		Category::PRESETS.iter().find(|p| p.name == name)
 	}
 

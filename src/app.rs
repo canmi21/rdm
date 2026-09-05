@@ -1192,9 +1192,9 @@ mod tests {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "button:New category");
 		let before = rdm.read_with(&cx, |rdm, _| rdm.categories.len());
-		click(&mut cx, "preset:Ebooks");
+		click(&mut cx, "preset:eBooks");
 		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.categories.len(), before - 1));
-		click(&mut cx, "preset:Ebooks");
+		click(&mut cx, "preset:eBooks");
 		rdm.read_with(&cx, |rdm, _| {
 			assert_eq!(rdm.categories.len(), before);
 			assert!(rdm.categories.last().unwrap().is_catch_all());
@@ -1307,10 +1307,10 @@ mod tests {
 	fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "button:New category");
-		click(&mut cx, "preset:Ebooks");
-		rdm.read_with(&cx, |rdm, _| assert!(!rdm.categories.iter().any(|c| c.name == "Ebooks")));
+		click(&mut cx, "preset:eBooks");
+		rdm.read_with(&cx, |rdm, _| assert!(!rdm.categories.iter().any(|c| c.name == "eBooks")));
 		click(&mut cx, "button:Edit");
-		click(&mut cx, "preset:Ebooks");
+		click(&mut cx, "preset:eBooks");
 		rdm.read_with(&cx, |rdm, _| {
 			assert!(
 				matches!(rdm.category_sheet, Some(CategorySheet::Presets { editing: true })),

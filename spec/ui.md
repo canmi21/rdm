@@ -72,7 +72,7 @@ is reserved for progress that is moving.
 **Every filter and category owns a color, shown only when asked.** All Tasks is snow white,
 the three states take their status colors, and each built-in category starts with one of
 Nord's nine accents -- Video purple, Audio teal, Images yellow, Documents frost, Plain text
-teal, Presentations orange, Spreadsheets green, Ebooks green, Code blue, Archives orange,
+teal, Presentations orange, Spreadsheets green, eBooks green, Code blue, Archives orange,
 Programs red, Disk images navy -- with a custom rule handed the next hue in a fixed cycle so
 nobody has to pick. Any of them can be changed to a named hue or one the user writes; the
 color is a number on the category, so a written one is the same kind of thing as a named one.
@@ -213,7 +213,7 @@ dialog must never do, and it outranks the convenience the outside click buys.
 ## Categories are rules the user writes
 
 The sidebar's categories are one kind of thing: a name, an icon and a regular expression over
-the file name. Nine presets -- Video, Audio, Images, Documents, Ebooks, Code, Archives, Programs,
+the file name. Nine presets -- Video, Audio, Images, Documents, eBooks, Code, Archives, Programs,
 Disk images -- are seeded into `config.json` on the first launch, followed by Other, which has no
 pattern and takes whatever nothing else did.
 
