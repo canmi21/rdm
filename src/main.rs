@@ -1,4 +1,5 @@
 mod app;
+mod assets;
 mod download;
 mod ui;
 
@@ -8,12 +9,16 @@ use gpui::{
 use gpui_platform::application;
 
 use crate::app::Rdm;
+use crate::assets::Assets;
+
+/// The diameter macOS draws the traffic lights at, measured from a capture of the window.
+const TRAFFIC_LIGHT: f32 = 14.0;
 
 fn main() {
 	// gpui reports a font it cannot load through `log` and nowhere else, so without a logger a
 	// window with no text is silent about why.
 	env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-	application().run(|cx: &mut App| {
+	application().with_assets(Assets).run(|cx: &mut App| {
 		// One window is the application: closing it quits rather than leaving a bare menu bar.
 		cx.on_window_closed(|cx, _| {
 			if cx.windows().is_empty() {
@@ -28,7 +33,12 @@ fn main() {
 				titlebar: Some(TitlebarOptions {
 					title: Some("rdm".into()),
 					appears_transparent: true,
-					traffic_light_position: Some(point(px(12.0), px(13.0))),
+					// gpui_macos makes the button strip `button height + 2 * y` tall and hangs it from the top, so
+					// y is the padding on both sides: the strip is centred when it is as tall as the toolbar.
+					traffic_light_position: Some(point(
+						px(12.0),
+						px((ui::toolbar::HEIGHT - TRAFFIC_LIGHT) / 2.0),
+					)),
 				}),
 				..Default::default()
 			},

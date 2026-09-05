@@ -2,7 +2,11 @@ use gpui::{Context, IntoElement, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::download::Status;
+use crate::ui::icon::Icon;
 use crate::ui::{button, theme};
+
+/// The strip the traffic lights share; main.rs derives their offset from it.
+pub const HEIGHT: f32 = 40.0;
 
 impl Rdm {
 	pub(crate) fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -14,28 +18,31 @@ impl Rdm {
 			.flex()
 			.items_center()
 			.gap_1()
-			.h(px(44.0))
+			.h(px(HEIGHT))
 			// The traffic lights sit in this strip because the system titlebar is transparent.
 			.pl(px(80.0))
 			.pr_3()
 			.border_b_1()
 			.border_color(theme::border())
 			.bg(theme::panel())
-			.child(button("add", "Add URL", true, cx.listener(|this, _, _, cx| this.add(cx))))
+			.child(button("add", Icon::Plus, "Add URL", true, cx.listener(|this, _, _, cx| this.add(cx))))
 			.child(button(
 				"pause",
+				Icon::Pause,
 				"Pause",
 				can_pause,
 				cx.listener(|this, _, _, cx| this.pause_selected(cx)),
 			))
 			.child(button(
 				"resume",
+				Icon::Play,
 				"Resume",
 				can_resume,
 				cx.listener(|this, _, _, cx| this.resume_selected(cx)),
 			))
 			.child(button(
 				"remove",
+				Icon::Trash,
 				"Remove",
 				selected.is_some(),
 				cx.listener(|this, _, _, cx| this.remove_selected(cx)),

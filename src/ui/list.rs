@@ -2,6 +2,7 @@ use gpui::{Context, IntoElement, div, prelude::*, px, relative};
 
 use crate::app::Rdm;
 use crate::download::{Download, Status, format_bytes, format_speed};
+use crate::ui::icon::{Icon, icon};
 use crate::ui::theme;
 
 impl Rdm {
@@ -16,6 +17,7 @@ impl Rdm {
 			.flex_1()
 			.min_h_0()
 			.overflow_y_scroll()
+			.py_1()
 			.children(rows)
 			.when(empty, |s| {
 				s.child(
@@ -33,6 +35,7 @@ impl Rdm {
 	fn row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let id = download.id;
 		let selected = self.selected == Some(id);
+		let tint = status_color(download.status);
 		let trailing = match download.status {
 			Status::Downloading => format_speed(download.speed),
 			other => other.label().to_owned(),
@@ -40,12 +43,12 @@ impl Rdm {
 		div()
 			.id(("download", id))
 			.flex()
-			.flex_col()
-			.gap_1()
-			.px_4()
+			.items_center()
+			.gap_3()
+			.mx_2()
+			.px_2()
 			.py_2()
-			.border_b_1()
-			.border_color(theme::border())
+			.rounded_md()
 			.cursor_pointer()
 			.when(selected, |s| s.bg(theme::selection()))
 			.when(!selected, |s| s.hover(|s| s.bg(theme::hover())))
@@ -53,33 +56,68 @@ impl Rdm {
 			.child(
 				div()
 					.flex()
-					.justify_between()
-					.gap_4()
-					.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
-					.child(div().text_color(theme::muted()).whitespace_nowrap().child(trailing)),
+					.flex_none()
+					.size_9()
+					.justify_center()
+					.items_center()
+					.rounded_md()
+					.bg(theme::panel())
+					.text_color(theme::muted())
+					.child(icon(Icon::for_kind(download.kind()), theme::muted()).size_5()),
 			)
-			.child(progress_bar(download))
 			.child(
 				div()
 					.flex()
-					.justify_between()
-					.text_xs()
-					.text_color(theme::muted())
-					.child(size_line(download))
-					.child(download.kind().label()),
+					.flex_col()
+					.flex_1()
+					.min_w_0()
+					.gap_1()
+					.child(
+						div()
+							.flex()
+							.justify_between()
+							.items_center()
+							.gap_4()
+							.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
+							.child(
+								div()
+									.flex()
+									.items_center()
+									.gap_1()
+									.text_xs()
+									.text_color(tint)
+									.whitespace_nowrap()
+									.child(icon(Icon::for_status(download.status), tint).size_3p5())
+									.child(trailing),
+							),
+					)
+					.child(progress_bar(download, tint))
+					.child(
+						div()
+							.flex()
+							.justify_between()
+							.text_xs()
+							.text_color(theme::muted())
+							.child(size_line(download))
+							.child(download.kind().label()),
+					),
 			)
 	}
 }
 
-fn progress_bar(download: &Download) -> impl IntoElement {
-	let fill = match download.status {
+fn status_color(status: Status) -> gpui::Rgba {
+	match status {
 		Status::Completed => theme::success(),
 		Status::Failed => theme::failure(),
 		Status::Paused => theme::warning(),
-		Status::Downloading | Status::Queued => theme::accent(),
-	};
+		Status::Downloading => theme::accent(),
+		Status::Queued => theme::muted(),
+	}
+}
+
+fn progress_bar(download: &Download, fill: gpui::Rgba) -> impl IntoElement {
 	div()
-		.h(px(4.0))
+		.h(px(3.0))
 		.w_full()
 		.rounded_full()
 		.bg(theme::track())

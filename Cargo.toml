@@ -15,12 +15,13 @@ name = "rdm"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
 env_logger = "0.11"
 gpui = { package = "gpui-unofficial", version = "1" }
 # font-kit is what makes text render on macOS; without it gpui_macos draws every glyph as nothing
 # and says so once, at warn level. Zed enables it the same way.
 gpui_platform = { package = "gpui-platform-gpui-unofficial", version = "1", features = ["font-kit"] }
-log = "0.4"
+rust-embed = "8"
 
 # Formatting is rustfmt's and the linter must not report it; see rustfmt.toml.
 [lints.clippy]

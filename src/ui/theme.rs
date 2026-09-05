@@ -31,7 +31,7 @@ pub fn accent() -> Rgba {
 }
 
 pub fn selection() -> Rgba {
-	rgb(0x2f3d55)
+	rgb(0x37373b)
 }
 
 pub fn hover() -> Rgba {
