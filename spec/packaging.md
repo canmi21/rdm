@@ -34,6 +34,20 @@ so it compiles in seconds and steps cleanly in a debugger; the dependencies are 
 they change rarely and GPUI unoptimised is too slow to judge a layout in. The split is Cargo's
 `[profile.dev.package."*"]`, which names every crate but ours.
 
+**Codegen units are not the lever they look like.** The count sets how many pieces LLVM optimises
+in parallel; more pieces is more parallelism up to the machine's cores and less inlining across
+them. At `opt-level = 0` LLVM optimises nothing, so the count changes neither the speed of the
+build nor of the code, and 256 -- the default, written down so nobody wonders -- is as good as
+any. Dependencies take release's 16 rather than dev's 256, since they are compiled once and run
+for weeks; 1 would be a little better and roughly double that one compile, and is not taken until
+a hot path shows it earns it.
+
+**Hot code of our own goes in a crate of its own.** Profile overrides are per package, not per
+module, so the way to have a compute-heavy part optimised while the window stays quick to rebuild
+is to make it a package: `[profile.dev.package.<name>] opt-level = 3`, and it recompiles only when
+it changes. Until such a part exists there is nothing to split; when it does, that is the shape,
+not a lower unit count on the whole.
+
 **Release asks what the application costs at rest.** A download manager sits in the background
 for hours, so the binary's size on disk and in memory matter more than how long it took to build:
 `opt-level = "z"`, fat LTO, one codegen unit, symbols stripped. `panic = "abort"` is a safety
