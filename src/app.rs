@@ -12,13 +12,14 @@ use gpui::{
 use serde::Serialize;
 
 use crate::download::{self, Download, Filter, Status};
+use crate::state::{self, Frame, Paths, State};
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{self, Palette};
 
 /// How the list is drawn. Detailed is the default because it is the one that shows progress,
 /// speed and size at once; the others trade that for density or for a glance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub enum View {
 	Detailed,
 	Compact,
@@ -88,11 +89,28 @@ pub struct Rdm {
 	pub(crate) settings_open: bool,
 	/// The Add URL sheet's field while the sheet is up.
 	pub(crate) adding: Option<Entity<TextInput>>,
+	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
+	paths: Option<Paths>,
+	frame: Option<Frame>,
+	maximized: bool,
+	/// The pending write. Replacing it cancels the old one, which is the debounce.
+	save: Option<Task<()>>,
 	_tick: Task<()>,
 }
 
 impl Rdm {
-	pub fn new(cx: &mut Context<Self>) -> Self {
+	pub fn new(
+		saved: State,
+		paths: Option<Paths>,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Self {
+		// Every move or resize is remembered a moment later; there is no hook for a forced quit.
+		cx.observe_window_bounds(window, |this, window, cx| {
+			this.remember_frame(window);
+			this.schedule_save(cx);
+		})
+		.detach();
 		// Drives the mock rows forward so the list moves while there is no transfer engine
 		// behind it. The real engine will push state changes instead of being polled.
 		let tick = cx.spawn(async move |this, cx| {
@@ -114,8 +132,8 @@ impl Rdm {
 			filter_open: false,
 			sort: SortKey::Added,
 			ascending: false,
-			view: View::Detailed,
-			widths: [132.0, 150.0, 84.0, 112.0, 108.0],
+			view: saved.view.unwrap_or(View::Detailed),
+			widths: saved.widths.unwrap_or([132.0, 150.0, 84.0, 112.0, 108.0]),
 			resizing: None,
 			selected: None,
 			palette: theme::palette(true),
@@ -123,6 +141,10 @@ impl Rdm {
 			open: HashMap::new(),
 			settings_open: false,
 			adding: None,
+			paths,
+			frame: saved.window,
+			maximized: saved.maximized,
+			save: None,
 			_tick: tick,
 		}
 	}
@@ -219,6 +241,7 @@ impl Rdm {
 
 	pub(crate) fn end_resize(&mut self, cx: &mut Context<Self>) {
 		if self.resizing.take().is_some() {
+			self.schedule_save(cx);
 			cx.notify();
 		}
 	}
@@ -235,7 +258,47 @@ impl Rdm {
 
 	pub(crate) fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
 		self.view = view;
+		self.schedule_save(cx);
 		cx.notify();
+	}
+
+	fn remember_frame(&mut self, window: &Window) {
+		let bounds = window.window_bounds();
+		self.maximized = matches!(bounds, gpui::WindowBounds::Maximized(_));
+		let b = bounds.get_bounds();
+		self.frame = Some(Frame {
+			x: b.origin.x.into(),
+			y: b.origin.y.into(),
+			width: b.size.width.into(),
+			height: b.size.height.into(),
+		});
+	}
+
+	fn snapshot(&self) -> State {
+		State {
+			window: self.frame,
+			maximized: self.maximized,
+			widths: Some(self.widths),
+			view: Some(self.view),
+			..State::default()
+		}
+	}
+
+	/// Writes state.json a third of a second after the last change, off the main thread. A drag
+	/// produces dozens of changes a second and one file at the end of it.
+	pub(crate) fn schedule_save(&mut self, cx: &mut Context<Self>) {
+		let Some(path) = self.paths.as_ref().map(|p| p.state.clone()) else { return };
+		let state = self.snapshot();
+		self.save = Some(cx.spawn(async move |_, cx| {
+			cx.background_executor().timer(Duration::from_millis(300)).await;
+			cx.background_executor()
+				.spawn(async move {
+					if let Err(error) = state::save(&path, &state) {
+						eprintln!("could not write {}: {error:#}", path.display());
+					}
+				})
+				.await;
+		}));
 	}
 
 	pub(crate) fn select(&mut self, id: u64, cx: &mut Context<Self>) {
@@ -393,8 +456,12 @@ mod tests {
 	use super::*;
 
 	fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
-		let window =
-			cx.update(|cx| cx.open_window(Default::default(), |_, cx| cx.new(Rdm::new)).unwrap());
+		let window = cx.update(|cx| {
+			cx.open_window(Default::default(), |window, cx| {
+				cx.new(|cx| Rdm::new(State::default(), None, window, cx))
+			})
+			.unwrap()
+		});
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 		let rdm = window.root(&mut cx).unwrap();
 		(rdm, cx)
