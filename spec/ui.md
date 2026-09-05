@@ -33,15 +33,17 @@ a download manager is open for. It is a table rather than a card list because a 
 three lines on what a row says in one, and the density asked for here is an editor's, not a
 launcher's. The other two trade completeness for density or for a glance.
 
-**The table's header sorts, and its columns are dragged to width.** Clicking a column title orders
-by it; clicking it again flips the direction, marked by a chevron in a slot every title reserves,
-so ordering by another column does not push its neighbours over -- it did, and the header jumped.
+**The table's header sorts, and its columns are dragged to width.** Titles read left-aligned, as labels
+do, over cells whose numbers read right-aligned, as numbers do. Clicking a title orders by it;
+clicking it again flips the direction, marked by a chevron in a slot every title reserves, so
+ordering by another column does not push its neighbours over -- it did, and the header jumped.
 The default order is the Added column, ascending. A handle sits at each column's left edge and
 drags that column: the table is anchored at its right and the name column absorbs the rest, so a
 column's left edge is the one that can move, and a boundary that follows the pointer is what a
 drag means -- the first cut put the handle on the right and read as reversed. The widths live on
 the view, and every row spends the same twelve points on the handle's gap so cells stay under
-their titles. A drag is tracked on the window root, not on the handle, because the pointer leaves
+their titles. A drag is clamped at both ends: a column no narrower than fits its numbers, and no
+wider than leaves the name column its floor, because past that the row runs out of the window. A drag is tracked on the window root, not on the handle, because the pointer leaves
 the handle the moment it moves; a move with the button up ends it, since a release outside the
 window is never seen and would otherwise leave the next pointer movement resizing on its own. A funnel at the
 status bar's corner opens a menu of statuses that cuts within whatever the sidebar selected --

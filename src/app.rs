@@ -194,8 +194,14 @@ impl Rdm {
 			self.end_resize(cx);
 			return;
 		}
+		// Widening one column narrows the name column, which keeps a floor: past it the row would
+		// overflow the window.
+		let others: f32 = self.widths.iter().sum::<f32>() - resize.from_width;
+		let table =
+			f32::from(self.viewport.width) - crate::ui::sidebar::WIDTH - crate::ui::list::TABLE_CHROME;
+		let room = table - others - 5.0 * crate::ui::list::HANDLE_W - crate::ui::list::NAME_MIN;
 		let width = resize.from_width - f32::from(at - resize.from_x);
-		self.widths[resize.column.index()] = width.max(Column::MIN);
+		self.widths[resize.column.index()] = width.clamp(Column::MIN, room.max(Column::MIN));
 		cx.notify();
 	}
 
@@ -474,6 +480,36 @@ mod tests {
 			);
 			assert!(rdm.resizing.is_none(), "the drag ends with the button");
 		});
+	}
+
+	#[gpui::test]
+	fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
+		use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, point, px};
+		let (rdm, mut cx) = open(cx);
+		let handle = cx.debug_bounds("resize:Size").unwrap();
+		let start = handle.center();
+		cx.simulate_event(MouseDownEvent {
+			button: MouseButton::Left,
+			position: start,
+			modifiers: Modifiers::default(),
+			click_count: 1,
+			first_mouse: false,
+		});
+		cx.simulate_event(MouseMoveEvent {
+			position: point(px(0.0), start.y),
+			pressed_button: Some(MouseButton::Left),
+			modifiers: Modifiers::default(),
+		});
+		let name = cx.debug_bounds("sort:Name").expect("the name title is still drawn");
+		assert!(
+			f32::from(name.size.width) >= crate::ui::list::NAME_MIN - 12.0,
+			"name column kept {:?}",
+			name.size.width
+		);
+		let added = cx.debug_bounds("sort:Added").unwrap();
+		let viewport = cx.update(|w, _| w.viewport_size());
+		assert!(added.right() <= viewport.width, "the last column stays inside the window");
+		rdm.read_with(&cx, |rdm, _| assert!(rdm.resizing.is_some()));
 	}
 
 	#[gpui::test]

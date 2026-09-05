@@ -8,6 +8,13 @@ use crate::download::{Download, Status, format_added, format_bytes, format_speed
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
 
+/// The name column never drops below this; the fixed columns share what is left of the table.
+pub const NAME_MIN: f32 = 120.0;
+/// The gap the drag handle takes before every fixed column, matched by the cells.
+pub const HANDLE_W: f32 = 12.0;
+/// The table's horizontal overhead: the type icon, and the margins and padding around the header.
+pub const TABLE_CHROME: f32 = 14.0 + 2.0 * 6.0 + 2.0 * 8.0;
+
 /// What each fixed column sorts by and is titled; widths live on the view, since they are dragged.
 const COLUMNS: [(Column, SortKey, &str); 5] = [
 	(Column::Size, SortKey::Size, "Size"),
@@ -73,11 +80,7 @@ impl Rdm {
 			.flat_map(|(column, key, title)| {
 				[
 					self.resize_handle(*column, cx).into_any_element(),
-					self
-						.header_cell(*key, title, true, cx)
-						.w(px(self.width(*column)))
-						.justify_end()
-						.into_any_element(),
+					self.header_cell(*key, title, cx).w(px(self.width(*column))).into_any_element(),
 				]
 			})
 			.collect();
@@ -93,23 +96,21 @@ impl Rdm {
 			.border_b_1()
 			.border_color(p.border)
 			.child(div().w(px(14.0)).flex_none())
-			.child(self.header_cell(SortKey::Name, "Name", false, cx).flex_1().min_w_0().pl(px(12.0)))
+			.child(self.header_cell(SortKey::Name, "Name", cx).flex_1().min_w_0().pl(px(12.0)))
 			.children(cells)
 	}
 
-	/// The chevron's slot sits on the side the text is not aligned to, so the title's edge is the
-	/// column's edge and lines up with the cells below.
+	/// Titles read left-aligned, as labels do, over cells whose numbers read right-aligned. The
+	/// chevron's slot follows the title and is always there, so ordering never shifts a title.
 	fn header_cell(
 		&self,
 		key: SortKey,
 		title: &'static str,
-		end: bool,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		let p = self.palette;
 		let active = self.sort == key;
 		let chevron = if self.ascending { Icon::ChevronUp } else { Icon::ChevronDown };
-		let slot = div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3()));
 		div()
 			.id(SharedString::from(format!("sort:{title}")))
 			.role(Role::ColumnHeader)
@@ -123,7 +124,8 @@ impl Rdm {
 			.when(active, |s| s.text_color(p.text))
 			.hover(move |s| s.text_color(p.text))
 			.on_click(cx.listener(move |this, _, _, cx| this.sort_by(key, cx)))
-			.map(|s| if end { s.child(slot).child(title) } else { s.child(title).child(slot) })
+			.child(title)
+			.child(div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3())))
 	}
 
 	/// The boundary at a column's left edge, draggable: the column follows the pointer.

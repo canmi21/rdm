@@ -3,7 +3,7 @@
 
 pub mod download_window;
 pub mod icon;
-mod list;
+pub mod list;
 pub mod settings_window;
 pub mod sidebar;
 mod status_bar;
