@@ -8,14 +8,18 @@ use crate::ui::icon::Icon;
 /// The strip the traffic lights share; main.rs derives their offset from it.
 pub const HEIGHT: f32 = 36.0;
 
-/// Actions on the selection and nothing else; what is about the window lives in the status bar.
+/// Two labelled buttons: Add URL, and the one thing the selection can do next. Everything else
+/// is an icon in the status bar's corner.
 impl Rdm {
 	pub(crate) fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let p = self.palette;
-		let selected = self.selected();
-		let can_pause = selected.is_some_and(|d| d.status == Status::Downloading);
-		let can_resume = selected
-			.is_some_and(|d| matches!(d.status, Status::Paused | Status::Failed | Status::Queued));
+		let next = self.selected().map(|d| match d.status {
+			Status::Downloading => (Icon::Pause, "Pause"),
+			// A cross up here; the trash can is the icon row's, below.
+			Status::Completed => (Icon::X, "Remove"),
+			Status::Paused | Status::Queued | Status::Failed => (Icon::Play, "Resume"),
+		});
+		let (glyph, label) = next.unwrap_or((Icon::Pause, "Pause"));
 		div()
 			.flex()
 			.items_center()
@@ -37,27 +41,11 @@ impl Rdm {
 			))
 			.child(button(
 				p,
-				"pause",
-				Icon::Pause,
-				"Pause",
-				can_pause,
-				cx.listener(|this, _, _, cx| this.pause_selected(cx)),
-			))
-			.child(button(
-				p,
-				"resume",
-				Icon::Play,
-				"Resume",
-				can_resume,
-				cx.listener(|this, _, _, cx| this.resume_selected(cx)),
-			))
-			.child(button(
-				p,
-				"remove",
-				Icon::Trash,
-				"Remove",
-				selected.is_some(),
-				cx.listener(|this, _, _, cx| this.remove_selected(cx)),
+				"next",
+				glyph,
+				label,
+				next.is_some(),
+				cx.listener(|this, _, _, cx| this.act_on_selected(cx)),
 			))
 	}
 }

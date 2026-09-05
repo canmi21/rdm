@@ -40,17 +40,48 @@ pub enum SortKey {
 	Status,
 }
 
+/// A fixed-width column of the table; the name takes whatever is left.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Column {
+	Size,
+	Progress,
+	Speed,
+	Status,
+	Added,
+}
+
+impl Column {
+	pub const MIN: f32 = 56.0;
+
+	fn index(self) -> usize {
+		self as usize
+	}
+}
+
+/// A drag on a column's edge in progress: which column, where the pointer started, how wide it was.
+#[derive(Clone, Copy, Debug)]
+pub struct Resize {
+	pub column: Column,
+	pub from_x: gpui::Pixels,
+	pub from_width: f32,
+}
+
 pub struct Rdm {
 	pub(crate) downloads: Vec<Download>,
 	pub(crate) filter: Filter,
 	/// A second cut within the sidebar's filter, from the chips above the list.
 	pub(crate) status: Option<Status>,
+	/// The status menu under the funnel is open.
+	pub(crate) filter_open: bool,
 	pub(crate) sort: SortKey,
 	pub(crate) ascending: bool,
 	pub(crate) view: View,
+	pub(crate) widths: [f32; 5],
+	pub(crate) resizing: Option<Resize>,
 	pub(crate) selected: Option<u64>,
 	/// Set at the top of every render from the window's state, read by everything below it.
 	pub(crate) palette: Palette,
+	pub(crate) viewport: gpui::Size<gpui::Pixels>,
 	/// The windows opened beside this one. A handle stays here after its window closes and is
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
@@ -78,11 +109,15 @@ impl Rdm {
 			downloads: download::sample(),
 			filter: Filter::All,
 			status: None,
+			filter_open: false,
 			sort: SortKey::Added,
 			ascending: true,
 			view: View::Detailed,
+			widths: [104.0, 150.0, 84.0, 104.0, 108.0],
+			resizing: None,
 			selected: None,
 			palette: theme::palette(true),
+			viewport: gpui::Size::default(),
 			open: HashMap::new(),
 			settings: None,
 			_tick: tick,
@@ -119,9 +154,15 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Clicking the active chip clears it, so the chips need no separate "all".
-	pub(crate) fn toggle_status(&mut self, status: Status, cx: &mut Context<Self>) {
-		self.status = if self.status == Some(status) { None } else { Some(status) };
+	/// From the funnel's menu, which closes on a choice; `None` is its "All".
+	pub(crate) fn set_status(&mut self, status: Option<Status>, cx: &mut Context<Self>) {
+		self.status = status;
+		self.filter_open = false;
+		cx.notify();
+	}
+
+	pub(crate) fn toggle_filter_menu(&mut self, open: bool, cx: &mut Context<Self>) {
+		self.filter_open = open;
 		cx.notify();
 	}
 
@@ -134,6 +175,39 @@ impl Rdm {
 			self.ascending = true;
 		}
 		cx.notify();
+	}
+
+	pub(crate) fn width(&self, column: Column) -> f32 {
+		self.widths[column.index()]
+	}
+
+	pub(crate) fn begin_resize(&mut self, column: Column, at: gpui::Pixels) {
+		self.resizing = Some(Resize { column, from_x: at, from_width: self.width(column) });
+	}
+
+	/// Called for every pointer move over the window while a drag is on; a no-op otherwise.
+	pub(crate) fn resize_to(&mut self, at: gpui::Pixels, cx: &mut Context<Self>) {
+		if let Some(resize) = self.resizing {
+			let width = resize.from_width + f32::from(at - resize.from_x);
+			self.widths[resize.column.index()] = width.max(Column::MIN);
+			cx.notify();
+		}
+	}
+
+	pub(crate) fn end_resize(&mut self, cx: &mut Context<Self>) {
+		if self.resizing.take().is_some() {
+			cx.notify();
+		}
+	}
+
+	/// The toolbar's second button: what the selection can do next, by its state.
+	pub(crate) fn act_on_selected(&mut self, cx: &mut Context<Self>) {
+		let Some(download) = self.selected() else { return };
+		match download.status {
+			Status::Downloading => self.pause_selected(cx),
+			Status::Completed => self.remove_selected(cx),
+			Status::Paused | Status::Queued | Status::Failed => self.resume_selected(cx),
+		}
 	}
 
 	pub(crate) fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
@@ -264,6 +338,7 @@ impl Rdm {
 impl Render for Rdm {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.palette = theme::palette(window.is_window_active());
+		self.viewport = window.viewport_size();
 		let p = self.palette;
 		div()
 			.flex()
@@ -273,6 +348,12 @@ impl Render for Rdm {
 			.text_size(px(13.0))
 			.bg(p.window)
 			.text_color(p.text)
+			.on_mouse_move(
+				cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+					this.resize_to(event.position.x, cx)
+				}),
+			)
+			.on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| this.end_resize(cx)))
 			.child(self.render_toolbar(cx))
 			.child(
 				div()
@@ -283,6 +364,7 @@ impl Render for Rdm {
 					.child(div().flex().flex_col().flex_1().min_w_0().child(self.render_list(cx))),
 			)
 			.child(self.render_status_bar(cx))
+			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 	}
 }
 
@@ -330,14 +412,17 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn a_chip_narrows_within_the_sidebar_and_clears_itself(cx: &mut TestAppContext) {
+	fn the_funnel_menu_narrows_within_the_sidebar_and_all_clears_it(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "button:Filter by status");
 		click(&mut cx, "chip:Completed");
 		rdm.read_with(&cx, |rdm, _| {
 			assert_eq!(rdm.status, Some(Status::Completed));
+			assert!(!rdm.filter_open, "choosing closes the menu");
 			assert!(rdm.shown().iter().all(|d| d.status == Status::Completed));
 		});
-		click(&mut cx, "chip:Completed");
+		click(&mut cx, "button:Filter by status");
+		click(&mut cx, "chip:All");
 		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.status, None));
 	}
 
@@ -350,6 +435,38 @@ mod tests {
 		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.view, View::Grid));
 		click(&mut cx, "row:3");
 		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, None));
+	}
+
+	#[gpui::test]
+	fn dragging_a_header_edge_resizes_that_column(cx: &mut TestAppContext) {
+		use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, point, px};
+		let (rdm, mut cx) = open(cx);
+		let before = rdm.read_with(&cx, |rdm, _| rdm.width(Column::Size));
+		let handle = cx.debug_bounds("resize:Size").expect("a handle after the Size title");
+		let start = handle.center();
+		cx.simulate_event(MouseDownEvent {
+			button: MouseButton::Left,
+			position: start,
+			modifiers: Modifiers::default(),
+			click_count: 1,
+			first_mouse: false,
+		});
+		let moved = point(start.x + px(40.0), start.y);
+		cx.simulate_event(MouseMoveEvent {
+			position: moved,
+			pressed_button: Some(MouseButton::Left),
+			modifiers: Modifiers::default(),
+		});
+		cx.simulate_event(MouseUpEvent {
+			button: MouseButton::Left,
+			position: moved,
+			modifiers: Modifiers::default(),
+			click_count: 1,
+		});
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(rdm.width(Column::Size), before + 40.0);
+			assert!(rdm.resizing.is_none(), "the drag ends with the button");
+		});
 	}
 
 	#[gpui::test]

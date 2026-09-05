@@ -33,13 +33,19 @@ a download manager is open for. It is a table rather than a card list because a 
 three lines on what a row says in one, and the density asked for here is an editor's, not a
 launcher's. The other two trade completeness for density or for a glance.
 
-**The table's header sorts.** Clicking a column title orders by it; clicking it again flips the
-direction, marked by a chevron. The default order is the Added column, ascending. In the status
-bar a row of status chips cuts within whatever the sidebar selected -- one at a time, and clicking
-the lit chip clears it, so there is no "all" chip to keep in step. They sat above the list first
-and moved down so the list is the first thing under the toolbar; a filter is consulted less often
-than the rows are read. The sidebar answers "which downloads", the chips answer "in what state",
-and neither duplicates the other.
+**The table's header sorts, and its columns are dragged to width.** Clicking a column title orders
+by it; clicking it again flips the direction, marked by a chevron in a slot every title reserves,
+so ordering by another column does not push its neighbours over -- it did, and the header jumped.
+The default order is the Added column, ascending. Between titles sits a handle that drags the
+column to its left; the widths live on the view, and every row spends the same twelve points on
+the handle's gap so cells stay under their titles. A drag is tracked on the window root, not on
+the handle, because the pointer leaves the handle the moment it moves. A funnel at the
+status bar's corner opens a menu of statuses that cuts within whatever the sidebar selected --
+one at a time, with All to clear it -- and the funnel stays lit, naming the status, while one is
+chosen. The statuses were a row of chips above the list first, then a row in the status bar, and
+ended in a menu: a filter is consulted far less often than the rows are read, so it earns an icon
+and a click, not a strip of the window. The sidebar answers "which downloads", the menu answers
+"in what state", and neither duplicates the other.
 
 The view, sort and chip are not yet remembered across launches; that waits on there being any
 persistence at all.
@@ -84,10 +90,23 @@ closes only itself.
 
 The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
 was in the way whenever nothing was selected. The status bar it became is an editor's: one line
-across the whole window, split where the sidebar is. Under the sidebar it holds what belongs to
-the application -- the Settings gear. Under the list it holds what belongs to the list: the
-status chips, a summary of how many and how fast, the selected download as a link to its window,
-and the view switch. The toolbar is left with actions on the selection and nothing else, which is
+across the whole window, split where the sidebar is. Under the sidebar, the four actions -- add,
+pause, resume, remove -- as icons that are always there and lit only when the selection allows
+them. Under the list, from the left: a summary of the collection, how many and how fast; the
+selected download as a link to its window; and at the corner, evenly spaced because they are
+looked for together, the status funnel, the view switch and Settings.
+
+**The toolbar is two labelled buttons.** Add URL, and one button that says what the selection can
+do next: Pause while it downloads, Resume while it is paused, queued or failed, Remove once it is
+complete, with a cross rather than the trash can so the two removes read differently. Four
+labelled buttons of which three were greyed at any moment spent the toolbar on saying no.
+
+**Two hover languages, by whether there is a state to show.** A control that does one thing when
+pressed -- the corner icons, the action icons, a menu row's icon -- brightens on hover and
+nothing else: it has no pressed state, and a background would promise one. A control that stays
+chosen -- a view segment, a sidebar filter, the funnel while a status is set -- keeps a
+background for the state and hovers by brightening too. GPUI's svg carries its own colour rather
+than inheriting the text's, so the icon watches its button through a group to brighten. The toolbar is left with actions on the selection and nothing else, which is
 what a toolbar is for; a view switch is not an action and was moved off it.
 
 Two facts about GPUI decided the shape of the code. A secondary window's view holds an

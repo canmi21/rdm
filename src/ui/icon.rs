@@ -28,6 +28,8 @@ pub enum Icon {
 	ExternalLink,
 	List,
 	CircleDashed,
+	Funnel,
+	X,
 }
 
 impl Icon {
@@ -57,6 +59,8 @@ impl Icon {
 			Icon::ExternalLink => "icons/external-link.svg",
 			Icon::List => "icons/list.svg",
 			Icon::CircleDashed => "icons/circle-dashed.svg",
+			Icon::Funnel => "icons/funnel.svg",
+			Icon::X => "icons/x.svg",
 		}
 	}
 

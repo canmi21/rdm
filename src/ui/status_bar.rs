@@ -1,16 +1,20 @@
-use gpui::{Context, IntoElement, Role, div, prelude::*, px};
+use gpui::{
+	Anchor, AnchoredPositionMode, Context, IntoElement, Role, SharedString, anchored, deferred, div,
+	point, prelude::*, px,
+};
 
 use crate::app::{Rdm, View};
 use crate::download::{Status, format_speed};
 use crate::ui::icon::{Icon, icon};
-use crate::ui::{chip, icon_button, sidebar};
+use crate::ui::{icon_button, menu_row, sidebar};
 
-const CHIPS: [Status; 5] =
-	[Status::Downloading, Status::Queued, Status::Paused, Status::Completed, Status::Failed];
+/// The status bar's height, which the filter menu sits just above.
+const HEIGHT: f32 = 24.0;
 
-/// One line across the whole window, the way an editor keeps its status. Under the sidebar it
-/// holds the application's own controls; under the list, the list's: status chips, a summary,
-/// the selected download as a link to its window, and the view switch.
+/// One line across the whole window, the way an editor keeps its status. Under the sidebar, the
+/// four actions as icons, always drawn and enabled by the selection. Under the list, from left
+/// to right: a summary of the collection, the selected download as a link to its window, and at
+/// the corner the controls about the list itself -- the status filter, the view switch, Settings.
 impl Rdm {
 	pub(crate) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let p = self.palette;
@@ -19,13 +23,17 @@ impl Rdm {
 		let summary = match (self.downloads.len(), active) {
 			(0, _) => "No downloads".to_owned(),
 			(n, 0) => format!("{n} downloads"),
-			(n, a) => format!("{n} downloads, {a} active"),
+			(n, a) => format!("{a} of {n} active"),
 		};
-		let selected = self.selected().map(|d| d.name.clone());
+		let selected = self.selected();
+		let can_pause = selected.is_some_and(|d| d.status == Status::Downloading);
+		let can_resume = selected
+			.is_some_and(|d| matches!(d.status, Status::Paused | Status::Failed | Status::Queued));
+		let name = selected.map(|d| d.name.clone());
 		div()
 			.flex()
 			.items_center()
-			.h(px(24.0))
+			.h(px(HEIGHT))
 			.text_xs()
 			.text_color(p.muted)
 			.border_t_1()
@@ -35,6 +43,7 @@ impl Rdm {
 				div()
 					.flex()
 					.items_center()
+					.gap_1()
 					.h_full()
 					.w(px(sidebar::WIDTH))
 					.px_1p5()
@@ -42,10 +51,35 @@ impl Rdm {
 					.border_color(p.border)
 					.child(icon_button(
 						p,
-						"settings",
-						Icon::Settings,
-						"Settings",
-						cx.listener(|this, _, _, cx| this.open_settings(cx)),
+						"bar-add",
+						Icon::Plus,
+						"Add URL",
+						true,
+						cx.listener(|this, _, _, cx| this.add(cx)),
+					))
+					.child(icon_button(
+						p,
+						"bar-pause",
+						Icon::Pause,
+						"Pause",
+						can_pause,
+						cx.listener(|this, _, _, cx| this.pause_selected(cx)),
+					))
+					.child(icon_button(
+						p,
+						"bar-resume",
+						Icon::Play,
+						"Resume",
+						can_resume,
+						cx.listener(|this, _, _, cx| this.resume_selected(cx)),
+					))
+					.child(icon_button(
+						p,
+						"bar-remove",
+						Icon::Trash,
+						"Remove",
+						selected.is_some(),
+						cx.listener(|this, _, _, cx| this.remove_selected(cx)),
 					)),
 			)
 			.child(
@@ -56,11 +90,10 @@ impl Rdm {
 					.items_center()
 					.gap_1()
 					.px_2()
-					.children(self.chips(cx))
-					.child(div().flex_1())
 					.child(div().whitespace_nowrap().child(summary))
-					.when(speed > 0, |s| s.child(format_speed(speed)))
-					.when_some(selected, |s, name| {
+					.when(speed > 0, |s| s.child(div().whitespace_nowrap().child(format_speed(speed))))
+					.child(div().flex_1())
+					.when_some(name, |s, name| {
 						s.child(
 							div()
 								.id("open-selected")
@@ -70,7 +103,7 @@ impl Rdm {
 								.flex()
 								.items_center()
 								.gap_1()
-								.ml_2()
+								.mr_2()
 								.cursor_pointer()
 								.hover(move |s| s.text_color(p.text))
 								.on_click(cx.listener(|this, _, _, cx| this.open_selected(cx)))
@@ -78,36 +111,108 @@ impl Rdm {
 								.child(icon(Icon::ExternalLink, p.muted).size_3()),
 						)
 					})
-					.child(div().w(px(8.0)))
-					.child(self.view_switch(cx)),
+					.child(self.funnel(cx))
+					.children(self.view_switch(cx))
+					.child(icon_button(
+						p,
+						"settings",
+						Icon::Settings,
+						"Settings",
+						true,
+						cx.listener(|this, _, _, cx| this.open_settings(cx)),
+					)),
 			)
 	}
 
-	/// Status chips: a second cut inside whatever the sidebar selected, one at a time.
-	fn chips(&self, cx: &mut Context<Self>) -> Vec<impl IntoElement + use<>> {
+	/// The funnel opens the menu; it keeps a background only while a status is chosen or the
+	/// menu is open, since those are states, and brightens on hover like any other icon.
+	fn funnel(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		CHIPS
-			.iter()
-			.map(|status| {
-				let status = *status;
-				let count =
-					self.downloads.iter().filter(|d| self.filter.matches(d) && d.status == status).count();
-				chip(
-					p,
-					gpui::SharedString::from(format!("chip:{}", status.label())),
-					format!("{} {count}", status.label()),
-					self.status == Some(status),
-					cx.listener(move |this, _, _, cx| this.toggle_status(status, cx)),
-				)
-				.debug_selector(|| format!("chip:{}", status.label()))
-			})
-			.collect()
+		let lit = self.status.is_some();
+		let open = self.filter_open;
+		div()
+			.id("filter")
+			.role(Role::Button)
+			.aria_label("Filter by status")
+			.debug_selector(|| "button:Filter by status".to_owned())
+			.flex()
+			.items_center()
+			.gap_1()
+			.h_5()
+			.px_1()
+			.rounded_sm()
+			.cursor_pointer()
+			.text_color(if lit { p.text } else { p.muted })
+			.when(open || lit, |s| s.bg(p.selection))
+			.group("funnel")
+			.hover(move |s| s.text_color(p.text))
+			.on_click(cx.listener(move |this, _, _, cx| this.toggle_filter_menu(!open, cx)))
+			.child(
+				icon(Icon::Funnel, if lit { p.accent } else { p.muted })
+					.size_3p5()
+					.when(!lit, move |s| s.group_hover("funnel", move |s| s.text_color(p.text))),
+			)
+			.when_some(self.status, |s, status| s.child(status.label()))
 	}
 
-	/// One segment per view, the active one raised like a pressed key.
-	fn view_switch(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+	/// The menu of statuses, a second cut inside whatever the sidebar selected, one at a time.
+	/// It hangs off the window root, not the funnel: an anchored element inside a centred flex
+	/// row is laid out off its own origin and lands that far from where it was told. Positioned
+	/// in window space at the corner just above the status bar.
+	pub(crate) fn filter_popover(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let segments: Vec<_> = View::ALL
+		let rows: Vec<_> = std::iter::once(None)
+			.chain(Status::ALL.into_iter().map(Some))
+			.map(|status| {
+				let label = status.map_or("All", Status::label);
+				let count = self
+					.downloads
+					.iter()
+					.filter(|d| self.filter.matches(d) && status.is_none_or(|s| d.status == s))
+					.count();
+				menu_row(
+					p,
+					SharedString::from(format!("chip:{label}")),
+					status.map_or(Icon::List, Icon::for_status),
+					label,
+					count,
+					self.status == status,
+					cx.listener(move |this, _, _, cx| this.set_status(status, cx)),
+				)
+				.debug_selector(|| format!("chip:{label}"))
+			})
+			.collect();
+		deferred(
+			anchored()
+				.position_mode(AnchoredPositionMode::Window)
+				.anchor(Anchor::BottomRight)
+				.position(point(self.viewport.width - px(8.0), self.viewport.height - px(HEIGHT + 4.0)))
+				.snap_to_window_with_margin(px(8.0))
+				.child(
+					div()
+						.id("filter-menu")
+						.debug_selector(|| "menu".to_owned())
+						.flex()
+						.flex_col()
+						.gap_px()
+						.w(px(168.0))
+						.p_1()
+						.rounded_md()
+						.border_1()
+						.border_color(p.border)
+						.bg(p.panel)
+						.shadow_md()
+						.on_mouse_down_out(cx.listener(|this, _, _, cx| this.toggle_filter_menu(false, cx)))
+						.children(rows),
+				),
+		)
+		.priority(1)
+	}
+
+	/// One segment per view, the active one lit because it stays chosen.
+	fn view_switch(&self, cx: &mut Context<Self>) -> Vec<impl IntoElement + use<>> {
+		let p = self.palette;
+		View::ALL
 			.iter()
 			.map(|view| {
 				let view = *view;
@@ -125,13 +230,16 @@ impl Rdm {
 					.size_5()
 					.rounded_sm()
 					.cursor_pointer()
+					.group("view")
 					.when(active, |s| s.bg(p.selection))
-					.when(!active, move |s| s.hover(move |s| s.bg(p.hover)))
 					.on_click(cx.listener(move |this, _, _, cx| this.set_view(view, cx)))
-					.child(icon(view_icon(view), color).size_3())
+					.child(
+						icon(view_icon(view), color)
+							.size_3p5()
+							.when(!active, move |s| s.group_hover("view", move |s| s.text_color(p.text))),
+					)
 			})
-			.collect();
-		div().flex().items_center().gap_px().children(segments)
+			.collect()
 	}
 }
 

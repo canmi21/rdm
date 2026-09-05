@@ -1,26 +1,20 @@
 use gpui::{
-	ClickEvent, Context, Div, Hsla, IntoElement, Role, SharedString, Stateful, div, prelude::*, px,
-	relative,
+	ClickEvent, Context, Div, Hsla, IntoElement, MouseButton, MouseDownEvent, Role, SharedString,
+	Stateful, div, prelude::*, px, relative,
 };
 
-use crate::app::{Rdm, SortKey, View};
+use crate::app::{Column, Rdm, SortKey, View};
 use crate::download::{Download, Status, format_added, format_bytes, format_speed};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
 
-/// The table's fixed columns; the name takes what is left.
-const SIZE_W: f32 = 104.0;
-const PROGRESS_W: f32 = 150.0;
-const SPEED_W: f32 = 84.0;
-const STATUS_W: f32 = 104.0;
-const ADDED_W: f32 = 108.0;
-
-const COLUMNS: [(SortKey, &str, f32); 5] = [
-	(SortKey::Size, "Size", SIZE_W),
-	(SortKey::Progress, "Progress", PROGRESS_W),
-	(SortKey::Speed, "Speed", SPEED_W),
-	(SortKey::Status, "Status", STATUS_W),
-	(SortKey::Added, "Added", ADDED_W),
+/// What each fixed column sorts by and is titled; widths live on the view, since they are dragged.
+const COLUMNS: [(Column, SortKey, &str); 5] = [
+	(Column::Size, SortKey::Size, "Size"),
+	(Column::Progress, SortKey::Progress, "Progress"),
+	(Column::Speed, SortKey::Speed, "Speed"),
+	(Column::Status, SortKey::Status, "Status"),
+	(Column::Added, SortKey::Added, "Added"),
 ];
 
 impl Rdm {
@@ -68,17 +62,26 @@ impl Rdm {
 			)
 	}
 
-	/// Column titles that sort. The ordered column carries a chevron for the direction.
+	/// Column titles that sort, each followed by a handle that drags its width. The ordered column
+	/// carries a chevron in a slot every title reserves, so ordering by another does not shift it.
 	fn header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let cells: Vec<_> = COLUMNS
 			.iter()
-			.map(|(key, title, width)| self.header_cell(*key, title, cx).w(px(*width)).justify_end())
+			.flat_map(|(column, key, title)| {
+				[
+					self
+						.header_cell(*key, title, cx)
+						.w(px(self.width(*column)))
+						.justify_end()
+						.into_any_element(),
+					self.resize_handle(*column, cx).into_any_element(),
+				]
+			})
 			.collect();
 		div()
 			.flex()
 			.items_center()
-			.gap_3()
 			.mx_1p5()
 			.mt_1()
 			.px_2()
@@ -88,6 +91,7 @@ impl Rdm {
 			.border_b_1()
 			.border_color(p.border)
 			.child(div().w(px(14.0)).flex_none())
+			.child(div().w(px(12.0)).flex_none())
 			.child(self.header_cell(SortKey::Name, "Name", cx).flex_1().min_w_0())
 			.children(cells)
 	}
@@ -107,6 +111,7 @@ impl Rdm {
 			.aria_label(format!("Sort by {title}"))
 			.debug_selector(|| format!("sort:{title}"))
 			.flex()
+			.flex_none()
 			.items_center()
 			.gap_0p5()
 			.cursor_pointer()
@@ -114,7 +119,30 @@ impl Rdm {
 			.hover(move |s| s.text_color(p.text))
 			.on_click(cx.listener(move |this, _, _, cx| this.sort_by(key, cx)))
 			.child(title)
-			.when(active, |s| s.child(icon(chevron, p.text).size_3()))
+			.child(div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3())))
+	}
+
+	/// The gap between two columns, draggable: the column to its left follows the pointer.
+	fn resize_handle(&self, column: Column, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let dragging = self.resizing.is_some_and(|r| r.column == column);
+		div()
+			.id(SharedString::from(format!("resize:{column:?}")))
+			.debug_selector(|| format!("resize:{column:?}"))
+			.w(px(12.0))
+			.h_4()
+			.flex()
+			.flex_none()
+			.justify_center()
+			.cursor_col_resize()
+			.on_mouse_down(
+				MouseButton::Left,
+				cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+					this.begin_resize(column, event.position.x);
+					cx.notify();
+				}),
+			)
+			.child(div().w_px().h_full().bg(if dragging { p.accent } else { p.border }))
 	}
 
 	/// The selectable shell every view shares: one id, one click, one highlight.
@@ -144,24 +172,33 @@ impl Rdm {
 	fn table_row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let tint = status_color(p, download.status);
-		let cell = |width: f32| div().w(px(width)).flex_none().flex().justify_end().text_xs();
+		// Every fixed cell is followed by the same 12px the header spends on a drag handle, so the
+		// columns line up under their titles.
+		let cell = |column: Column| {
+			div().w(px(self.width(column) + 12.0)).pr(px(12.0)).flex_none().flex().justify_end().text_xs()
+		};
 		self
 			.item(download, cx)
 			.flex()
 			.items_center()
-			.gap_3()
 			.h(px(26.0))
 			.px_2()
 			.child(icon(Icon::for_kind(download.kind()), p.muted).size_3p5())
+			.child(div().w(px(12.0)).flex_none())
 			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
-			.child(cell(SIZE_W).text_color(p.muted).child(size_cell(download)))
-			.child(cell(PROGRESS_W).items_center().gap_2().child(progress_bar(p, download, tint)).child(
-				div().w(px(32.0)).flex_none().text_right().text_color(p.muted).child(percent(download)),
-			))
-			.child(cell(SPEED_W).text_color(p.muted).child(speed_cell(download)))
-			.child(cell(STATUS_W).child(status_label(download, tint)))
+			.child(cell(Column::Size).text_color(p.muted).whitespace_nowrap().child(size_cell(download)))
 			.child(
-				cell(ADDED_W).text_color(p.muted).whitespace_nowrap().child(format_added(download.added)),
+				cell(Column::Progress).items_center().gap_2().child(progress_bar(p, download, tint)).child(
+					div().w(px(32.0)).flex_none().text_right().text_color(p.muted).child(percent(download)),
+				),
+			)
+			.child(cell(Column::Speed).text_color(p.muted).child(speed_cell(download)))
+			.child(cell(Column::Status).whitespace_nowrap().child(status_label(download, tint)))
+			.child(
+				cell(Column::Added)
+					.text_color(p.muted)
+					.whitespace_nowrap()
+					.child(format_added(download.added)),
 			)
 	}
 
