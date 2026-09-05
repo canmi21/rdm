@@ -5,6 +5,14 @@
 [workspace]
 members = ["crates/engine"]
 
+# What every package in this repository shares: one version, one edition, one licence, one home.
+# A package names them with `.workspace = true` rather than repeating them, so a bump is one edit.
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/canmi21/rdm"
+
 [workspace.lints.clippy]
 correctness = "deny"
 suspicious = "deny"
@@ -12,10 +20,10 @@ complexity = "warn"
 
 [package]
 name = "rdm"
-version = "0.0.1"
-edition = "2024"
-license = "MIT"
-repository = "https://github.com/canmi21/rdm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "A download manager for macOS."
 
 [[bin]]

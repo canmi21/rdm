@@ -1,8 +1,9 @@
 [package]
 name = "rdm-engine"
-version = "0.0.1"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "The transfer engine behind rdm: probing, segmented writing, resuming and pacing HTTP downloads."
 
 [lib]
