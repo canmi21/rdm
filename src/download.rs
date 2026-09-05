@@ -239,5 +239,32 @@ pub fn sample() -> Vec<Download> {
 			0,
 			Status::Failed,
 		),
+		entry(
+			7,
+			"fedora-workstation-42.iso",
+			"https://download.fedoraproject.org/fedora-workstation-42.iso",
+			2_400_000_000,
+			800_000_000,
+			21_000_000,
+			Status::Downloading,
+		),
+		entry(
+			8,
+			"lecture-03.mkv",
+			"https://example.org/media/lecture-03.mkv",
+			3_100_000_000,
+			2_950_000_000,
+			9_500_000,
+			Status::Downloading,
+		),
+		entry(
+			9,
+			"node-modules-cache.tar.gz",
+			"https://example.org/ci/node-modules-cache.tar.gz",
+			640_000_000,
+			120_000_000,
+			64_000_000,
+			Status::Downloading,
+		),
 	]
 }

@@ -87,10 +87,10 @@ impl Rdm {
 		div()
 			.flex()
 			.items_center()
+			.h(px(24.0))
 			.mx_1p5()
 			.mt_1()
 			.px_2()
-			.py_0p5()
 			.text_xs()
 			.text_color(p.muted)
 			.border_b_1()
@@ -109,7 +109,7 @@ impl Rdm {
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		let p = self.palette;
-		let active = self.sort == key;
+		let active = self.sort == key && !self.default_order();
 		let chevron = if self.ascending { Icon::ChevronUp } else { Icon::ChevronDown };
 		div()
 			.id(SharedString::from(format!("sort:{title}")))
@@ -128,27 +128,39 @@ impl Rdm {
 			.child(div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3())))
 	}
 
-	/// The boundary at a column's left edge, draggable: the column follows the pointer.
+	/// The boundary at a column's left edge, draggable: the column follows the pointer. The line is
+	/// a pixel wide and the layout spends twelve on it, but the part that takes the pointer is
+	/// twice that and the header's full height, laid over its neighbours: a hot zone the width of
+	/// the line was missed more often than hit.
 	fn resize_handle(&self, column: Column, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let dragging = self.resizing.is_some_and(|r| r.column == column);
 		div()
-			.id(SharedString::from(format!("resize:{column:?}")))
-			.debug_selector(|| format!("resize:{column:?}"))
-			.w(px(12.0))
-			.h_4()
+			.relative()
+			.w(px(HANDLE_W))
+			.h_full()
 			.flex()
 			.flex_none()
 			.justify_center()
-			.cursor_col_resize()
-			.on_mouse_down(
-				MouseButton::Left,
-				cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-					this.begin_resize(column, event.position.x);
-					cx.notify();
-				}),
-			)
 			.child(div().w_px().h_full().bg(if dragging { p.accent } else { p.border }))
+			.child(
+				div()
+					.id(SharedString::from(format!("resize:{column:?}")))
+					.debug_selector(|| format!("resize:{column:?}"))
+					.absolute()
+					.top_0()
+					.left(px(-HANDLE_W / 2.0))
+					.w(px(HANDLE_W * 2.0))
+					.h_full()
+					.cursor_col_resize()
+					.on_mouse_down(
+						MouseButton::Left,
+						cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+							this.begin_resize(column, event.position.x);
+							cx.notify();
+						}),
+					),
+			)
 	}
 
 	/// The selectable shell every view shares: one id, one click, one highlight.
@@ -269,8 +281,8 @@ fn status_label(download: &Download, tint: Hsla) -> impl IntoElement {
 		.gap_1()
 		.text_color(tint)
 		.whitespace_nowrap()
-		.child(icon(Icon::for_status(download.status), tint).size_3())
 		.child(download.status.label())
+		.child(icon(Icon::for_status(download.status), tint).size_3())
 }
 
 fn status_color(p: Palette, status: Status) -> Hsla {

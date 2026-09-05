@@ -21,6 +21,7 @@ fn main() {
 	// gpui reports what it cannot draw through `log` and nowhere else. See spec/framework.md.
 	env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 	application().with_assets(Assets).run(|cx: &mut App| {
+		cx.bind_keys(ui::text_input::key_bindings());
 		let bounds = Bounds::centered(None, size(px(960.0), px(600.0)), cx);
 		let main = cx
 			.open_window(

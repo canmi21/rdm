@@ -18,7 +18,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
-	sort <added|name|size|progress|speed|status> [desc] | add";
+	sort <added|name|size|progress|speed|status> [desc] | add <url>";
 
 pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
 	let _ = std::fs::remove_file(SOCKET);
@@ -157,7 +157,8 @@ impl Rdm {
 				self.ascending = rest.get(1) != Some(&"desc");
 				cx.notify();
 			}
-			"add" => self.add(cx),
+			"add" if !label.is_empty() => self.add_url(&label, cx),
+			"add" => return failure("add takes a url"),
 			_ => return failure(USAGE),
 		}
 		self.state(cx)

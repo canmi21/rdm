@@ -12,6 +12,7 @@ use gpui::{
 use serde::Serialize;
 
 use crate::download::{self, Download, Filter, Status};
+use crate::ui::add_window::AddWindow;
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::settings_window::SettingsWindow;
 use crate::ui::theme::{self, Palette};
@@ -86,6 +87,7 @@ pub struct Rdm {
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
 	pub(crate) settings: Option<WindowHandle<SettingsWindow>>,
+	pub(crate) adding: Option<WindowHandle<AddWindow>>,
 	_tick: Task<()>,
 }
 
@@ -111,7 +113,7 @@ impl Rdm {
 			status: None,
 			filter_open: false,
 			sort: SortKey::Added,
-			ascending: true,
+			ascending: false,
 			view: View::Detailed,
 			widths: [104.0, 150.0, 84.0, 104.0, 108.0],
 			resizing: None,
@@ -120,6 +122,7 @@ impl Rdm {
 			viewport: gpui::Size::default(),
 			open: HashMap::new(),
 			settings: None,
+			adding: None,
 			_tick: tick,
 		}
 	}
@@ -166,13 +169,22 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// A second click on the same column flips the direction; a click on another starts ascending.
+	/// The order nothing has been asked for: newest first.
+	pub(crate) fn default_order(&self) -> bool {
+		self.sort == SortKey::Added && !self.ascending
+	}
+
+	/// Three clicks on a title: ascending, descending, then back to the default order. A click on
+	/// another title starts that one ascending.
 	pub(crate) fn sort_by(&mut self, key: SortKey, cx: &mut Context<Self>) {
-		if self.sort == key {
-			self.ascending = !self.ascending;
-		} else {
+		if self.sort != key || self.default_order() {
 			self.sort = key;
 			self.ascending = true;
+		} else if self.ascending {
+			self.ascending = false;
+		} else {
+			self.sort = SortKey::Added;
+			self.ascending = false;
 		}
 		cx.notify();
 	}
@@ -231,14 +243,17 @@ impl Rdm {
 		cx.notify();
 	}
 
-	// TODO: opens a dialog asking for a URL once there is an input to type it into.
-	pub(crate) fn add(&mut self, cx: &mut Context<Self>) {
+	/// A new download from an address, queued; the name is the address's last path segment.
+	// TODO: the engine will resolve the size and the real name from the server.
+	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
 		let id = self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1;
+		let name =
+			url.trim_end_matches('/').rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("download");
 		self.downloads.push(Download {
 			id,
-			name: format!("download-{id}.bin"),
-			url: format!("https://example.org/files/download-{id}.bin"),
-			size: 250_000_000,
+			name: name.to_owned(),
+			url: url.to_owned(),
+			size: 0,
 			received: 0,
 			speed: 0,
 			status: Status::Queued,
@@ -246,6 +261,23 @@ impl Rdm {
 		});
 		self.selected = Some(id);
 		cx.notify();
+	}
+
+	/// The Add URL buttons open a window with a field; a second press brings it forward.
+	pub(crate) fn open_add(&mut self, cx: &mut Context<Self>) {
+		if let Some(handle) = &self.adding
+			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
+		{
+			return;
+		}
+		let rdm = cx.entity();
+		cx.defer(move |cx| {
+			let options = child_window(cx, "Add URL", size(px(420.0), px(132.0)));
+			let view = rdm.clone();
+			let handle =
+				cx.open_window(options, |window, cx| cx.new(|cx| AddWindow::new(view, window, cx))).ok();
+			rdm.update(cx, |this, _| this.adding = handle);
+		});
 	}
 
 	pub(crate) fn pause_selected(&mut self, cx: &mut Context<Self>) {
@@ -315,12 +347,6 @@ impl Rdm {
 		});
 	}
 
-	pub(crate) fn open_selected(&mut self, cx: &mut Context<Self>) {
-		if let Some(id) = self.selected {
-			self.open_download(id, cx);
-		}
-	}
-
 	pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
 		if let Some(handle) = &self.settings
 			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
@@ -335,12 +361,13 @@ impl Rdm {
 		});
 	}
 
+	// TODO: the mock loops a download back to the start when it fills, so there is always movement
+	// to look at; the engine will complete it instead.
 	fn advance(&mut self) {
 		for download in self.downloads.iter_mut().filter(|d| d.status == Status::Downloading) {
-			download.received = (download.received + download.speed / 2).min(download.size);
-			if download.received == download.size {
-				download.status = Status::Completed;
-				download.speed = 0;
+			download.received += download.speed / 2;
+			if download.received >= download.size {
+				download.received = 0;
 			}
 		}
 	}
@@ -408,7 +435,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn a_header_click_sorts_and_a_second_flips(cx: &mut TestAppContext) {
+	fn a_title_cycles_ascending_descending_default(cx: &mut TestAppContext) {
 		let (rdm, mut cx) = open(cx);
 		click(&mut cx, "sort:Size");
 		rdm.read_with(&cx, |rdm, _| {
@@ -417,7 +444,11 @@ mod tests {
 			assert!(sizes.windows(2).all(|w| w[0] <= w[1]), "{sizes:?}");
 		});
 		click(&mut cx, "sort:Size");
-		rdm.read_with(&cx, |rdm, _| assert!(!rdm.ascending));
+		rdm.read_with(&cx, |rdm, _| assert_eq!((rdm.sort, rdm.ascending), (SortKey::Size, false)));
+		click(&mut cx, "sort:Size");
+		rdm.read_with(&cx, |rdm, _| {
+			assert!(rdm.default_order(), "a third click returns to newest first")
+		});
 	}
 
 	#[gpui::test]

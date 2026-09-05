@@ -13,8 +13,7 @@ const HEIGHT: f32 = 24.0;
 
 /// One line across the whole window, the way an editor keeps its status. Under the sidebar, the
 /// four actions as icons, always drawn and enabled by the selection. Under the list, from left
-/// to right: a summary of the collection, the selected download as a link to its window, and at
-/// the corner the controls about the list itself -- the status filter, the view switch, Settings.
+/// to right: a summary of the collection, and at the corner the controls about the list itself -- the status filter, the view switch, Settings.
 impl Rdm {
 	pub(crate) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let p = self.palette;
@@ -29,7 +28,6 @@ impl Rdm {
 		let can_pause = selected.is_some_and(|d| d.status == Status::Downloading);
 		let can_resume = selected
 			.is_some_and(|d| matches!(d.status, Status::Paused | Status::Failed | Status::Queued));
-		let name = selected.map(|d| d.name.clone());
 		div()
 			.flex()
 			.items_center()
@@ -55,7 +53,7 @@ impl Rdm {
 						Icon::Plus,
 						"Add URL",
 						true,
-						cx.listener(|this, _, _, cx| this.add(cx)),
+						cx.listener(|this, _, _, cx| this.open_add(cx)),
 					))
 					.child(icon_button(
 						p,
@@ -93,24 +91,6 @@ impl Rdm {
 					.child(div().whitespace_nowrap().child(summary))
 					.when(speed > 0, |s| s.child(div().whitespace_nowrap().child(format_speed(speed))))
 					.child(div().flex_1())
-					.when_some(name, |s, name| {
-						s.child(
-							div()
-								.id("open-selected")
-								.role(Role::Button)
-								.aria_label("Open selected")
-								.debug_selector(|| "button:Open selected".to_owned())
-								.flex()
-								.items_center()
-								.gap_1()
-								.mr_2()
-								.cursor_pointer()
-								.hover(move |s| s.text_color(p.text))
-								.on_click(cx.listener(|this, _, _, cx| this.open_selected(cx)))
-								.child(div().max_w(px(240.0)).truncate().child(name))
-								.child(icon(Icon::ExternalLink, p.muted).size_3()),
-						)
-					})
 					.child(self.funnel(cx))
 					.children(self.view_switch(cx))
 					.child(icon_button(

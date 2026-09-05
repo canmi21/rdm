@@ -4652,6 +4652,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]

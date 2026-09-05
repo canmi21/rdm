@@ -46,3 +46,12 @@ else:
 - gpui_macos sizes the traffic-light strip to `button height + 2 * y` and hangs it from the top
   of the window, so the `y` in `TitlebarOptions::traffic_light_position` is the padding on both
   sides. See [ui.md](ui.md).
+
+## The text field is Zed's example, kept
+
+GPUI ships no text input; Zed's editor is its own crate and far more than a field. The one-line
+field in `src/ui/text_input.rs` is the framework's `examples/input.rs` (Apache-2.0), trimmed to one
+line, drawn in this palette, and given a confirm callback for Enter. It implements
+`EntityInputHandler` so the system's input method, dead keys and the character palette work, which
+a hand-rolled key handler would not get right. Its key bindings are bound once in `main`, scoped
+to the `TextInput` key context.

@@ -34,10 +34,12 @@ three lines on what a row says in one, and the density asked for here is an edit
 launcher's. The other two trade completeness for density or for a glance.
 
 **The table's header sorts, and its columns are dragged to width.** Titles read left-aligned, as labels
-do, over cells whose numbers read right-aligned, as numbers do. Clicking a title orders by it;
-clicking it again flips the direction, marked by a chevron in a slot every title reserves, so
-ordering by another column does not push its neighbours over -- it did, and the header jumped.
-The default order is the Added column, ascending. A handle sits at each column's left edge and
+do, over cells whose numbers read right-aligned, as numbers do. Clicking a title orders by it
+ascending, a second click descending, and a third lets go, back to the default: newest first, by
+Added, which shows no chevron because nothing has been asked for. The chevron sits in a slot every
+title reserves, so ordering by another column does not push its neighbours over -- it did, and
+the header jumped. A status cell reads text then mark, so the marks line up down the right edge
+under a left-aligned title. A handle sits at each column's left edge and
 drags that column: the table is anchored at its right and the name column absorbs the rest, so a
 column's left edge is the one that can move, and a boundary that follows the pointer is what a
 drag means -- the first cut put the handle on the right and read as reversed. The widths live on
@@ -125,6 +127,8 @@ the update, in `Rdm::open_download`.
 ## What is deliberately not there yet
 
 The rows are sample data advanced by a timer so the list moves; there is no transfer engine,
-no persistence, Add URL inserts a placeholder because there is no text input to type into, and
-the Settings window is labels with nothing behind them. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
+no persistence, and the Settings window is labels with nothing behind them. Add URL opens a
+window with one field, as a native application asks for an address, and queues what is typed
+under the address's last path segment; the engine will resolve the real name and size. The mock
+rows that download loop back to zero when they fill, so there is always movement to look at. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
 built behind.
