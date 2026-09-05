@@ -19,8 +19,20 @@ use crate::ui::{button, icon_button, sidebar, status_bar, toolbar};
 /// The pattern field's placeholder: one worked example, and what the engine allows, as a comment.
 const PATTERN_EXAMPLE: &str = r"^(?!.*\.mp4$).*$  // lookahead and lookbehind are supported";
 
-/// The color field's placeholder: the shapes it reads, the most written first.
-const COLOR_EXAMPLES: &str = "#3b4252, rgb(59, 66, 82), hsl(220, 16%, 28%)";
+/// The color field's placeholder: one hex value, the way most people will write one. The rest
+/// of what the field reads is behind the question mark beside it.
+const COLOR_EXAMPLES: &str = "#3b4252";
+
+/// The short rule, as the question mark's tooltip.
+const COLOR_RULE: &str = "Hex, rgb() or hsl(); press for the full guide";
+
+/// The full guide, unfolded under the field on a press: one line per shape, with examples.
+const COLOR_GUIDE: [&str; 4] = [
+	"Hex: #3b4252, #3b4252ff, #abc, #abcf",
+	"rgb(59, 66, 82), rgba(59 66 82 / 0.5), rgb(23%, 26%, 32%)",
+	"hsl(220, 16%, 28%), hsla(220 16% 28% / 1)",
+	"Alpha is read and dropped. Named colors are not read.",
+];
 
 /// Under the pattern field.
 const ADVANCED_HINT: &str = "Enter a regular expression to match against whole file names.";
@@ -273,6 +285,11 @@ impl Rdm {
 			form.match_case = !form.match_case;
 			cx.notify();
 		}
+	}
+
+	pub(crate) fn toggle_color_help(&mut self, cx: &mut Context<Self>) {
+		self.color_help = !self.color_help;
+		cx.notify();
 	}
 
 	pub(crate) fn toggle_ignore_space(&mut self, cx: &mut Context<Self>) {
@@ -905,13 +922,49 @@ impl Rdm {
 				Some(color) => div().size_3p5().rounded_full().bg(p.hue(color)),
 				None => div().size_3p5().rounded_full().border_1().border_color(p.border),
 			});
-		div()
+		let guide = div()
+			.debug_selector(|| "color-guide".to_owned())
+			.flex()
+			.flex_col()
+			.gap_0p5()
+			.px_1()
+			.text_xs()
+			.text_color(p.muted)
+			.children(COLOR_GUIDE.iter().map(|line| div().child(*line)));
+		let row = div()
 			.flex()
 			.items_center()
 			.gap_1()
 			.children(swatches)
 			.child(div().flex_1().min_w_0().ml_1().child(custom))
 			.child(preview)
+			// A question mark after the field: the rule on hover, the whole guide on a press.
+			.child(
+				div()
+					.id("color-help")
+					.role(Role::Button)
+					.aria_label("Color formats")
+					.debug_selector(|| "button:Color formats".to_owned())
+					.flex()
+					.flex_none()
+					.items_center()
+					.justify_center()
+					.size_6()
+					.rounded_sm()
+					.cursor_pointer()
+					.group("color-help")
+					.tooltip(tooltip(COLOR_RULE))
+					.when(self.color_help, |s| s.bg(p.selection))
+					.on_click(cx.listener(|this, _, _, cx| this.toggle_color_help(cx)))
+					.child(
+						icon(Icon::CircleQuestion, if self.color_help { p.text } else { p.muted })
+							.size_4()
+							.when(!self.color_help, move |s| {
+								s.group_hover("color-help", move |s| s.text_color(p.text))
+							}),
+					),
+			);
+		div().flex().flex_col().gap_1p5().child(row).when(self.color_help, |s| s.child(guide))
 	}
 }
 

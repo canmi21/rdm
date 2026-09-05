@@ -46,6 +46,7 @@ pub enum Icon {
 	Presentation,
 	FileSpreadsheet,
 	Text,
+	CircleQuestion,
 }
 
 impl Icon {
@@ -93,6 +94,7 @@ impl Icon {
 			Icon::Presentation => "lucide/presentation.svg",
 			Icon::FileSpreadsheet => "lucide/file-spreadsheet.svg",
 			Icon::Text => "lucide/text-initial.svg",
+			Icon::CircleQuestion => "lucide/circle-question-mark.svg",
 		}
 	}
 

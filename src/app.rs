@@ -133,6 +133,8 @@ pub struct Rdm {
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
 	pub(crate) category_sheet: Option<CategorySheet>,
+	/// The color field's full guide is unfolded, on whichever face shows the field.
+	pub(crate) color_help: bool,
 	/// Holds the keyboard while the categories are being reordered, so Escape can finish.
 	pub(crate) reorder_focus: gpui::FocusHandle,
 	pub(crate) filter: Filter,
@@ -230,6 +232,7 @@ impl Rdm {
 			watcher,
 			categories: config.categories(),
 			category_sheet: None,
+			color_help: false,
 			reorder_focus: cx.focus_handle(),
 			filter: Filter::All,
 			status: None,

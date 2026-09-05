@@ -254,8 +254,11 @@ the whole of Lucide would be a picker nobody finishes scrolling.
 fills the rest of the line for a color of the user's own, and after it a dot. The field reads
 what this stack has constructors for and nothing more: hex in every common length, with or
 without the hash, and the CSS functions `rgb()`, `rgba()`, `hsl()` and `hsla()`, alpha read and
-dropped; its placeholder shows one of each, the most written first, so the shapes need no
-explaining. The dot previews what is typed as it is typed, and once the text reads as a color
+dropped; its placeholder is one hex value, the way most people write one, and the rest of what
+it reads sits behind a question mark after the field: the one-line rule on hover, the whole
+guide -- every shape with examples, and that alpha is dropped and names are not read --
+unfolded under the line on a press. A placeholder that listed every shape was a sentence in a
+box meant for a word. The dot previews what is typed as it is typed, and once the text reads as a color
 the dot is a swatch like the nine: pressing it, or Enter in the field, chooses that color. The
 writing stays with the category, as written, so the user can move between a named hue and
 their own and back; on the new-category form it is kept only if the category is created. What
