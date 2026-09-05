@@ -38,8 +38,9 @@ The publish job downloads every artifact and first checks that its own run numbe
 the build already published, reading the nightly's `latest.json`; a run cancelled late, or
 one that ran long, must not overwrite a newer one's files. Then it writes `latest.json`, moves
 the `nightly` tag to the commit with force, uploads every file with `--clobber`, and points the
-release at the commit. The release itself was created once by hand, marked prerelease, and is
-only ever updated: a nightly that is not a prerelease would be what `/releases/latest`
+release at the commit. The release itself was created once by hand, marked prerelease and given
+its one paragraph of notes -- left empty, GitHub shows the commit message there instead -- and
+is only ever updated: a nightly that is not a prerelease would be what `/releases/latest`
 answers with, and that address is the daily channel's.
 
 ## What a build contains
