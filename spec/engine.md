@@ -56,3 +56,32 @@ connection, and a download with several connections wants several TCP connection
 what it is working around is a server's per-connection pacing. So a split download builds its
 clients with `http1_only`, one client per connection; the HTTP version setting governs the
 single-connection case, where negotiation costs nothing.
+
+## The probe is a GET for one byte
+
+The first request asks for `Range: bytes=0-0`. A 206 answers three questions at once -- the
+size from `Content-Range`, that the server honours ranges, and the ETag or Last-Modified that
+later requests carry as `If-Range` so a changed file comes back as 200 and a fresh start rather
+than as a slice of something else. A 200 says the server ignored the range: the whole file is
+on its way and is dropped unread, the size is `Content-Length` if there is one, and
+`Accept-Ranges: bytes` is remembered but not believed, since some servers promise it and do not
+keep it. A HEAD would cost the same and answer less: servers that ignore Range on HEAD and
+honour it on GET are common, and the reverse is not.
+
+The file's name comes from `Content-Disposition` when the server gives one, the starred form
+first because it is the one that can spell a name outside ASCII, else the address's last path
+segment, decoded, else `download`. Whatever the source, it passes through one function that
+strips separators, control characters and a leading dot, because a name is about to become a
+path and a server does not get to choose where on the disk it lands.
+
+## Tests run against a server of their own
+
+`testing.rs` is an HTTP/1.1 server on std threads, in the test build only, serving one body
+with whatever misbehaviour a test asks for: no ranges, ranges advertised and ignored, a wrong
+status, a redirect, a chunked body with no length, a connection dropped part way through, bytes
+doled out slowly. It logs every request so a test can say what the engine did -- which ranges
+it asked for, how many connections it held open at once -- and that log is how the segment
+algorithm is tested without a network. It runs on its own threads rather than the runtime under
+test so that a hang in one cannot hide in the other. A handful of tests against a public mirror
+exist for the sake of a real network and real sizes; they are ignored by default and run on
+request.

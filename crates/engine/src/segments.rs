@@ -101,7 +101,12 @@ impl Plan {
 	/// The first segment that has bytes left and no connection on it, given which segments are
 	/// being worked. A connection that comes free takes this before it asks for a split.
 	pub fn idle(&self, active: &[usize]) -> Option<usize> {
-		self.segments.iter().enumerate().find(|(i, s)| !s.is_complete() && !active.contains(i)).map(|(i, _)| i)
+		self
+			.segments
+			.iter()
+			.enumerate()
+			.find(|(i, s)| !s.is_complete() && !active.contains(i))
+			.map(|(i, _)| i)
 	}
 
 	/// aria2's move: when a connection is free and every unfinished segment is taken, the
