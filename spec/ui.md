@@ -145,6 +145,15 @@ form is filled in and dismissed, and a window for it is a window to find and clo
 Add Task was tried as a sheet first and read better than the window it replaced, so Settings
 followed.
 
+**Settings is shaped for the many to come.** A rail down the left names the sections -- General,
+Transfers, Appearance -- with a search field above it, and the chosen section's rows fill the
+right. The card is a fixed size, so changing sections moves nothing. A search cuts across every
+section and shows each match under its section's name, since a setting is looked for by what it
+does, not by where it was filed; while a search is on, no section is lit. Escape in the field
+closes the sheet, like Escape anywhere on a sheet with nothing to lose. Every setting belongs
+to exactly one section; a setting with nothing behind it yet is shown as a value that cannot
+be changed, marked `TODO` where it lives, rather than left out and rediscovered later.
+
 The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
 was in the way whenever nothing was selected. The status bar it became is an editor's: one line
 across the whole window, split where the sidebar is. Under the sidebar, the four actions -- add,
@@ -327,4 +336,4 @@ its commands with the row changed at once so a click never waits on a connection
 there: the list is not persisted, so a restart forgets the rows while their partial files and
 plans stay on disk for the store that does not exist yet; an address that is not a URL is
 dropped without a word; the Settings sheet shows the download folder the engine writes to and
-labels for the rest. Each is marked `TODO` where it lives.
+read-only values for the rest. Each is marked `TODO` where it lives.

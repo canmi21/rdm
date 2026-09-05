@@ -47,6 +47,10 @@ pub enum Icon {
 	Text,
 	CircleQuestion,
 	ListRestart,
+	Search,
+	SlidersHorizontal,
+	Download,
+	Palette,
 }
 
 impl Icon {
@@ -54,6 +58,10 @@ impl Icon {
 		match self {
 			Icon::Plus => "lucide/plus.svg",
 			Icon::ListRestart => "lucide/list-restart.svg",
+			Icon::Search => "lucide/search.svg",
+			Icon::SlidersHorizontal => "lucide/sliders-horizontal.svg",
+			Icon::Download => "lucide/download.svg",
+			Icon::Palette => "lucide/palette.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",
 			Icon::Trash => "lucide/trash.svg",

@@ -99,7 +99,7 @@ impl Rdm {
 			.filter(|(_, handle)| handle.update(cx, |_, _, _| ()).is_ok())
 			.map(|(id, _)| *id)
 			.collect();
-		let settings = self.settings_open;
+		let settings = self.settings_open();
 		let state = State {
 			filter: self.filter.label(&self.categories),
 			categories: self
@@ -158,7 +158,7 @@ impl Rdm {
 					_ => self.remove(id, cx),
 				}
 			}
-			"settings" => self.toggle_settings(!self.settings_open, cx),
+			"settings" => self.toggle_settings(!self.settings_open(), cx),
 			"filter" => {
 				let states = Filter::STATES.into_iter();
 				let categories = self.categories.iter().map(|c| Filter::Category(c.id));

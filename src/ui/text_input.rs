@@ -12,6 +12,7 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::ui::icon::{Icon, icon};
 use crate::ui::theme;
 
 actions!(
@@ -77,6 +78,8 @@ pub struct TextInput {
 	/// under its cursor, the way every native field does, rather than wrapping or eliding.
 	pub scroll: Pixels,
 	is_selecting: bool,
+	/// A glyph drawn inside the box before the text, for a field whose purpose is a shape.
+	leading: Option<Icon>,
 	/// Enter was pressed; the owning window decides what that means.
 	on_confirm: Option<OnConfirm>,
 	on_cancel: Option<OnCancel>,
@@ -95,6 +98,7 @@ impl TextInput {
 			last_bounds: None,
 			scroll: px(0.0),
 			is_selecting: false,
+			leading: None,
 			on_confirm: None,
 			on_cancel: None,
 		}
@@ -107,6 +111,11 @@ impl TextInput {
 
 	pub fn on_cancel(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
 		self.on_cancel = Some(Box::new(f));
+		self
+	}
+
+	pub fn with_leading(mut self, glyph: Icon) -> Self {
+		self.leading = Some(glyph);
 		self
 	}
 
@@ -676,6 +685,9 @@ impl Render for TextInput {
 			.border_color(if self.focus_handle.is_focused(window) { p.accent } else { p.border })
 			.bg(p.window)
 			.line_height(px(20.))
+			.gap_1p5()
+			.items_center()
+			.when_some(self.leading, |s, glyph| s.child(icon(glyph, p.muted).size_3p5()))
 			.child(TextElement { input: cx.entity() })
 	}
 }

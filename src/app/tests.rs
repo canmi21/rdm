@@ -712,9 +712,10 @@ fn the_colorful_categories_switch_flips_the_preference(cx: &mut TestAppContext) 
 	let (rdm, mut cx) = open(cx);
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories, "on to start with"));
 	click(&mut cx, "button:Settings");
-	click(&mut cx, "setting:Always use colorful categories");
+	click(&mut cx, "section:Appearance");
+	click(&mut cx, "switch:Always use colorful categories");
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.colorful_categories));
-	click(&mut cx, "setting:Always use colorful categories");
+	click(&mut cx, "switch:Always use colorful categories");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories));
 }
 
@@ -727,12 +728,43 @@ fn escape_closes_whatever_clean_sheet_is_on_top(cx: &mut TestAppContext) {
 		assert!(rdm.category_sheet.is_none(), "the presets have nothing to keep")
 	});
 	click(&mut cx, "button:Settings");
-	rdm.read_with(&cx, |rdm, _| assert!(rdm.settings_open));
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.settings_open()));
 	cx.simulate_keystrokes("escape");
-	rdm.read_with(&cx, |rdm, _| assert!(!rdm.settings_open));
+	rdm.read_with(&cx, |rdm, _| assert!(!rdm.settings_open()));
 	click(&mut cx, "button:Add Task");
 	cx.simulate_keystrokes("escape");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_none(), "an empty Add Task goes too"));
+}
+
+#[gpui::test]
+fn settings_has_sections_and_a_search_that_cuts_across_them(cx: &mut TestAppContext) {
+	use crate::ui::settings_sheet::Section;
+	let (rdm, mut cx) = open(cx);
+	click(&mut cx, "button:Settings");
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.settings.as_ref().map(|s| s.section), Some(Section::General))
+	});
+	assert!(cx.debug_bounds("setting:Download folder").is_some());
+	assert!(
+		cx.debug_bounds("setting:Always use colorful categories").is_none(),
+		"another section's rows are not shown"
+	);
+	click(&mut cx, "section:Appearance");
+	assert!(cx.debug_bounds("setting:Always use colorful categories").is_some());
+	assert!(cx.debug_bounds("setting:Download folder").is_none());
+	let search = rdm.read_with(&cx, |rdm, _| rdm.settings.as_ref().unwrap().search.clone());
+	cx.update(|_, cx| search.update(cx, |i, cx| i.set_content("speed", cx)));
+	cx.run_until_parked();
+	assert!(
+		cx.debug_bounds("setting:Speed limit").is_some(),
+		"a search shows every section's matches"
+	);
+	assert!(cx.debug_bounds("setting:Always use colorful categories").is_none());
+	cx.update(|_, cx| search.update(cx, |i, cx| i.set_content("nothing like this", cx)));
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("setting:Speed limit").is_none(), "no match, no rows");
+	cx.simulate_keystrokes("escape");
+	rdm.read_with(&cx, |rdm, _| assert!(!rdm.settings_open(), "escape in the field closes"));
 }
 
 #[gpui::test]

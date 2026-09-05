@@ -20,6 +20,7 @@ use crate::store::Store;
 use crate::ui::category_sheet::CategorySheet;
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::icon::Icon;
+use crate::ui::settings_sheet::SettingsSheet;
 use crate::ui::theme::{self, Palette};
 
 mod categories;
@@ -122,7 +123,8 @@ pub struct Rdm {
 	/// The windows opened beside this one. A handle stays here after its window closes and is
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
-	pub(crate) settings_open: bool,
+	/// The Settings sheet while it is up.
+	pub(crate) settings: Option<SettingsSheet>,
 	/// The Add Task sheet while it is up.
 	pub(crate) adding: Option<crate::ui::add_dialog::AddSheet>,
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
@@ -215,7 +217,7 @@ impl Rdm {
 			palette: theme::palette(true),
 			viewport: gpui::Size::default(),
 			open: HashMap::new(),
-			settings_open: false,
+			settings: None,
 			adding: None,
 			paths,
 			frame: saved.window,
@@ -433,8 +435,8 @@ impl Rdm {
 			self.dismiss_add(cx);
 		} else if self.category_sheet.is_some() {
 			self.dismiss_category_sheet(cx);
-		} else if self.settings_open {
-			self.toggle_settings(false, cx);
+		} else if self.settings_open() {
+			self.close_settings(cx);
 		} else if self.filter_open {
 			self.toggle_filter_menu(false, cx);
 		}
@@ -507,7 +509,7 @@ impl Render for Rdm {
 			.child(self.render_status_bar(cx))
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when(self.adding.is_some(), |s| s.child(self.add_dialog(cx)))
-			.when(self.settings_open, |s| s.child(self.settings_sheet(cx)))
+			.when(self.settings_open(), |s| s.child(self.settings_sheet(cx)))
 			.when(self.category_sheet.is_some(), |s| s.child(self.render_category_sheet(cx)))
 			.when_some(self.guide, |s, guide| s.child(self.guide_sheet(guide, cx)))
 	}
