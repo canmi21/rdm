@@ -2,7 +2,8 @@ mod app;
 mod assets;
 mod category;
 mod config;
-#[cfg(debug_assertions)]
+// A Unix socket, so a debug build on Windows has no control socket; the tests stand in for it there.
+#[cfg(all(debug_assertions, unix))]
 mod ctl;
 mod download;
 mod engine;
@@ -85,7 +86,7 @@ fn main() {
 			.expect("open the main window");
 		// The main window is the application: closing it quits, however many download or settings
 		// windows are still open. Closing one of those closes only itself.
-		#[cfg(debug_assertions)]
+		#[cfg(all(debug_assertions, unix))]
 		if let Ok(rdm) = main.update(cx, |_, _, cx| cx.entity()) {
 			ctl::serve(rdm, cx);
 		}

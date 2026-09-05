@@ -97,8 +97,10 @@ request.
 ## One file, written at offsets
 
 Every connection writes into the same partial file, `name.downloading`, at its own offset with a
-positioned write -- `pwrite` underneath -- so there is no shared cursor, no lock between
-connections and nothing to merge at the end: the last byte lands and the file is renamed. The
+positioned write -- `pwrite` underneath on Unix; on Windows `seek_write`, which moves the
+file's cursor and may stop short, so the writer loops and nothing reads that cursor -- so
+there is no shared cursor between connections, no lock between them and nothing to merge at
+the end: the last byte lands and the file is renamed. The
 file is grown to its full length before the first byte when the size is known and
 preallocation is on, so a full disk fails the download at the start and not at the end, and so
 every segment has somewhere to land from the first moment. A partial file from an earlier run

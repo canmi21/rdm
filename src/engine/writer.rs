@@ -5,7 +5,6 @@
 
 use std::fs::{File, OpenOptions};
 use std::io;
-use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -61,7 +60,7 @@ impl Writer {
 		let file = self.file.clone();
 		let part = self.part.clone();
 		tokio::task::spawn_blocking(move || {
-			file.write_all_at(&bytes, offset).map_err(|source| Error::Disk { path: part, source })
+			write_all_at(&file, &bytes, offset).map_err(|source| Error::Disk { path: part, source })
 		})
 		.await
 		.map_err(|e| Error::Disk { path: self.part.clone(), source: io::Error::other(e) })?
@@ -73,8 +72,7 @@ impl Writer {
 		let part = self.part.clone();
 		tokio::task::spawn_blocking(move || {
 			let mut buffer = vec![0u8; len];
-			file
-				.read_exact_at(&mut buffer, offset)
+			read_exact_at(&file, &mut buffer, offset)
 				.map_err(|source| Error::Disk { path: part, source })?;
 			Ok(buffer)
 		})
@@ -121,6 +119,54 @@ pub fn free_name(target: &Path) -> PathBuf {
 		.map(|n| target.with_file_name(format!("{stem} ({n}){extension}")))
 		.find(|candidate| !candidate.exists())
 		.expect("some number is free")
+}
+
+/// Positioned writes and reads, which the two platforms spell differently: `pwrite` and
+/// `pread` on Unix, where the standard library loops for us, and `seek_write` and `seek_read`
+/// on Windows, which move the file's own cursor and may stop short, so the loop is ours. The
+/// cursor is not otherwise used, so its moving is nothing to a connection writing beside us.
+#[cfg(unix)]
+fn write_all_at(file: &File, bytes: &[u8], offset: u64) -> io::Result<()> {
+	std::os::unix::fs::FileExt::write_all_at(file, bytes, offset)
+}
+
+#[cfg(unix)]
+fn read_exact_at(file: &File, buffer: &mut [u8], offset: u64) -> io::Result<()> {
+	std::os::unix::fs::FileExt::read_exact_at(file, buffer, offset)
+}
+
+#[cfg(windows)]
+fn write_all_at(file: &File, mut bytes: &[u8], mut offset: u64) -> io::Result<()> {
+	use std::os::windows::fs::FileExt;
+	while !bytes.is_empty() {
+		match file.seek_write(bytes, offset) {
+			Ok(0) => return Err(io::Error::new(io::ErrorKind::WriteZero, "wrote nothing")),
+			Ok(n) => {
+				bytes = &bytes[n..];
+				offset += n as u64;
+			}
+			Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+			Err(e) => return Err(e),
+		}
+	}
+	Ok(())
+}
+
+#[cfg(windows)]
+fn read_exact_at(file: &File, mut buffer: &mut [u8], mut offset: u64) -> io::Result<()> {
+	use std::os::windows::fs::FileExt;
+	while !buffer.is_empty() {
+		match file.seek_read(buffer, offset) {
+			Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "read nothing")),
+			Ok(n) => {
+				buffer = &mut buffer[n..];
+				offset += n as u64;
+			}
+			Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+			Err(e) => return Err(e),
+		}
+	}
+	Ok(())
 }
 
 #[cfg(test)]
