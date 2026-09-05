@@ -1,8 +1,8 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 
-use crate::app::Rdm;
+use crate::app::{Rdm, View};
 use crate::download::Status;
-use crate::ui::icon::Icon;
+use crate::ui::icon::{Icon, icon};
 use crate::ui::{button, theme};
 
 /// The strip the traffic lights share; main.rs derives their offset from it.
@@ -47,5 +47,55 @@ impl Rdm {
 				selected.is_some(),
 				cx.listener(|this, _, _, cx| this.remove_selected(cx)),
 			))
+			.child(div().flex_1())
+			.child(self.view_switch(cx))
+	}
+
+	/// One segment per view, the active one raised on the panel like a pressed key.
+	fn view_switch(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let segments: Vec<_> = View::ALL
+			.iter()
+			.map(|view| {
+				let view = *view;
+				let active = self.view == view;
+				let color = if active { theme::text() } else { theme::muted() };
+				div()
+					.id(view_id(view))
+					.flex()
+					.items_center()
+					.justify_center()
+					.size_7()
+					.rounded_md()
+					.cursor_pointer()
+					.when(active, |s| s.bg(theme::hover()))
+					.when(!active, |s| s.hover(|s| s.text_color(theme::text())))
+					.on_click(cx.listener(move |this, _, _, cx| this.set_view(view, cx)))
+					.child(icon(view_icon(view), color))
+			})
+			.collect();
+		div()
+			.flex()
+			.items_center()
+			.gap_0p5()
+			.p_0p5()
+			.rounded_lg()
+			.bg(theme::window())
+			.children(segments)
+	}
+}
+
+fn view_id(view: View) -> &'static str {
+	match view {
+		View::Detailed => "view-detailed",
+		View::Compact => "view-compact",
+		View::Grid => "view-grid",
+	}
+}
+
+fn view_icon(view: View) -> Icon {
+	match view {
+		View::Detailed => Icon::LayoutList,
+		View::Compact => Icon::Rows,
+		View::Grid => Icon::LayoutGrid,
 	}
 }

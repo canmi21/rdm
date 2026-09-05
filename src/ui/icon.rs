@@ -19,6 +19,9 @@ pub enum Icon {
 	CirclePause,
 	Clock,
 	ArrowDown,
+	LayoutList,
+	Rows,
+	LayoutGrid,
 }
 
 impl Icon {
@@ -39,6 +42,9 @@ impl Icon {
 			Icon::CirclePause => "icons/circle-pause.svg",
 			Icon::Clock => "icons/clock.svg",
 			Icon::ArrowDown => "icons/arrow-down.svg",
+			Icon::LayoutList => "icons/layout-list.svg",
+			Icon::Rows => "icons/rows-3.svg",
+			Icon::LayoutGrid => "icons/layout-grid.svg",
 		}
 	}
 

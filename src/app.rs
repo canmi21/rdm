@@ -7,9 +7,23 @@ use gpui::{Context, IntoElement, Render, Task, Window, div, prelude::*};
 use crate::download::{self, Download, Filter, Status};
 use crate::ui::theme;
 
+/// How the list is drawn. Detailed is the default because it is the one that shows progress,
+/// speed and size at once; the others trade that for density or for a glance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+	Detailed,
+	Compact,
+	Grid,
+}
+
+impl View {
+	pub const ALL: [View; 3] = [View::Detailed, View::Compact, View::Grid];
+}
+
 pub struct Rdm {
 	pub(crate) downloads: Vec<Download>,
 	pub(crate) filter: Filter,
+	pub(crate) view: View,
 	pub(crate) selected: Option<u64>,
 	_tick: Task<()>,
 }
@@ -30,7 +44,13 @@ impl Rdm {
 				}
 			}
 		});
-		Self { downloads: download::sample(), filter: Filter::All, selected: None, _tick: tick }
+		Self {
+			downloads: download::sample(),
+			filter: Filter::All,
+			view: View::Detailed,
+			selected: None,
+			_tick: tick,
+		}
 	}
 
 	pub(crate) fn selected(&self) -> Option<&Download> {
@@ -43,6 +63,11 @@ impl Rdm {
 
 	pub(crate) fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
 		self.filter = filter;
+		cx.notify();
+	}
+
+	pub(crate) fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
+		self.view = view;
 		cx.notify();
 	}
 
