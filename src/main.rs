@@ -9,6 +9,7 @@ mod identity;
 mod state;
 mod store;
 mod ui;
+mod watch;
 
 use gpui::{
 	App, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,

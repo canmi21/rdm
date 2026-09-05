@@ -6,3 +6,8 @@
 
 # Fetched by `mise run icons` from the list in src/ui/icon.rs; vendored content, not source.
 /assets/lucide/
+
+# What a download in flight leaves beside itself. None belongs in the repository; a test once
+# wrote a set into the root and three commits carried them before it was caught.
+*.downloading
+*.rdm

@@ -61,6 +61,15 @@ as the plan says. Anything else is left exactly where it is and off the list, be
 the user meant to keep is not this application's to delete and one it cannot read is one it
 cannot judge. See [engine.md](engine.md).
 
+**The folder is watched, and a burst of changes is one look.** The operating system reports
+what is created, written or removed in the download folder -- FSEvents on macOS, through the
+`notify` crate -- and every such event starts, or restarts, a timer of 210 milliseconds; the
+folder is read again only when the timer runs down, so a copy of a hundred files is one scan
+and not a hundred, while a single file dropped in shows up at once. Reads, changes to metadata
+alone and the catch-all events a platform sends for what it cannot name are dropped before
+they are counted, since none of them puts a plan in the folder or takes one out. The scan is
+the same one that runs at launch.
+
 Sort order and the sidebar's filter are not remembered: a launch starts at newest-first and All,
 because a filter left on from last time reads as downloads having vanished.
 

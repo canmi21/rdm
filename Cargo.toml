@@ -45,6 +45,8 @@ serde_json = "1"
 unicode-segmentation = "1"
 # The downloads between launches. Bundled, so the build needs no system SQLite.
 rusqlite = { version = "0.40", features = ["bundled"] }
+# The download folder under watch, FSEvents on macOS; see src/watch.rs.
+notify = "8"
 
 # See spec/engine.md.
 bytes = "1"

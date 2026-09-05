@@ -127,6 +127,9 @@ pub struct Rdm {
 	/// The rows between launches; None when the platform gave no place to keep them, or the
 	/// database could not be opened, in which case the list lives for the session.
 	store: Option<Store>,
+	/// Eyes on the download folder: a plan dropped in, or one removed, is picked up between
+	/// launches as well as at them. None where the folder could not be watched.
+	watcher: Option<crate::watch::Watcher>,
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
 	pub(crate) category_sheet: Option<CategorySheet>,
@@ -212,45 +215,19 @@ impl Rdm {
 				engine.add_with_id(TaskId(download.id), request, None);
 			}
 		}
-		// Downloads the folder holds that the store does not: a plan and a partial file left by a
-		// run whose rows were lost, or copied in from elsewhere. Each that can be continued comes
-		// in as a paused row, to be resumed by hand; what cannot be read is left where it is.
-		for found in engine::control::find(&directory) {
-			let name = found.target.file_name().map(|n| n.to_string_lossy().into_owned());
-			let Some(name) = name else { continue };
-			if downloads.iter().any(|d| d.name == name || d.url == found.control.url) {
-				continue;
+		let watcher = match crate::watch::Watcher::new(&directory) {
+			Ok(watcher) => Some(watcher),
+			Err(error) => {
+				eprintln!("the download folder will not be watched: {error}");
+				None
 			}
-			let id = store
-				.as_ref()
-				.and_then(|s| s.next_id().ok())
-				.unwrap_or(0)
-				.max(downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
-			let download = Download {
-				id,
-				name,
-				url: found.control.url.clone(),
-				size: found.control.size.unwrap_or(0),
-				received: found.control.plan.done(),
-				speed: 0,
-				status: Status::Paused,
-				added: found.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
-				source: None,
-				path: None,
-				error: None,
-			};
-			if let Some(store) = &store
-				&& let Err(error) = store.save(&download)
-			{
-				eprintln!("could not keep download {id}: {error:#}");
-			}
-			downloads.push(download);
-		}
-		Self {
+		};
+		let mut this = Self {
 			downloads,
 			engine,
 			events,
 			store,
+			watcher,
 			categories: config.categories(),
 			category_sheet: None,
 			reorder_focus: cx.focus_handle(),
@@ -273,7 +250,47 @@ impl Rdm {
 			maximized: saved.maximized,
 			save: None,
 			_tick: tick,
+		};
+		this.import_strays();
+		this
+	}
+
+	/// Downloads the folder holds that the list does not: a plan and a partial file left by a
+	/// run whose rows were lost, or copied in from elsewhere. Each that can be continued comes
+	/// in as a paused row, to be resumed by hand; what cannot be read is left where it is. Run
+	/// at launch and whenever the folder changes; true when a row was added.
+	pub(crate) fn import_strays(&mut self) -> bool {
+		let Some(directory) = self.paths.as_ref().map(|p| p.downloads.clone()) else { return false };
+		let mut added = false;
+		for found in engine::control::find(&directory) {
+			let name = found.target.file_name().map(|n| n.to_string_lossy().into_owned());
+			let Some(name) = name else { continue };
+			if self.downloads.iter().any(|d| d.name == name || d.url == found.control.url) {
+				continue;
+			}
+			let id = self
+				.store
+				.as_ref()
+				.and_then(|s| s.next_id().ok())
+				.unwrap_or(0)
+				.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
+			self.downloads.push(Download {
+				id,
+				name,
+				url: found.control.url.clone(),
+				size: found.control.size.unwrap_or(0),
+				received: found.control.plan.done(),
+				speed: 0,
+				status: Status::Paused,
+				added: found.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
+				source: None,
+				path: None,
+				error: None,
+			});
+			self.persist(id);
+			added = true;
 		}
+		added
 	}
 
 	/// The rows the list shows, in the order it shows them.
@@ -612,6 +629,10 @@ impl Rdm {
 			self.apply(event);
 			changed = true;
 		}
+		// The folder changed and has been quiet since: look for plans that arrived.
+		if self.watcher.as_ref().is_some_and(|w| w.try_signal()) && self.import_strays() {
+			changed = true;
+		}
 		if changed {
 			cx.notify();
 		}
@@ -896,13 +917,31 @@ mod tests {
 
 	use super::*;
 
+	/// Somewhere under the temp directory, so a test that really downloads writes there and not
+	/// into the repository -- which one did, and three commits carried its files.
+	fn scratch_paths(name: &str) -> Paths {
+		// Numbered, since tests run at once and two clearing the same directory collide.
+		static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+		let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		let dir = std::env::temp_dir().join(format!("rdm-app-{}-{name}-{n}", std::process::id()));
+		let _ = std::fs::remove_dir_all(&dir);
+		std::fs::create_dir_all(dir.join("downloads")).unwrap();
+		Paths {
+			state: dir.join("state.json"),
+			config: dir.join("config.json"),
+			database: dir.join("internal.sqlite"),
+			downloads: dir.join("downloads"),
+		}
+	}
+
 	fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
 		let window = cx.update(|cx| {
 			cx.open_window(Default::default(), |window, cx| {
 				cx.new(|cx| {
 					let (engine, events) = Engine::new(engine::EngineSettings::default()).unwrap();
+					let paths = scratch_paths("open");
 					let mut rdm =
-						Rdm::new(State::default(), Config::seed(), None, engine, events, window, cx);
+						Rdm::new(State::default(), Config::seed(), Some(paths), engine, events, window, cx);
 					rdm.downloads = crate::download::sample();
 					rdm
 				})
