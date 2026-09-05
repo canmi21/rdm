@@ -13,6 +13,7 @@ use serde::Serialize;
 
 use crate::config::{self, Config};
 use crate::download::{self, Category, Combine, Download, Filter, Status, categories_of};
+use crate::engine::{self, Engine, Event, TaskId};
 use crate::state::{self, Frame, Paths, State};
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::icon::Icon;
@@ -117,7 +118,11 @@ pub enum CategorySheet {
 pub struct DraggedCategory(pub u64);
 
 pub struct Rdm {
+	/// The rows, as the engine last reported them. Ids are the engine's task ids.
 	pub(crate) downloads: Vec<Download>,
+	pub(crate) engine: Engine,
+	/// The engine's events, drained a few times a second by the pump below.
+	events: std::sync::mpsc::Receiver<Event>,
 	/// From config.json, in its order; written back when one is added.
 	pub(crate) categories: Vec<Category>,
 	pub(crate) category_sheet: Option<CategorySheet>,
@@ -144,7 +149,7 @@ pub struct Rdm {
 	/// The Add Task sheet's field while the sheet is up.
 	pub(crate) adding: Option<Entity<TextInput>>,
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
-	paths: Option<Paths>,
+	pub(crate) paths: Option<Paths>,
 	frame: Option<Frame>,
 	maximized: bool,
 	/// The pending write. Replacing it cancels the old one, which is the debounce.
@@ -157,6 +162,8 @@ impl Rdm {
 		saved: State,
 		config: Config,
 		paths: Option<Paths>,
+		engine: Engine,
+		events: std::sync::mpsc::Receiver<Event>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
@@ -166,22 +173,21 @@ impl Rdm {
 			this.schedule_save(cx);
 		})
 		.detach();
-		// Drives the mock rows forward so the list moves while there is no transfer engine
-		// behind it. The real engine will push state changes instead of being polled.
+		// The engine's events are drained on the window's own executor a few times a second: the
+		// engine runs on tokio and the window on gpui, and a channel read by a timer is the whole
+		// of what joins them. Nothing redraws unless an event arrived.
 		let tick = cx.spawn(async move |this, cx| {
 			loop {
-				cx.background_executor().timer(Duration::from_millis(500)).await;
-				let alive = this.update(cx, |this, cx| {
-					this.advance();
-					cx.notify();
-				});
-				if alive.is_err() {
+				cx.background_executor().timer(Duration::from_millis(200)).await;
+				if this.update(cx, |this, cx| this.pump_events(cx)).is_err() {
 					break;
 				}
 			}
 		});
 		Self {
-			downloads: download::sample(),
+			downloads: Vec::new(),
+			engine,
+			events,
 			categories: config.categories(),
 			category_sheet: None,
 			reorder_focus: cx.focus_handle(),
@@ -536,21 +542,96 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// A new download from an address, queued; the name is the address's last path segment.
-	// TODO: the engine will resolve the size and the real name from the server.
+	/// Every event the engine has sent since the last look, applied to the rows.
+	fn pump_events(&mut self, cx: &mut Context<Self>) {
+		let mut changed = false;
+		while let Ok(event) = self.events.try_recv() {
+			self.apply(event);
+			changed = true;
+		}
+		if changed {
+			cx.notify();
+		}
+	}
+
+	fn apply(&mut self, event: Event) {
+		fn row(downloads: &mut [Download], id: TaskId) -> Option<&mut Download> {
+			downloads.iter_mut().find(|d| d.id == id.0)
+		}
+		match event {
+			Event::Started(id) => {
+				if let Some(d) = row(&mut self.downloads, id) {
+					d.status = Status::Downloading;
+					d.error = None;
+				}
+			}
+			Event::Progress(s) => {
+				if let Some(d) = row(&mut self.downloads, s.id) {
+					d.received = s.done;
+					if s.total > 0 {
+						d.size = s.total;
+					}
+					d.speed = s.speed;
+					if let Some(name) = s.file_name {
+						d.name = name;
+					}
+					d.status = Status::from_engine(&s.status);
+				}
+			}
+			Event::Completed(id, finished) => {
+				if let Some(d) = row(&mut self.downloads, id) {
+					d.status = Status::Completed;
+					d.size = finished.size;
+					d.received = finished.size;
+					d.speed = 0;
+					if let Some(name) = finished.path.file_name() {
+						d.name = name.to_string_lossy().into_owned();
+					}
+				}
+			}
+			Event::Failed(id, message) => {
+				if let Some(d) = row(&mut self.downloads, id) {
+					d.status = Status::Failed;
+					d.speed = 0;
+					d.error = Some(message);
+				}
+			}
+			Event::Paused(id) => {
+				if let Some(d) = row(&mut self.downloads, id) {
+					d.status = Status::Paused;
+					d.speed = 0;
+				}
+			}
+			Event::Removed(_) => {}
+		}
+	}
+
+	/// A new download from an address, handed to the engine and shown at once under the
+	/// address's last path segment; the probe's name replaces it as soon as it is known.
+	// TODO: an address that is not a URL is dropped silently; the sheet should say so.
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
-		let id = self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1;
-		let name =
-			url.trim_end_matches('/').rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("download");
+		let Ok(parsed) = reqwest::Url::parse(url.trim()) else { return };
+		let directory = self
+			.paths
+			.as_ref()
+			.map(|p| p.downloads.clone())
+			.unwrap_or_else(|| std::path::PathBuf::from("."));
+		let id = self.engine.add(engine::Request::new(parsed.clone(), directory), None).0;
+		let name = parsed
+			.path_segments()
+			.and_then(|mut s| s.next_back())
+			.filter(|n| !n.is_empty())
+			.unwrap_or("download");
 		self.downloads.push(Download {
 			id,
 			name: name.to_owned(),
-			url: url.to_owned(),
+			url: parsed.to_string(),
 			size: 0,
 			received: 0,
 			speed: 0,
 			status: Status::Queued,
 			added: chrono::Local::now(),
+			error: None,
 		});
 		self.selected = Some(id);
 		cx.notify();
@@ -574,28 +655,35 @@ impl Rdm {
 		}
 	}
 
+	/// The row changes at once and the engine confirms by event; a click should not wait on a
+	/// connection to close.
 	pub(crate) fn pause(&mut self, id: u64, cx: &mut Context<Self>) {
 		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
 			download.status = Status::Paused;
 			download.speed = 0;
+			self.engine.pause(TaskId(id));
 			cx.notify();
 		}
 	}
 
 	pub(crate) fn resume(&mut self, id: u64, cx: &mut Context<Self>) {
 		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
-			download.status = Status::Downloading;
-			download.speed = 12_000_000;
+			download.status = Status::Queued;
+			download.error = None;
+			self.engine.resume(TaskId(id));
 			cx.notify();
 		}
 	}
 
+	/// The row goes, and with it a partial file and its plan; a finished file stays where it
+	/// landed, since it is the user's now.
 	pub(crate) fn remove(&mut self, id: u64, cx: &mut Context<Self>) {
 		self.downloads.retain(|d| d.id != id);
 		if self.selected == Some(id) {
 			self.selected = None;
 		}
 		self.open.remove(&id);
+		self.engine.remove(TaskId(id), true);
 		cx.notify();
 	}
 
@@ -621,17 +709,6 @@ impl Rdm {
 				});
 			}
 		});
-	}
-
-	// TODO: the mock loops a download back to the start when it fills, so there is always movement
-	// to look at; the engine will complete it instead.
-	fn advance(&mut self) {
-		for download in self.downloads.iter_mut().filter(|d| d.status == Status::Downloading) {
-			download.received += download.speed / 2;
-			if download.received >= download.size {
-				download.received = 0;
-			}
-		}
 	}
 }
 
@@ -689,7 +766,13 @@ mod tests {
 	fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
 		let window = cx.update(|cx| {
 			cx.open_window(Default::default(), |window, cx| {
-				cx.new(|cx| Rdm::new(State::default(), Config::seed(), None, window, cx))
+				cx.new(|cx| {
+					let (engine, events) = Engine::new(engine::EngineSettings::default()).unwrap();
+					let mut rdm =
+						Rdm::new(State::default(), Config::seed(), None, engine, events, window, cx);
+					rdm.downloads = crate::download::sample();
+					rdm
+				})
 			})
 			.unwrap()
 		});

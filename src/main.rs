@@ -28,6 +28,8 @@ fn main() {
 	application().with_assets(Assets).run(|cx: &mut App| {
 		cx.bind_keys(ui::text_input::key_bindings());
 		let paths = Paths::resolve();
+		let (engine, events) =
+			engine::Engine::new(engine::EngineSettings::default()).expect("start the engine's runtime");
 		let saved = paths.as_ref().map(|p| state::load(&p.state)).unwrap_or_default();
 		let config =
 			paths.as_ref().map(|p| config::load_or_seed(&p.config)).unwrap_or_else(config::Config::seed);
@@ -70,7 +72,7 @@ fn main() {
 					}),
 					..Default::default()
 				},
-				|window, cx| cx.new(|cx| Rdm::new(saved, config, paths, window, cx)),
+				|window, cx| cx.new(|cx| Rdm::new(saved, config, paths, engine, events, window, cx)),
 			)
 			.expect("open the main window");
 		// The main window is the application: closing it quits, however many download or settings

@@ -4,9 +4,9 @@
 //! of a window; the application drives it through [`Engine`] and listens through events, and
 //! nothing outside this module reaches past `engine::`. See spec/engine.md.
 
-// TODO: the window still runs on mock rows; nothing reaches the engine yet, so its every item
-// and re-export is dead to the binary until the rows come from it. The allow goes when the
-// wiring does, and the lint then says what the window forgot to use.
+// TODO: the window drives downloads through this module, but not yet the rest of what it can
+// do -- checksums, mirrors, ranges, the limits and counts a settings window will bind to -- so
+// those items are unreached from the binary. The allow narrows as the window grows.
 #![allow(dead_code, unused_imports)]
 
 pub mod client;

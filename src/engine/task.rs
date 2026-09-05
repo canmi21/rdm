@@ -75,6 +75,26 @@ pub struct Handle {
 	pub cancel: CancellationToken,
 	pub progress: Arc<Progress>,
 	pub limit: Limiter,
+	/// What the probe learnt, the moment it learnt it, so a snapshot can name the file and its
+	/// size while the download runs rather than only once it is done.
+	pub probed: Mutex<Option<Probe>>,
+}
+
+impl Handle {
+	pub fn new() -> Handle {
+		Handle {
+			cancel: CancellationToken::new(),
+			progress: Arc::new(Progress::default()),
+			limit: Limiter::unlimited(),
+			probed: Mutex::new(None),
+		}
+	}
+}
+
+impl Default for Handle {
+	fn default() -> Self {
+		Handle::new()
+	}
 }
 
 /// Runs a download to its end, or until `handle.cancel` is cancelled, in which case the plan is
@@ -85,6 +105,7 @@ pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<F
 		Settings { connections: request.settings.connections.clamped(), ..request.settings.clone() };
 	let single = crate::engine::client::build(&settings, false)?;
 	let probed = probe(&single, request.url.clone()).await?;
+	*handle.probed.lock().unwrap() = Some(probed.clone());
 	if let (Some(size), Some(limit)) = (probed.size, settings.max_size)
 		&& size > limit
 	{
@@ -376,11 +397,7 @@ mod tests {
 	}
 
 	fn handle() -> Handle {
-		Handle {
-			cancel: CancellationToken::new(),
-			progress: Arc::new(Progress::default()),
-			limit: Limiter::unlimited(),
-		}
+		Handle::new()
 	}
 
 	fn request(server: &TestServer, dir: &Path, path: &str, connections: Connections) -> Request {
@@ -485,12 +502,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn a_cancelled_download_resumes_from_its_plan_in_a_later_run() {
-		let data = body(120_000);
+		// Slow enough that the cancel at 60 ms lands mid-file even on a busy machine.
+		let data = body(400_000);
 		let server = TestServer::start(
 			data.clone(),
 			Options {
 				etag: Some("\"same\"".into()),
-				delay_per_chunk: Duration::from_millis(3),
+				delay_per_chunk: Duration::from_millis(5),
 				..Options::default()
 			},
 		);

@@ -340,11 +340,7 @@ impl Engine {
 }
 
 fn fresh_handle() -> Handle {
-	Handle {
-		cancel: CancellationToken::new(),
-		progress: Arc::new(Progress::default()),
-		limit: Limiter::unlimited(),
-	}
+	Handle::new()
 }
 
 fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
@@ -352,9 +348,14 @@ fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
 	Snapshot {
 		id,
 		url: entry.request.url.to_string(),
+		// The name as the user gave it, else as the probe learnt it, else as it landed.
 		file_name: match &entry.status {
 			Status::Completed(f) => f.path.file_name().map(|n| n.to_string_lossy().into_owned()),
-			_ => entry.request.file_name.clone(),
+			_ => entry
+				.request
+				.file_name
+				.clone()
+				.or_else(|| entry.handle.probed.lock().unwrap().as_ref().map(|p| p.file_name.clone())),
 		},
 		status: entry.status.clone(),
 		done: p.done.load(Ordering::Relaxed),

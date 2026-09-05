@@ -256,9 +256,10 @@ file is the way, for now.
 
 ## What is deliberately not there yet
 
-The rows are sample data advanced by a timer so the list moves; there is no transfer engine,
-no persistence, and the Settings window is labels with nothing behind them. Add Task is a sheet with one field over the dimmed list. It queues what is typed
-under the address's last path segment; the engine will resolve the real name and size. Enter
-adds, Escape or a click outside closes. The mock
-rows that download loop back to zero when they fill, so there is always movement to look at. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
-built behind.
+The rows come from the engine now (see [engine.md](engine.md)): Add Task hands the address to
+it, the list is redrawn from its events a few times a second, and pause, resume and remove are
+its commands with the row changed at once so a click never waits on a connection. What is not
+there: the list is not persisted, so a restart forgets the rows while their partial files and
+plans stay on disk for the store that does not exist yet; an address that is not a URL is
+dropped without a word; the Settings sheet shows the download folder the engine writes to and
+labels for the rest. Each is marked `TODO` where it lives.

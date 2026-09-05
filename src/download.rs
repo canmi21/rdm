@@ -17,6 +17,19 @@ pub enum Status {
 }
 
 impl Status {
+	/// The engine's word for it, as the list shows it. Queued and Running are the engine's; the
+	/// list says Downloading for the one that moves.
+	pub fn from_engine(status: &crate::engine::Status) -> Status {
+		use crate::engine::Status as S;
+		match status {
+			S::Queued => Status::Queued,
+			S::Running => Status::Downloading,
+			S::Paused => Status::Paused,
+			S::Completed(_) => Status::Completed,
+			S::Failed(_) => Status::Failed,
+		}
+	}
+
 	pub const ALL: [Status; 5] =
 		[Status::Queued, Status::Downloading, Status::Paused, Status::Completed, Status::Failed];
 
@@ -418,6 +431,8 @@ pub struct Download {
 	pub speed: u64,
 	pub status: Status,
 	pub added: DateTime<Local>,
+	/// Why it failed, in the engine's words, while it is failed.
+	pub error: Option<String>,
 }
 
 impl Download {
@@ -516,8 +531,9 @@ pub fn format_duration(duration: Duration) -> String {
 	}
 }
 
-// TODO: stands in for a persistent store and a transfer engine, neither of which exists yet.
-// The rows are shaped like real ones so the UI can be built against them.
+/// Rows shaped like real ones, for the headless tests to click on: the list is otherwise
+/// empty until the engine fills it. Not persisted yet; see spec/state.md.
+#[cfg(test)]
 pub fn sample() -> Vec<Download> {
 	let now = Local::now();
 	let entry = |id: u64, name: &str, url: &str, size, received, speed, status| Download {
@@ -530,6 +546,7 @@ pub fn sample() -> Vec<Download> {
 		status,
 		// Spread over the past days so the Added column has something to order by.
 		added: now - chrono::Duration::hours(id as i64 * 7),
+		error: None,
 	};
 	vec![
 		entry(

@@ -25,6 +25,10 @@ pub struct Paths {
 	// TODO: opened by the store that does not exist yet; named now so the two files are decided together.
 	#[expect(dead_code)]
 	pub database: PathBuf,
+	/// Where downloads land: the platform's Downloads folder as the user has it -- the XDG
+	/// user-dirs entry on Linux, the known folder on Windows, `~/Downloads` on macOS, which
+	/// offers no way to move it -- and the home directory if there is no such folder.
+	pub downloads: PathBuf,
 }
 
 impl Paths {
@@ -32,10 +36,14 @@ impl Paths {
 		let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)?;
 		// Linux has a directory for state as distinct from data; the others fold them together.
 		let root = dirs.state_dir().unwrap_or_else(|| dirs.data_local_dir()).to_path_buf();
+		let user = directories::UserDirs::new()?;
+		let downloads =
+			user.download_dir().map(Path::to_path_buf).unwrap_or_else(|| user.home_dir().to_path_buf());
 		Some(Paths {
 			state: root.join("state.json"),
 			config: dirs.config_dir().join("config.json"),
 			database: root.join("internal.sqlite"),
+			downloads,
 		})
 	}
 }

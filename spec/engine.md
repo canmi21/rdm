@@ -194,3 +194,15 @@ probed, and only it is trusted with `If-Range`: a mirror carries its own ETag, a
 about the origin's would make every mirror look like a changed file. A mirror is held to the
 size instead -- the total in its `Content-Range` must be the one the probe saw -- which is what
 aria2 does, and enough to refuse a mirror serving a different file before a byte of it lands.
+
+## The window reads a channel on a timer
+
+The window holds the engine and the receiving end of its events. A task on gpui's executor
+wakes every 200 ms, drains whatever arrived with `try_recv`, applies each event to the row it
+names and asks for a redraw only if something did; the engine's tokio threads never touch a
+gpui entity, and the window never awaits a tokio future. A command from the window -- pause,
+resume, remove -- changes the row at once and lets the engine confirm by event, so a click
+does not wait on a connection closing. The row's id is the engine's task id, so nothing maps
+between them. The download folder is the platform's own as the user has it, from the
+`directories` crate: the XDG user-dirs entry on Linux, the known folder on Windows,
+`~/Downloads` on macOS, which offers no way to move it.

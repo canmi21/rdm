@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use crate::engine::{self, Connections, Limiter, Request, Settings};
 use reqwest::Url;
-use tokio_util::sync::CancellationToken;
 
 fn scratch(name: &str) -> PathBuf {
 	let dir = std::env::temp_dir().join(format!("rdm-mirror-{}-{name}", std::process::id()));
@@ -18,11 +17,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn handle() -> engine::Handle {
-	engine::Handle {
-		cancel: CancellationToken::new(),
-		progress: std::sync::Arc::new(engine::Progress::default()),
-		limit: Limiter::unlimited(),
-	}
+	engine::Handle::new()
 }
 
 async fn fetch(
