@@ -1,11 +1,17 @@
 //! The root view: the downloads, how they are filtered and ordered, and which one is selected.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::time::Duration;
 
-use gpui::{Context, IntoElement, Render, Task, Window, div, prelude::*, px};
+use gpui::{
+	App, Bounds, Context, IntoElement, Render, Task, TitlebarOptions, Window, WindowBounds,
+	WindowHandle, WindowOptions, div, prelude::*, px, size,
+};
 
 use crate::download::{self, Download, Filter, Status};
+use crate::ui::download_window::DownloadWindow;
+use crate::ui::settings_window::SettingsWindow;
 use crate::ui::theme::{self, Palette};
 
 /// How the list is drawn. Detailed is the default because it is the one that shows progress,
@@ -44,6 +50,10 @@ pub struct Rdm {
 	pub(crate) selected: Option<u64>,
 	/// Set at the top of every render from the window's state, read by everything below it.
 	pub(crate) palette: Palette,
+	/// The windows opened beside this one. A handle stays here after its window closes and is
+	/// found dead on the next use, which is cheaper than being told.
+	open: HashMap<u64, WindowHandle<DownloadWindow>>,
+	settings: Option<WindowHandle<SettingsWindow>>,
 	_tick: Task<()>,
 }
 
@@ -72,6 +82,8 @@ impl Rdm {
 			view: View::Detailed,
 			selected: None,
 			palette: theme::palette(true),
+			open: HashMap::new(),
+			settings: None,
 			_tick: tick,
 		}
 	}
@@ -99,10 +111,6 @@ impl Rdm {
 
 	pub(crate) fn selected(&self) -> Option<&Download> {
 		self.selected.and_then(|id| self.downloads.iter().find(|d| d.id == id))
-	}
-
-	fn selected_mut(&mut self) -> Option<&mut Download> {
-		self.selected.and_then(|id| self.downloads.iter_mut().find(|d| d.id == id))
 	}
 
 	pub(crate) fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
@@ -154,26 +162,90 @@ impl Rdm {
 	}
 
 	pub(crate) fn pause_selected(&mut self, cx: &mut Context<Self>) {
-		if let Some(download) = self.selected_mut() {
+		if let Some(id) = self.selected {
+			self.pause(id, cx);
+		}
+	}
+
+	pub(crate) fn resume_selected(&mut self, cx: &mut Context<Self>) {
+		if let Some(id) = self.selected {
+			self.resume(id, cx);
+		}
+	}
+
+	pub(crate) fn remove_selected(&mut self, cx: &mut Context<Self>) {
+		if let Some(id) = self.selected {
+			self.remove(id, cx);
+		}
+	}
+
+	pub(crate) fn pause(&mut self, id: u64, cx: &mut Context<Self>) {
+		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
 			download.status = Status::Paused;
 			download.speed = 0;
 			cx.notify();
 		}
 	}
 
-	pub(crate) fn resume_selected(&mut self, cx: &mut Context<Self>) {
-		if let Some(download) = self.selected_mut() {
+	pub(crate) fn resume(&mut self, id: u64, cx: &mut Context<Self>) {
+		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
 			download.status = Status::Downloading;
 			download.speed = 12_000_000;
 			cx.notify();
 		}
 	}
 
-	pub(crate) fn remove_selected(&mut self, cx: &mut Context<Self>) {
-		if let Some(id) = self.selected.take() {
-			self.downloads.retain(|d| d.id != id);
-			cx.notify();
+	pub(crate) fn remove(&mut self, id: u64, cx: &mut Context<Self>) {
+		self.downloads.retain(|d| d.id != id);
+		if self.selected == Some(id) {
+			self.selected = None;
 		}
+		self.open.remove(&id);
+		cx.notify();
+	}
+
+	/// Double-clicking a row, or the name in the status bar, opens that download in its own
+	/// window; a second time brings the window forward instead of opening another.
+	pub(crate) fn open_download(&mut self, id: u64, cx: &mut Context<Self>) {
+		if let Some(handle) = self.open.get(&id)
+			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
+		{
+			return;
+		}
+		// Deferred because a new window draws its first frame inside `open_window`, and that frame
+		// reads this entity, which is still being updated by the click that got us here.
+		let rdm = cx.entity();
+		cx.defer(move |cx| {
+			let options = child_window(cx, "Download", size(px(440.0), px(230.0)));
+			let view = rdm.clone();
+			if let Ok(handle) =
+				cx.open_window(options, |_, cx| cx.new(|cx| DownloadWindow::new(view, id, cx)))
+			{
+				rdm.update(cx, |this, _| {
+					this.open.insert(id, handle);
+				});
+			}
+		});
+	}
+
+	pub(crate) fn open_selected(&mut self, cx: &mut Context<Self>) {
+		if let Some(id) = self.selected {
+			self.open_download(id, cx);
+		}
+	}
+
+	pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
+		if let Some(handle) = &self.settings
+			&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
+		{
+			return;
+		}
+		let rdm = cx.entity();
+		cx.defer(move |cx| {
+			let options = child_window(cx, "Settings", size(px(420.0), px(200.0)));
+			let handle = cx.open_window(options, |_, cx| cx.new(|_| SettingsWindow)).ok();
+			rdm.update(cx, |this, _| this.settings = handle);
+		});
 	}
 
 	fn advance(&mut self) {
@@ -208,8 +280,17 @@ impl Render for Rdm {
 						.flex_1()
 						.min_w_0()
 						.child(self.render_list(cx))
-						.child(self.render_detail(cx)),
+						.child(self.render_status_bar(cx)),
 				),
 			)
+	}
+}
+
+/// A secondary window keeps the system titlebar: it is a document, not the application.
+fn child_window(cx: &App, title: &str, extent: gpui::Size<gpui::Pixels>) -> WindowOptions {
+	WindowOptions {
+		window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, extent, cx))),
+		titlebar: Some(TitlebarOptions { title: Some(title.to_owned().into()), ..Default::default() }),
+		..Default::default()
 	}
 }

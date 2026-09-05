@@ -3,8 +3,8 @@
 ## What it is modelled on
 
 A download manager's window has a settled shape, and rdm keeps to it rather than inventing one:
-a sidebar of filters on the left, the list in the middle, actions along the top and the selected
-item's detail along the bottom. Neat Download Manager is the reference for what goes where; Zed is the reference for how tightly. The
+a sidebar of filters on the left, the list in the middle, actions along the top and one thin
+status line along the bottom. Neat Download Manager is the reference for what goes where; Zed is the reference for how tightly. The
 parts are separate modules under `src/ui/` named for what they are -- toolbar, sidebar, list,
 detail -- so a reader looking for one finds it by name.
 
@@ -70,9 +70,32 @@ colour it is not being looked at is noise on the desktop.
 The density is Zed's: a 13px UI face with everything in rems of it, 26px table rows, a 36px
 toolbar. Not Zed's look -- the shapes, the glass and the palette are this application's.
 
+## One thing, one window
+
+A native application opens windows freely, and rdm does: the main window is the list and nothing
+else, and anything about one item gets a window of its own. Double-clicking a row, or the name at
+the right of the status bar, opens that download in a window that follows it live -- progress,
+speed, remaining time, and the same pause, resume and remove actions -- and a second double-click
+brings that window forward rather than opening another. The gear at the toolbar's right opens
+Settings the same way. Secondary windows keep the system titlebar: they are documents, and the
+main window is the application, so closing the main window quits and closing a secondary one
+closes only itself.
+
+The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
+was in the way whenever nothing was selected. The status bar it became is an editor's: one line
+saying what is happening -- how many downloads, how many active, the combined speed -- and never
+what is selected.
+
+Two facts about GPUI decided the shape of the code. A secondary window's view holds an
+`Entity<Rdm>` and observes it rather than copying anything, so there is one list and any number
+of windows onto it. And a window cannot be opened from inside the click that asks for it: the new
+window draws its first frame inside `open_window`, that frame reads the main view, and the main
+view is still being updated by the click -- which panics. Opening is therefore deferred to after
+the update, in `Rdm::open_download`.
+
 ## What is deliberately not there yet
 
 The rows are sample data advanced by a timer so the list moves; there is no transfer engine,
-no persistence, and Add URL inserts a placeholder because there is no text input to type into.
-Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
+no persistence, Add URL inserts a placeholder because there is no text input to type into, and
+the Settings window is labels with nothing behind them. Each is marked `TODO` where it lives. The window's job so far is to be the thing those are
 built behind.

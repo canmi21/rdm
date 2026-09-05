@@ -1,5 +1,6 @@
 use gpui::{
-	Context, Div, Hsla, IntoElement, SharedString, Stateful, div, prelude::*, px, relative,
+	ClickEvent, Context, Div, Hsla, IntoElement, SharedString, Stateful, div, prelude::*, px,
+	relative,
 };
 
 use crate::app::{Rdm, SortKey, View};
@@ -147,7 +148,13 @@ impl Rdm {
 			.cursor_pointer()
 			.when(selected, |s| s.bg(p.selection))
 			.when(!selected, move |s| s.hover(move |s| s.bg(p.hover)))
-			.on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
+			.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+				if event.click_count() == 2 {
+					this.open_download(id, cx);
+				} else {
+					this.select(id, cx);
+				}
+			}))
 	}
 
 	fn table_row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {

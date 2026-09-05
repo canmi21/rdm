@@ -24,6 +24,8 @@ pub enum Icon {
 	LayoutGrid,
 	ChevronUp,
 	ChevronDown,
+	Settings,
+	ExternalLink,
 }
 
 impl Icon {
@@ -49,6 +51,8 @@ impl Icon {
 			Icon::LayoutGrid => "icons/layout-grid.svg",
 			Icon::ChevronUp => "icons/chevron-up.svg",
 			Icon::ChevronDown => "icons/chevron-down.svg",
+			Icon::Settings => "icons/settings.svg",
+			Icon::ExternalLink => "icons/external-link.svg",
 		}
 	}
 

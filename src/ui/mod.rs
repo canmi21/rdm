@@ -1,9 +1,12 @@
-//! The window, split into the pieces a reader would look for: toolbar, sidebar, list, detail.
+//! The window, split into the pieces a reader would look for: toolbar, sidebar, list, status
+//! bar -- and the windows it opens beside itself.
 
-mod detail;
+pub mod download_window;
 pub mod icon;
 mod list;
+pub mod settings_window;
 mod sidebar;
+mod status_bar;
 pub mod theme;
 pub mod toolbar;
 
@@ -38,6 +41,26 @@ pub fn button(
 	} else {
 		base
 	}
+}
+
+/// An icon alone, for the toolbar's corners.
+pub fn icon_button(
+	p: Palette,
+	id: impl Into<ElementId>,
+	glyph: Icon,
+	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Stateful<Div> {
+	div()
+		.id(id)
+		.flex()
+		.items_center()
+		.justify_center()
+		.size_6()
+		.rounded_sm()
+		.cursor_pointer()
+		.hover(move |s| s.bg(p.hover))
+		.on_click(on_click)
+		.child(icon(glyph, p.muted).size_3p5())
 }
 
 /// A small toggle, lit when `on`, for a filter or a mode.

@@ -2,8 +2,8 @@ use gpui::{Context, IntoElement, div, prelude::*, px};
 
 use crate::app::{Rdm, View};
 use crate::download::Status;
-use crate::ui::button;
 use crate::ui::icon::{Icon, icon};
+use crate::ui::{button, icon_button};
 
 /// The strip the traffic lights share; main.rs derives their offset from it.
 pub const HEIGHT: f32 = 36.0;
@@ -60,6 +60,13 @@ impl Rdm {
 			))
 			.child(div().flex_1())
 			.child(self.view_switch(cx))
+			.child(div().w(px(8.0)))
+			.child(icon_button(
+				p,
+				"settings",
+				Icon::Settings,
+				cx.listener(|this, _, _, cx| this.open_settings(cx)),
+			))
 	}
 
 	/// One segment per view, the active one raised on the panel like a pressed key.
