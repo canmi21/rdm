@@ -63,6 +63,8 @@ pub enum Column {
 
 impl Column {
 	pub const MIN: f32 = 56.0;
+	/// The widths the columns start with, and go back to on the header's reset.
+	pub const DEFAULT_WIDTHS: [f32; 5] = [132.0, 150.0, 84.0, 112.0, 108.0];
 
 	fn index(self) -> usize {
 		self as usize
@@ -207,7 +209,7 @@ impl Rdm {
 			sort: SortKey::Added,
 			ascending: false,
 			view: saved.view.unwrap_or(View::Detailed),
-			widths: saved.widths.unwrap_or([132.0, 150.0, 84.0, 112.0, 108.0]),
+			widths: saved.widths.unwrap_or(Column::DEFAULT_WIDTHS),
 			resizing: None,
 			selected: None,
 			palette: theme::palette(true),
@@ -351,6 +353,13 @@ impl Rdm {
 			self.schedule_save(cx);
 			cx.notify();
 		}
+	}
+
+	/// Every column back to the width it started with, from the control in the header's corner.
+	pub(crate) fn reset_widths(&mut self, cx: &mut Context<Self>) {
+		self.widths = Column::DEFAULT_WIDTHS;
+		self.schedule_save(cx);
+		cx.notify();
 	}
 
 	/// The toolbar's second button: what the selection can do next, by its state.

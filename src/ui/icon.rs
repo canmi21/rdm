@@ -46,12 +46,14 @@ pub enum Icon {
 	FileSpreadsheet,
 	Text,
 	CircleQuestion,
+	RotateCcw,
 }
 
 impl Icon {
 	fn path(self) -> &'static str {
 		match self {
 			Icon::Plus => "lucide/plus.svg",
+			Icon::RotateCcw => "lucide/rotate-ccw.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",
 			Icon::Trash => "lucide/trash.svg",

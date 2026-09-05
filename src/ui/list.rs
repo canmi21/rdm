@@ -7,6 +7,7 @@ use crate::app::{Column, Rdm, SortKey, View};
 use crate::download::{Download, Status, format_added, format_bytes, format_speed};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
+use crate::ui::tooltip::tooltip;
 
 /// The name column never drops below this; the fixed columns share what is left of the table.
 pub const NAME_MIN: f32 = 120.0;
@@ -99,9 +100,37 @@ impl Rdm {
 			.text_color(p.muted)
 			.border_b_1()
 			.border_color(p.border)
-			.child(div().w(px(14.0)).flex_none())
+			.child(self.reset_widths_control(cx))
 			.child(self.header_cell(SortKey::Name, "Name", false, cx).flex_1().min_w_0().pl(px(12.0)))
 			.children(cells)
+	}
+
+	/// The corner over the type icons is empty until the pointer rests on it; then it shows a
+	/// reset arrow, named in a tooltip, and a press puts every column back to its starting
+	/// width. Hidden by opacity rather than left out, so the slot keeps the width the cells match.
+	fn reset_widths_control(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
+		div()
+			.id("reset-widths")
+			.role(Role::Button)
+			.aria_label("Reset column widths")
+			.debug_selector(|| "button:Reset to default".to_owned())
+			.w(px(14.0))
+			.h_full()
+			.flex()
+			.flex_none()
+			.items_center()
+			.justify_center()
+			.cursor_pointer()
+			.group("reset-widths")
+			.tooltip(tooltip("Reset to default"))
+			.on_click(cx.listener(|this, _, _, cx| this.reset_widths(cx)))
+			.child(
+				icon(Icon::RotateCcw, p.text)
+					.size_3()
+					.opacity(0.0)
+					.group_hover("reset-widths", |s| s.opacity(1.0)),
+			)
 	}
 
 	/// A title sits over its cells' edge -- the name left, the numbers right -- and the chevron's

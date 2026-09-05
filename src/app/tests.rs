@@ -116,6 +116,17 @@ fn dragging_a_header_edge_resizes_that_column(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_corner_over_the_icons_resets_every_column_width(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.widths = [200.0, 90.0, 60.0, 70.0, 80.0];
+		cx.notify();
+	});
+	click(&mut cx, "button:Reset to default");
+	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.widths, Column::DEFAULT_WIDTHS));
+}
+
+#[gpui::test]
 fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
 	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, point, px};
 	let (rdm, mut cx) = open(cx);
