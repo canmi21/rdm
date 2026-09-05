@@ -11,8 +11,10 @@ pub mod limiter;
 pub mod probe;
 pub mod segments;
 pub mod settings;
+pub mod task;
 #[cfg(test)]
 pub mod testing;
+pub mod worker;
 pub mod writer;
 
 pub use control::Control;
@@ -21,4 +23,5 @@ pub use limiter::Limiter;
 pub use probe::{Probe, probe};
 pub use segments::{Plan, Segment, Span};
 pub use settings::{Connections, HttpVersion, Settings};
+pub use task::{Finished, Handle, Progress, Request};
 pub use writer::Writer;

@@ -111,3 +111,37 @@ burst saved under the old one; setting one where there was none starts with a se
 so the first draw after does not wait. A draw larger than the bucket goes through once the
 bucket is full and leaves it in debt, which the draws after pay off -- a single large chunk
 must not wait forever.
+
+## A connection's end is read from the plan, not from the request
+
+A connection asks for `bytes=start-`, open at the far end, even when its segment has one. The
+segment's end can move closer while the connection runs -- that is how a free connection takes
+the far half -- so the end is read from the shared plan at every chunk and the bytes past it
+are simply not written; the connection then drops the stream, which closes it. Asking for an
+open range costs nothing and saves a request when a cut is undone. The end can even move to
+inside a chunk already written, since the write and the cut are not one step; the bytes are
+right where they are and the far half will write the same ones, so the segment is marked
+complete at its new end and nothing is undone.
+
+A request that does not start at the file's first byte carries the validator as `If-Range`, so
+a changed file is answered with 200 and the whole file, which the connection refuses as a
+change rather than splicing into what is on disk. A 200 to the one request that does start at
+the first byte is a server ignoring ranges, and harmless for that segment alone.
+
+## Connections grow one at a time, and each failure is retried on its own
+
+In automatic mode a download starts with `min` connections and is allowed one more each time a
+connection delivers its first byte, up to `max`: a server that accepts the first is asked for a
+second, and one that is slow to answer is not flooded. A new connection takes an idle segment if
+there is one and otherwise cuts the largest remainder, as the planner describes, and it is
+started the moment growth is allowed rather than at the next tick, because a small file is over
+before a tick. Without automatic mode the span is cut into `max` pieces at the start.
+
+A connection that fails is retried on its own, from where its segment stands, after a wait
+that doubles from `retry_wait` each time and up to `retries` times; the others keep running.
+Only a failure that trying again cannot fix -- a refusal, a changed file, a full disk -- or
+one that has used up its tries stops the download, and then every connection is cancelled and
+the plan is written so the download can be picked up later. Cancelling is the same path: the
+plan stays beside the partial file, and a cancelled download is a paused one until somebody
+discards its files. The plan is also written every half second while connections run, and at
+every segment's end, so a crash loses at most a moment.
