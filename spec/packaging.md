@@ -2,9 +2,9 @@
 
 ## The icon is drawn on Apple's grid, not edge to edge
 
-`assets/icon.png` is the artwork as Icon Composer exported it -- beside it, `icon.svg` and
-`arrow-only.svg` are the vector sources it was drawn from, committed so the artwork can be
-redrawn, and read by nothing -- -- 1024 square, the system's
+`assets/icon-1024.png` is the artwork as Icon Composer exported it -- beside it, `icon.svg` is the
+vector source it was drawn from and `icon-glyph.svg` the glyph alone, the arrow without the
+tile behind it, both committed so the artwork can be redrawn and read by nothing -- 1024 square, the system's
 rounded corners already cut, no margin -- re-encoded from 16 to 8 bits a channel, which halves
 it to under the megabyte jj will snapshot without being asked and loses nothing an icon shows. macOS does not draw an icon that way. Its template is a
 1024 canvas on which the icon *shape* is 824 wide and centred, leaving 100 of transparent margin a
@@ -18,7 +18,7 @@ the 1024 result, then calls `iconutil`. It runs from the artwork every time, and
 set lives under `target/`.
 
 **Windows and Linux draw an icon edge to edge, and their variants are committed.** The same
-task renders `assets/icon.ico` -- the seven sizes Windows asks for, 16 to 256, each a PNG
+task renders `assets/icon-256.ico` -- the seven sizes Windows asks for, 16 to 256, each a PNG
 inside the ico container, which Windows has read since Vista -- and `assets/icon-512.png`, the
 largest slot a Linux desktop has, both from the artwork without Apple's inset, since neither
 system lays icons on that grid. Unlike the icns these two are committed beside the artwork:

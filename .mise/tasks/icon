@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-//MISE description="Render the icon variants from assets/icon.png: the icns under target/, the ico and 512 png under assets/"
+//MISE description="Render the icon variants from assets/icon-1024.png: the icns under target/, the ico and 512 png under assets/"
 // The artwork is edge to edge and already has the system's rounded corners. macOS draws an icon
 // on a 1024 canvas with the shape 824 wide and centred, so the artwork is scaled to 824 and the
 // rest is transparent; drawn edge to edge it would sit oversized beside every other icon in the
@@ -11,7 +11,7 @@ import AppKit
 import Foundation
 
 let root = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-let source = root.appendingPathComponent("assets/icon.png")
+let source = root.appendingPathComponent("assets/icon-1024.png")
 let out = root.appendingPathComponent("target/icon")
 let iconset = out.appendingPathComponent("rdm.iconset")
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
@@ -78,7 +78,7 @@ for (points, scale) in [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), 
 write(render(1024), to: out.appendingPathComponent("rdm-1024.png"))
 
 // The flat variants, committed: Windows asks for these sizes; a desktop's largest slot is 512.
-try! ico(sizes: [16, 24, 32, 48, 64, 128, 256]).write(to: root.appendingPathComponent("assets/icon.ico"))
+try! ico(sizes: [16, 24, 32, 48, 64, 128, 256]).write(to: root.appendingPathComponent("assets/icon-256.ico"))
 write(render(512, inset: false), to: root.appendingPathComponent("assets/icon-512.png"))
 
 let iconutil = Process()
