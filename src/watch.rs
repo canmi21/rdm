@@ -101,9 +101,13 @@ mod tests {
 	fn a_burst_of_changes_is_one_signal_and_quiet_is_none() {
 		let dir = crate::testing::scratch("watch");
 		let watcher = Watcher::new(&dir).unwrap();
-		// The platform needs a moment to start delivering.
+		// The platform needs a moment to start delivering, and may then deliver the directory's own
+		// making: FSEvents reports with latency, so what `scratch` just did can arrive after the stream
+		// starts. That is not a change of ours; drop it rather than assert the start was quiet.
 		thread::sleep(Duration::from_millis(300));
-		assert!(watcher.try_signal().is_none(), "nothing has happened");
+		while watcher.try_signal().is_some() {
+			thread::sleep(QUIET * 2);
+		}
 		for i in 0..20 {
 			std::fs::write(dir.join(format!("file-{i}.rdm")), b"x").unwrap();
 			thread::sleep(Duration::from_millis(5));
