@@ -13,3 +13,16 @@ run = "cargo test"
 [tasks.verify]
 description = "Everything a change has to pass"
 depends = ["check", "lint", "test"]
+
+# The rebuild loop needs a file watcher. Pinned to a major like everything in the workspace list
+# one directory up.
+[tools]
+watchexec = "2"
+
+# Kill, rebuild, reopen on every source change. --project-origin stops watchexec walking up to
+# the workspace's .gitignore, which ignores repos/*/ and would make every file here read as
+# ignored; the extension filter is what keeps target/ out. See still's mise.toml for the longer
+# account of both.
+[tasks.dev]
+description = "Open the window, rebuilding and reopening it as the source changes"
+run = "watchexec --restart --project-origin . --exts rs,toml -- cargo run"
