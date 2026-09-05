@@ -8,12 +8,15 @@ version = "0.0.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/canmi21/rdm"
+description = "A download manager for macOS."
 
 [[bin]]
 name = "rdm"
 path = "src/main.rs"
 
 [dependencies]
+gpui = { package = "gpui-unofficial", version = "1" }
+gpui_platform = { package = "gpui-platform-gpui-unofficial", version = "1" }
 
 # Formatting is rustfmt's and the linter must not report it; see rustfmt.toml.
 [lints.clippy]
