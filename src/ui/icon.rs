@@ -34,7 +34,6 @@ pub enum Icon {
 	BookOpen,
 	Disc,
 	Database,
-	Terminal,
 	ChevronRight,
 	ArrowLeft,
 	GripVertical,
@@ -82,7 +81,6 @@ impl Icon {
 			Icon::BookOpen => "lucide/book-open.svg",
 			Icon::Disc => "lucide/disc.svg",
 			Icon::Database => "lucide/database.svg",
-			Icon::Terminal => "lucide/terminal.svg",
 			Icon::ChevronRight => "lucide/chevron-right.svg",
 			Icon::ArrowLeft => "lucide/arrow-left.svg",
 			Icon::GripVertical => "lucide/grip-vertical.svg",
@@ -93,14 +91,14 @@ impl Icon {
 			Icon::Globe => "lucide/globe.svg",
 			Icon::Presentation => "lucide/presentation.svg",
 			Icon::FileSpreadsheet => "lucide/file-spreadsheet.svg",
-			Icon::Text => "lucide/text-initial.svg",
+			Icon::Text => "lucide/file-type.svg",
 			Icon::CircleQuestion => "lucide/circle-question-mark.svg",
 		}
 	}
 
 	/// What a category may be drawn with: the defaults' icons and a few more file shapes. A short
 	/// list on purpose; the whole of Lucide would be a picker nobody finishes scrolling.
-	pub const CATEGORY_CHOICES: [Icon; 17] = [
+	pub const CATEGORY_CHOICES: [Icon; 16] = [
 		Icon::Film,
 		Icon::Music,
 		Icon::FileText,
@@ -115,7 +113,6 @@ impl Icon {
 		Icon::BookOpen,
 		Icon::Disc,
 		Icon::Database,
-		Icon::Terminal,
 		Icon::Gamepad,
 		Icon::Globe,
 	];
@@ -134,12 +131,11 @@ impl Icon {
 			Icon::BookOpen => "book-open",
 			Icon::Disc => "disc",
 			Icon::Database => "database",
-			Icon::Terminal => "terminal",
 			Icon::Gamepad => "gamepad-2",
 			Icon::Globe => "globe",
 			Icon::Presentation => "presentation",
 			Icon::FileSpreadsheet => "file-spreadsheet",
-			Icon::Text => "text-initial",
+			Icon::Text => "file-type",
 			other => other.path().trim_start_matches("lucide/").trim_end_matches(".svg"),
 		}
 	}

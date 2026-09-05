@@ -1162,12 +1162,12 @@ mod tests {
 				input.replace_text_in_range(Some(end - 1..end), "", window, cx)
 			});
 		});
-		click(&mut cx, "icon:terminal");
+		click(&mut cx, "icon:globe");
 		click(&mut cx, "button:Create");
 		rdm.read_with(&cx, |rdm, _| {
 			assert!(rdm.category_sheet.is_none());
 			let rust = rdm.categories.iter().find(|c| c.name == "Rust").expect("added");
-			assert_eq!(rust.icon, Icon::Terminal);
+			assert_eq!(rust.icon, Icon::Globe);
 			assert!(rdm.categories.last().unwrap().is_catch_all(), "Other stays last");
 		});
 		assert!(cx.debug_bounds("filter:Rust").is_some(), "the sidebar lists the new category");

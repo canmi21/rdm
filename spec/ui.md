@@ -230,7 +230,7 @@ same wash, which closes like the rest, and the backdrop is cut around it.
 
 **Add is a second level.** The custom form asks for a name, with a swatch beside it for the
 color the icon will be lit in -- the next hue in the cycle to start with, so the swatch is
-never blank -- one of seventeen Lucide icons, and a basic rule in two fields with a switch
+never blank -- one of sixteen Lucide icons, and a basic rule in two fields with a switch
 between them: the extensions the category stands for, typed as `rs, py`, and text the name
 contains, joined by AND or OR when both are filled -- AND by default, since a rule that names
 both usually means both. After the text, two icon switches, both off to start: Match case,
@@ -247,7 +247,7 @@ matched against whole file names, and a line reports what the rule would do righ
 engine's own error while it does not compile, or how many of the current downloads it catches.
 The report belongs to Advanced alone; under the basic fields it read as noise, since those
 always compile. The cross on the form, and on a preset's list, steps back to the presets, one
-level up, rather than out; the cross on the presets closes. The icon list is seventeen glyphs;
+level up, rather than out; the cross on the presets closes. The icon list is sixteen glyphs;
 the whole of Lucide would be a picker nobody finishes scrolling.
 
 **The color line is the same everywhere.** The nine named hues as swatches, then a field that
