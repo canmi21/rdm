@@ -9,6 +9,8 @@ use gpui::{
 	WindowHandle, WindowOptions, div, prelude::*, px, size,
 };
 
+use serde::Serialize;
+
 use crate::download::{self, Download, Filter, Status};
 use crate::ui::download_window::DownloadWindow;
 use crate::ui::settings_window::SettingsWindow;
@@ -16,7 +18,7 @@ use crate::ui::theme::{self, Palette};
 
 /// How the list is drawn. Detailed is the default because it is the one that shows progress,
 /// speed and size at once; the others trade that for density or for a glance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum View {
 	Detailed,
 	Compact,
@@ -29,7 +31,7 @@ impl View {
 
 /// A column the table can be ordered by. `Added` is the order downloads arrived in and the
 /// default; it has no column of its own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum SortKey {
 	Added,
 	Name,
@@ -52,8 +54,8 @@ pub struct Rdm {
 	pub(crate) palette: Palette,
 	/// The windows opened beside this one. A handle stays here after its window closes and is
 	/// found dead on the next use, which is cheaper than being told.
-	open: HashMap<u64, WindowHandle<DownloadWindow>>,
-	settings: Option<WindowHandle<SettingsWindow>>,
+	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
+	pub(crate) settings: Option<WindowHandle<SettingsWindow>>,
 	_tick: Task<()>,
 }
 
@@ -292,5 +294,81 @@ fn child_window(cx: &App, title: &str, extent: gpui::Size<gpui::Pixels>) -> Wind
 		window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, extent, cx))),
 		titlebar: Some(TitlebarOptions { title: Some(title.to_owned().into()), ..Default::default() }),
 		..Default::default()
+	}
+}
+
+// Headless: the test platform draws the window into no screen, so this exercises what a click
+// does without a window, a pointer or a display. See spec/workflow.md.
+#[cfg(test)]
+mod tests {
+	use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
+
+	use super::*;
+
+	fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
+		let window =
+			cx.update(|cx| cx.open_window(Default::default(), |_, cx| cx.new(Rdm::new)).unwrap());
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+		let rdm = window.root(&mut cx).unwrap();
+		(rdm, cx)
+	}
+
+	fn click(cx: &mut VisualTestContext, selector: &'static str) {
+		let bounds = cx.debug_bounds(selector).unwrap_or_else(|| panic!("nothing drawn as {selector}"));
+		cx.simulate_click(bounds.center(), Modifiers::default());
+	}
+
+	#[gpui::test]
+	fn a_header_click_sorts_and_a_second_flips(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "sort:Size");
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!((rdm.sort, rdm.ascending), (SortKey::Size, true));
+			let sizes: Vec<u64> = rdm.shown().iter().map(|d| d.size).collect();
+			assert!(sizes.windows(2).all(|w| w[0] <= w[1]), "{sizes:?}");
+		});
+		click(&mut cx, "sort:Size");
+		rdm.read_with(&cx, |rdm, _| assert!(!rdm.ascending));
+	}
+
+	#[gpui::test]
+	fn a_chip_narrows_within_the_sidebar_and_clears_itself(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "chip:Completed");
+		rdm.read_with(&cx, |rdm, _| {
+			assert_eq!(rdm.status, Some(Status::Completed));
+			assert!(rdm.shown().iter().all(|d| d.status == Status::Completed));
+		});
+		click(&mut cx, "chip:Completed");
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.status, None));
+	}
+
+	#[gpui::test]
+	fn a_row_selects_and_the_view_switch_redraws_it(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		click(&mut cx, "row:3");
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, Some(3)));
+		click(&mut cx, "view:Grid");
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.view, View::Grid));
+		click(&mut cx, "row:3");
+		rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.selected, None));
+	}
+
+	#[gpui::test]
+	fn opening_a_download_adds_one_window_and_removing_it_closes_it(cx: &mut TestAppContext) {
+		let (rdm, mut cx) = open(cx);
+		rdm.update(&mut cx, |rdm, cx| rdm.open_download(2, cx));
+		cx.run_until_parked();
+		assert_eq!(cx.windows().len(), 2);
+		rdm.update(&mut cx, |rdm, cx| rdm.open_download(2, cx));
+		cx.run_until_parked();
+		assert_eq!(
+			cx.windows().len(),
+			2,
+			"a second request raises the window, it does not open another"
+		);
+		rdm.update(&mut cx, |rdm, cx| rdm.remove(2, cx));
+		cx.run_until_parked();
+		assert_eq!(cx.windows().len(), 1);
 	}
 }

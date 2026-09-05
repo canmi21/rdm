@@ -1,5 +1,7 @@
 mod app;
 mod assets;
+#[cfg(debug_assertions)]
+mod ctl;
 mod download;
 mod ui;
 
@@ -42,6 +44,10 @@ fn main() {
 			.expect("open the main window");
 		// The main window is the application: closing it quits, however many download or settings
 		// windows are still open. Closing one of those closes only itself.
+		#[cfg(debug_assertions)]
+		if let Ok(rdm) = main.update(cx, |_, _, cx| cx.entity()) {
+			ctl::serve(rdm, cx);
+		}
 		let main_id = main.window_id();
 		cx.on_window_closed(move |cx, id| {
 			if id == main_id {

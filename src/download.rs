@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Status {
 	Queued,
 	Downloading,
@@ -12,6 +14,9 @@ pub enum Status {
 }
 
 impl Status {
+	pub const ALL: [Status; 5] =
+		[Status::Queued, Status::Downloading, Status::Paused, Status::Completed, Status::Failed];
+
 	pub fn label(self) -> &'static str {
 		match self {
 			Status::Queued => "Queued",
@@ -23,7 +28,7 @@ impl Status {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Kind {
 	Video,
 	Audio,
@@ -61,7 +66,7 @@ impl Kind {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Download {
 	pub id: u64,
 	pub name: String,
@@ -95,7 +100,7 @@ impl Download {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Filter {
 	All,
 	Downloading,
@@ -116,6 +121,11 @@ impl Filter {
 			Filter::Completed => "Completed",
 			Filter::Kind(kind) => kind.label(),
 		}
+	}
+
+	/// Every filter the sidebar offers, in its order.
+	pub fn all() -> impl Iterator<Item = Filter> {
+		Filter::STATES.into_iter().chain(Kind::ALL.into_iter().map(Filter::Kind))
 	}
 
 	pub fn matches(self, download: &Download) -> bool {

@@ -1,0 +1,165 @@
+//! A control socket for debug builds: read the state, and do what a click would do, from a
+//! shell -- without the mouse. See spec/workflow.md.
+
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixListener;
+use std::thread;
+
+use futures::StreamExt;
+use futures::channel::{mpsc, oneshot};
+use gpui::{App, Context, Entity};
+use serde::Serialize;
+
+use crate::app::{Rdm, SortKey, View};
+use crate::download::{Download, Filter, Status};
+
+/// Under the build directory, so it is per checkout and gone with `cargo clean`.
+pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
+
+const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | \
+	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
+	sort <added|name|size|progress|speed|status> [desc] | add";
+
+pub fn serve(rdm: Entity<Rdm>, cx: &mut App) {
+	let _ = std::fs::remove_file(SOCKET);
+	let listener = match UnixListener::bind(SOCKET) {
+		Ok(listener) => listener,
+		Err(error) => {
+			eprintln!("control socket not available at {SOCKET}: {error}");
+			return;
+		}
+	};
+	// One line in, one reply out, per connection. The socket threads never touch the app; they
+	// hand each line to the foreground and wait for its answer.
+	let (tx, mut rx) = mpsc::unbounded::<(String, oneshot::Sender<String>)>();
+	thread::spawn(move || {
+		for stream in listener.incoming().flatten() {
+			let tx = tx.clone();
+			thread::spawn(move || {
+				let mut line = String::new();
+				if BufReader::new(&stream).read_line(&mut line).is_err() {
+					return;
+				}
+				let (reply_tx, reply_rx) = oneshot::channel();
+				if tx.unbounded_send((line.trim().to_owned(), reply_tx)).is_ok()
+					&& let Ok(reply) = futures::executor::block_on(reply_rx)
+				{
+					let _ = writeln!(&stream, "{reply}");
+				}
+			});
+		}
+	});
+	cx.spawn(async move |cx| {
+		while let Some((line, reply)) = rx.next().await {
+			let answer = rdm.update(cx, |rdm, cx| rdm.command(&line, cx));
+			let _ = reply.send(answer);
+		}
+	})
+	.detach();
+}
+
+#[derive(Serialize)]
+struct State<'a> {
+	filter: &'static str,
+	status: Option<&'static str>,
+	sort: SortKey,
+	ascending: bool,
+	view: View,
+	selected: Option<u64>,
+	/// Downloads with a window open, and whether Settings is.
+	windows: Vec<u64>,
+	settings: bool,
+	downloads: &'a [Download],
+}
+
+fn failure(message: &str) -> String {
+	serde_json::json!({ "error": message }).to_string()
+}
+
+impl Rdm {
+	fn state(&self, cx: &mut Context<Self>) -> String {
+		let windows = self
+			.open
+			.iter()
+			.filter(|(_, handle)| handle.update(cx, |_, _, _| ()).is_ok())
+			.map(|(id, _)| *id)
+			.collect();
+		let settings = self.settings.as_ref().is_some_and(|h| h.update(cx, |_, _, _| ()).is_ok());
+		let state = State {
+			filter: self.filter.label(),
+			status: self.status.map(Status::label),
+			sort: self.sort,
+			ascending: self.ascending,
+			view: self.view,
+			selected: self.selected,
+			windows,
+			settings,
+			downloads: &self.downloads,
+		};
+		serde_json::to_string_pretty(&state).unwrap_or_else(|error| failure(&error.to_string()))
+	}
+
+	/// One line of the protocol above; every command answers with the state it left behind.
+	pub(crate) fn command(&mut self, line: &str, cx: &mut Context<Self>) -> String {
+		let mut words = line.split_whitespace();
+		let verb = words.next().unwrap_or("");
+		let rest: Vec<&str> = words.collect();
+		let id = rest.first().and_then(|word| word.parse::<u64>().ok());
+		let label = rest.join(" ");
+		match verb {
+			"state" => {}
+			"view" => match label.as_str() {
+				"detailed" => self.set_view(View::Detailed, cx),
+				"compact" => self.set_view(View::Compact, cx),
+				"grid" => self.set_view(View::Grid, cx),
+				_ => return failure("view takes detailed, compact or grid"),
+			},
+			"select" | "open" | "pause" | "resume" | "remove" => {
+				let Some(id) = id else { return failure(&format!("{verb} takes a download id")) };
+				if !self.downloads.iter().any(|d| d.id == id) {
+					return failure(&format!("no download {id}"));
+				}
+				match verb {
+					"select" => self.select(id, cx),
+					"open" => self.open_download(id, cx),
+					"pause" => self.pause(id, cx),
+					"resume" => self.resume(id, cx),
+					_ => self.remove(id, cx),
+				}
+			}
+			"settings" => self.open_settings(cx),
+			"filter" => match Filter::all().find(|f| f.label().eq_ignore_ascii_case(&label)) {
+				Some(filter) => self.set_filter(filter, cx),
+				None => return failure("filter takes a sidebar label"),
+			},
+			"status" if label == "none" => {
+				self.status = None;
+				cx.notify();
+			}
+			"status" => match Status::ALL.into_iter().find(|s| s.label().eq_ignore_ascii_case(&label)) {
+				Some(status) => {
+					self.status = Some(status);
+					cx.notify();
+				}
+				None => return failure("status takes a status label, or none"),
+			},
+			"sort" => {
+				let key = match rest.first().copied().unwrap_or("") {
+					"added" => SortKey::Added,
+					"name" => SortKey::Name,
+					"size" => SortKey::Size,
+					"progress" => SortKey::Progress,
+					"speed" => SortKey::Speed,
+					"status" => SortKey::Status,
+					_ => return failure("sort takes added, name, size, progress, speed or status"),
+				};
+				self.sort = key;
+				self.ascending = rest.get(1) != Some(&"desc");
+				cx.notify();
+			}
+			"add" => self.add(cx),
+			_ => return failure(USAGE),
+		}
+		self.state(cx)
+	}
+}

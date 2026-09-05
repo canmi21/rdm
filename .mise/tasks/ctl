@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+#MISE description="Drive the running debug build from the shell: `ctl state | view grid | open 3 | ...`"
+"""Talks to the control socket a debug build opens under target/. See spec/workflow.md.
+
+The command is the arguments joined by spaces; the reply is the application's state as JSON, or
+an error naming what the command should have been. `mise run ctl` with no arguments prints the
+protocol.
+"""
+
+import pathlib
+import socket
+import sys
+
+SOCKET = pathlib.Path(__file__).resolve().parents[2] / "target" / "rdm.sock"
+
+
+def main(argv: list[str]) -> int:
+	line = " ".join(argv) if argv else "help"
+	try:
+		with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+			connection.settimeout(5)
+			connection.connect(str(SOCKET))
+			connection.sendall((line + "\n").encode())
+			reply = b""
+			while chunk := connection.recv(65536):
+				reply += chunk
+	except (FileNotFoundError, ConnectionRefusedError):
+		raise SystemExit(f"error: no debug build listening at {SOCKET}; `mise run dev` first")
+	sys.stdout.write(reply.decode())
+	return 1 if reply.startswith(b'{"error"') else 0
+
+
+if __name__ == "__main__":
+	raise SystemExit(main(sys.argv[1:]))
