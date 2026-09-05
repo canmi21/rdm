@@ -268,11 +268,25 @@ impl Category {
 		self.recompile();
 	}
 
+	/// Back to the preset as shipped: its list, its icon and its color.
 	pub fn reset_preset(&mut self) {
-		if let Some((_, overrides)) = &mut self.preset {
+		if let Some((preset, overrides)) = &mut self.preset {
 			*overrides = Overrides::default();
+			self.icon = preset.icon;
+			self.color = preset.tint.rgb();
+			self.custom_color = None;
 		}
 		self.recompile();
+	}
+
+	/// Whether anything differs from the preset as shipped; false for a custom rule.
+	pub fn differs_from_preset(&self) -> bool {
+		match &self.preset {
+			Some((preset, overrides)) => {
+				!overrides.is_empty() || self.icon != preset.icon || self.color != preset.tint.rgb()
+			}
+			None => false,
+		}
 	}
 
 	fn recompile(&mut self) {

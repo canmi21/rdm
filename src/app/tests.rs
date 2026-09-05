@@ -373,11 +373,17 @@ fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut Test
 		assert!(list.contains(&"mkv".to_owned()) && !list.contains(&"xyz".to_owned()));
 		assert_eq!(list.last().map(String::as_str), Some("zyx"));
 	});
+	click(&mut cx, "icon:film");
+	click(&mut cx, "swatch:#bf616a");
 	click(&mut cx, "button:Reset");
 	rdm.read_with(&cx, |rdm, _| {
 		let video = rdm.categories.iter().find(|c| c.name == "Videos").unwrap();
-		assert_eq!(video.extensions(), Category::preset("Video").unwrap().extensions());
+		let shipped = Category::preset("Videos").unwrap();
+		assert_eq!(video.extensions(), shipped.extensions());
+		assert_eq!((video.icon, video.color), (shipped.icon, shipped.color), "icon and color too");
+		assert!(!video.differs_from_preset());
 	});
+	assert!(cx.debug_bounds("button:Reset").is_none(), "nothing left to reset");
 	click(&mut cx, "button:Close");
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(matches!(rdm.category_sheet, Some(CategorySheet::Presets { editing: false })))

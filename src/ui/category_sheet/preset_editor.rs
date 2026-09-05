@@ -6,6 +6,7 @@ use gpui::{Context, Role, SharedString, deferred, div, prelude::*};
 use crate::app::Rdm;
 use crate::category::Category;
 use crate::ui::category_sheet::{PresetForm, section, word};
+use crate::ui::tooltip::tooltip;
 use crate::ui::{LeavesFocus, backdrop};
 
 impl Rdm {
@@ -51,8 +52,17 @@ impl Rdm {
 					.child(label)
 			})
 			.collect();
-		let changed = !overrides.is_empty();
+		let changed = category.differs_from_preset();
 		let (icon_now, color_now) = (category.icon, category.color);
+		// Reset stands alone in the corner, a word rather than a button, and only while there is
+		// something to undo: a preset left as shipped has nothing to go back to.
+		let reset = div().flex().justify_end().child(if changed {
+			word(p, "reset", "Reset", false, cx.listener(move |this, _, _, cx| this.reset_preset(id, cx)))
+				.tooltip(tooltip("Reset to default"))
+				.into_any_element()
+		} else {
+			div().text_xs().text_color(p.border).child("Reset").into_any_element()
+		});
 		deferred(
 			backdrop(p).child(
 				self
@@ -62,26 +72,14 @@ impl Rdm {
 					.child(self.color_row(color_now, form.custom.clone(), cx))
 					.child(section(p.muted, "Extensions"))
 					.child(div().flex().flex_wrap().gap_1().children(chips))
-					.child(
-						div().flex().items_center().gap_3().child(div().flex_1().child(form.add.clone())).when(
-							changed,
-							|s| {
-								s.child(word(
-									p,
-									"reset",
-									"Reset",
-									false,
-									cx.listener(move |this, _, _, cx| this.reset_preset(id, cx)),
-								))
-							},
-						),
-					)
+					.child(form.add.clone())
 					.child(section(p.muted, "Icon"))
 					.child(self.icon_picker(
 						icon_now,
 						move |this, choice, cx| this.set_category_icon(id, choice, cx),
 						cx,
-					)),
+					))
+					.child(reset),
 			),
 		)
 		.priority(2)

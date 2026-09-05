@@ -148,7 +148,7 @@ fn word(
 	label: &'static str,
 	on: bool,
 	on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
-) -> impl IntoElement {
+) -> gpui::Stateful<gpui::Div> {
 	div()
 		.id(id)
 		.role(Role::Button)

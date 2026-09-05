@@ -281,8 +281,10 @@ word processing and PDF stay under Documents.
 Edit turns the chips into doors: a lit chip opens its list. The name stands alone above; the
 line under it is every color the category could wear (see below); then every extension as a
 chip that switches -- a built-in one off and back, struck through while off; an added one
-simply dropped -- with a field that adds more and Reset while anything has been changed; then
-the icon picker. Each change applies and is written as it is made, like the preset switches
+simply dropped -- with a field that adds more; then the icon picker. Reset stands in the
+card's bottom corner, a word with "Reset to default" as its tooltip, and only while anything
+-- the list, the icon or the color -- differs from the preset as shipped; a press puts all
+three back. Each change applies and is written as it is made, like the preset switches
 themselves. A preset's icon and color are written to the file only when they are not the
 preset's own, so one the user left alone follows the application's choice.
 
