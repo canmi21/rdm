@@ -71,7 +71,7 @@ fn main() {
 					// The desktop shows through the blur; the palette carries the alpha. See spec/ui.md.
 					window_background: WindowBackgroundAppearance::Blurred,
 					titlebar: Some(TitlebarOptions {
-						title: Some("rdm".into()),
+						title: Some(identity::DISPLAY_NAME.into()),
 						appears_transparent: true,
 						// y is padding on both sides of the buttons, so this centres them. See spec/ui.md.
 						traffic_light_position: Some(point(

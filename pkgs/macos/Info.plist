@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- The bundle's Info.plist, filled by the bundle task: {{VERSION}} is Cargo.toml's version, {{BUILD}}
-     the CI run number that ordered the build, {{BUNDLE_ID}} src/identity.rs's. See spec/packaging.md. -->
+     the CI run number that ordered the build, and {{BUNDLE_ID}}, {{NAME}} and {{DISPLAY_NAME}}
+     src/identity.rs's. See spec/packaging.md. -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>rdm</string>
+	<string>{{NAME}}</string>
 	<key>CFBundleDisplayName</key>
-	<string>rdm</string>
+	<string>{{DISPLAY_NAME}}</string>
 	<key>CFBundleIdentifier</key>
 	<string>{{BUNDLE_ID}}</string>
 	<key>CFBundleShortVersionString</key>

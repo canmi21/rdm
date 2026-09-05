@@ -33,9 +33,9 @@ description = "Open the window, rebuilding and reopening it as the source change
 depends = ["icons"]
 run = "watchexec --restart --project-origin . --exts rs,toml -- cargo run"
 
-# The release build wrapped as rdm.app, with the icon rendered first. Not part of verify: it is a
+# The release build wrapped as the .app, with the icon rendered first. Not part of verify: it is a
 # packaging step, run when there is something to look at or hand over.
 [tasks.bundle]
-description = "Build the release binary and wrap it as target/bundle/rdm.app"
+description = "Build the release binary and wrap it as the .app under target/bundle"
 depends = ["icons", "icon"]
 run = ["cargo build --release", ".mise/tasks/bundle"]

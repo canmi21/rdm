@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-#MISE description="Build the release binary and wrap it as target/bundle/rdm.app"
+#MISE description="Build the release binary and wrap it as the .app under target/bundle"
 """The .app is a folder with a shape: the binary under Contents/MacOS, the icon under
 Contents/Resources, and an Info.plist naming both. The plist is pkgs/macos/Info.plist with
 its placeholders filled: the version out of Cargo.toml, the build number out of the CI run
-that ordered the build (0 by hand), the bundle identifier out of src/identity.rs, so each has
-one home. See spec/packaging.md.
+that ordered the build (0 by hand), the bundle identifier and the two names out of src/identity.rs, so each
+has one home. The .app is named in full; the binary inside it stays rdm. See spec/packaging.md.
 """
 
 import os
@@ -27,14 +27,17 @@ def read(pattern: str, path: pathlib.Path) -> str:
 
 def main() -> int:
 	version = read(r'^version = "([^"]+)"', ROOT / "Cargo.toml")
-	bundle_id = read(r'^pub const BUNDLE_ID: &str = "([^"]+)";', ROOT / "src" / "identity.rs")
+	identity = ROOT / "src" / "identity.rs"
+	bundle_id = read(r'^pub const BUNDLE_ID: &str = "([^"]+)";', identity)
+	name = read(r'^pub const NAME: &str = "([^"]+)";', identity)
+	display_name = read(r'^pub const DISPLAY_NAME: &str = "([^"]+)";', identity)
 	icns = ROOT / "target" / "icon" / "rdm.icns"
 	binary = ROOT / "target" / "release" / NAME
 	if not icns.is_file():
 		raise SystemExit("error: no icon; `mise run icon` first")
 	if not binary.is_file():
 		raise SystemExit("error: no release binary; `cargo build --release` first")
-	app = ROOT / "target" / "bundle" / f"{NAME}.app"
+	app = ROOT / "target" / "bundle" / f"{name}.app"
 	shutil.rmtree(app, ignore_errors=True)
 	contents = app / "Contents"
 	(contents / "MacOS").mkdir(parents=True)
@@ -44,6 +47,7 @@ def main() -> int:
 	build = os.environ.get("GITHUB_RUN_NUMBER", "0")
 	template = (ROOT / "pkgs" / "macos" / "Info.plist").read_text()
 	filled = template.replace("{{VERSION}}", version).replace("{{BUILD}}", build).replace("{{BUNDLE_ID}}", bundle_id)
+	filled = filled.replace("{{NAME}}", name).replace("{{DISPLAY_NAME}}", display_name)
 	if "{{" in filled:
 		raise SystemExit("error: a placeholder in pkgs/macos/Info.plist was not filled")
 	(contents / "Info.plist").write_text(filled)

@@ -11,6 +11,14 @@ pub const APPLICATION: &str = "rdm";
 /// state directory.
 pub const BUNDLE_ID: &str = "app.canmi.rdm";
 
+/// The name in full, what the `.app` is called and the menu bar and About show; and the name
+/// the Dock, Spotlight and the window title show, one word like the system's own. The code
+/// and the binary stay `rdm`. The bundle task reads both out of this source. See
+/// spec/packaging.md.
+#[allow(dead_code, reason = "read out of this source by the bundle task, not by the code")]
+pub const NAME: &str = "Refined Download Manager";
+pub const DISPLAY_NAME: &str = "Downloads";
+
 /// Which build this is, read at compile time from the release workflow's environment: the run
 /// number, which only grows, and the commit. None in a build made by hand. Every build of one
 /// day's version differs in these alone, and the update check compares the number and nothing

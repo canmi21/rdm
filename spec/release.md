@@ -47,7 +47,7 @@ answers with, and that address is the daily channel's.
 
 | Target | File | Shape |
 | --- | --- | --- |
-| `macos-arm64` | `rdm-nightly-macos-arm64.dmg` | `rdm.app` beside an Applications shortcut |
+| `macos-arm64` | `rdm-nightly-macos-arm64.dmg` | `Refined Download Manager.app` beside an Applications shortcut |
 | `windows-x64` | `rdm-nightly-windows-x64.exe` | the executable alone, the icon inside it |
 | `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.AppImage` | the binary, desktop entry and icon; system libraries left to the system |
 | `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.tar.gz` | the binary, desktop entry, icon and `install.sh` |

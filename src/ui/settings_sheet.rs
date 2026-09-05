@@ -89,7 +89,8 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// The control socket's verb.
+	/// The control socket's verb, built where the socket is. See spec/workflow.md.
+	#[cfg(all(debug_assertions, unix))]
 	pub(crate) fn toggle_settings(&mut self, open: bool, cx: &mut Context<Self>) {
 		if open { self.open_settings(cx) } else { self.close_settings(cx) }
 	}

@@ -19,7 +19,7 @@ macos-arm64)
 	swift .mise/tasks/icon
 	python3 .mise/tasks/bundle
 	rm -rf target/dmg && mkdir -p target/dmg
-	cp -R target/bundle/rdm.app target/dmg/
+	cp -R "target/bundle/Refined Download Manager.app" target/dmg/
 	ln -s /Applications target/dmg/Applications
 	hdiutil create -volname rdm -srcfolder target/dmg -ov -format UDZO "dist/$name.dmg"
 	;;

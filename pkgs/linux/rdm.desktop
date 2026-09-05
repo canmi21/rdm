@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=rdm
+Name=Downloads
+GenericName=Refined Download Manager
 Comment=A refined download manager
 Exec=rdm
 Icon=rdm
