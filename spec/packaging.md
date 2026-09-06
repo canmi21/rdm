@@ -13,7 +13,9 @@ edge sits visibly larger than its neighbours. The corner radius the template exp
 the 824 shape, which is what the artwork's corners come to once scaled, so the artwork is scaled
 and padded and not re-cut.
 
-`mise run icon` does that with CoreGraphics and renders each size the `.icns` format wants from
+`mise run icon` also renders the tray's two icons into `assets/tray/`, committed like the flat
+variants: the glyph at 44 pixels for macOS, the full icon at 64 for the other two. See
+[ui.md](ui.md). It does that with CoreGraphics and renders each size the `.icns` format wants from
 the 1024 result, then calls `iconutil`. It runs from the artwork every time, and the rendered
 set lives under `target/`.
 

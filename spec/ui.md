@@ -118,6 +118,17 @@ Programs red, Disk Images navy -- with a custom rule handed the next hue in a fi
 nobody has to pick. Any of them can be changed to a named hue or one the user writes; the
 color is a number on the category, so a written one is the same kind of thing as a named one.
 
+**An icon in the tray, with the system's menu under it.** The menu bar's right on macOS, the
+notification area on Windows, the indicator area on Linux: the application's icon, and under
+it the system's own menu with two items, show the window and quit. On macOS the icon is the
+bare glyph as a template image, which the system tints for a light or dark menu bar, at 22
+points; elsewhere the full icon, since those trays draw an icon as it is. A left click on
+Windows or Linux shows the window as the first item would; on macOS a click opens the menu,
+which is how the menu bar works. Closing the window still quits, as before: the tray is a way
+back to the window and a way out, not a place the window hides. A tray that cannot be made --
+no indicator library on a Linux desktop, say -- is reported and done without. See
+[packaging.md](packaging.md) for the two rendered icons.
+
 **An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
 front", under Appearance and on to start with, is the switch behind the monochrome the palette
 takes when the window is not active; off, the window keeps its colors in front or not, for

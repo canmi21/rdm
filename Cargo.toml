@@ -68,8 +68,15 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros", "io-util"] }
 tokio-util = "0.7"
 url = "2"
-tray-icon = { version = "0.24", default-features = false }
-png = { version = "0.18", default-features = false }
+
+# The tray icon on every system; the menu is the system's own. Without libxdo, which only the
+# predefined edit items need. See src/tray.rs.
+tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
+# Decodes the tray's PNG, rendered from the artwork by `mise run icon`.
+png = "0.18"
+# What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
+# zip is also what the Windows build comes in, and tar with flate2 the Linux one; see
+# src/update/install.rs.
 sevenz-rust2 = { version = "0.22", default-features = false }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 tar = "0.4"
@@ -79,11 +86,10 @@ flate2 = "1"
 # renamed, which self-replace knows; the Linux binary comes in a tarball. See spec/release.md.
 [target.'cfg(windows)'.dependencies]
 self-replace = "1"
-zip = { version = "8", default-features = false, features = ["deflate"] }
 
+# The tray on Linux lives on a gtk loop of its own thread; gtk 3 is what tray-icon speaks.
 [target.'cfg(target_os = "linux")'.dependencies]
-flate2 = "1"
-tar = "0.4"
+gtk = "0.18"
 
 # Windows carries the icon inside the executable; build.rs embeds it there. See spec/release.md.
 [target.'cfg(windows)'.build-dependencies]

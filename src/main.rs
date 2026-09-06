@@ -18,6 +18,7 @@ mod state;
 mod store;
 #[cfg(test)]
 mod testing;
+mod tray;
 mod ui;
 mod update;
 mod watch;
@@ -97,6 +98,7 @@ fn main() {
 		if let Ok(rdm) = main.update(cx, |_, _, cx| cx.entity()) {
 			ctl::serve(rdm, cx);
 		}
+		tray::install(cx);
 		let main_id = main.window_id();
 		cx.on_window_closed(move |cx, id| {
 			if id == main_id {
