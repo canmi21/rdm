@@ -1182,3 +1182,105 @@ fn the_transfer_fields_apply_on_enter_and_say_no_to_nonsense(cx: &mut TestAppCon
 		assert_eq!((rdm.preferences.connections, rdm.preferences.speed_limit), (None, None));
 	});
 }
+
+
+/// A press at a column's handle, the pointer walked to each offset from it in turn, then the
+/// release. What every step left the row at, so a drag reads as the rows it went through.
+fn drag(
+	rdm: &Entity<Rdm>,
+	cx: &mut VisualTestContext,
+	handle: &'static str,
+	steps: &[f32],
+) -> Vec<[f32; 5]> {
+	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, point, px};
+	let from = cx.debug_bounds(handle).expect("a handle to take hold of").center();
+	cx.simulate_event(MouseDownEvent {
+		button: MouseButton::Left,
+		position: from,
+		modifiers: Modifiers::default(),
+		click_count: 1,
+		first_mouse: false,
+	});
+	let rows = steps
+		.iter()
+		.map(|dx| {
+			cx.simulate_event(MouseMoveEvent {
+				position: point(from.x + px(*dx), from.y),
+				pressed_button: Some(MouseButton::Left),
+				modifiers: Modifiers::default(),
+			});
+			rdm.read_with(cx, |rdm, _| rdm.drawn())
+		})
+		.collect();
+	cx.simulate_event(MouseUpEvent {
+		button: MouseButton::Left,
+		position: from,
+		modifiers: Modifiers::default(),
+		click_count: 1,
+	});
+	rows
+}
+
+/// The size the application opens at with nothing remembered. The default widths leave the name
+/// column under its floor here, which is what made the old stop unreachable: it was derived from
+/// that floor, so every column's ceiling sat below the width it already had, and the first move
+/// of any press snapped it there -- twenty-four points for a one-point nudge, in both directions.
+#[gpui::test]
+fn a_nudge_at_a_handle_moves_the_boundary_by_the_nudge(cx: &mut TestAppContext) {
+	use gpui::{px, size};
+	let (rdm, mut cx) = open(cx);
+	cx.simulate_resize(size(px(960.0), px(600.0)));
+	cx.run_until_parked();
+	let before = rdm.read_with(&cx, |rdm, _| rdm.drawn());
+	let narrower = drag(&rdm, &mut cx, "resize:Size", &[1.0]);
+	assert_eq!(narrower[0][0], before[0] - 1.0, "a point of travel is a point of width");
+	let wider = drag(&rdm, &mut cx, "resize:Size", &[-1.0]);
+	assert_eq!(wider[0][0], before[0], "and the same the other way");
+}
+
+/// Widening takes from the left of the handle, and only from what is above a floor: the name
+/// column first, since it holds the slack, then each fixed column between it and the handle,
+/// nearest first.
+#[gpui::test]
+fn widening_squeezes_leftwards_until_everything_left_of_the_handle_is_on_its_floor(
+	cx: &mut TestAppContext,
+) {
+	use gpui::{px, size};
+	let (rdm, mut cx) = open(cx);
+	cx.simulate_resize(size(px(960.0), px(600.0)));
+	cx.run_until_parked();
+	let before = rdm.read_with(&cx, |rdm, _| rdm.drawn());
+	let rows = drag(&rdm, &mut cx, "resize:Added", &[-100.0, -800.0, 0.0]);
+	assert_eq!(rows[0][..3], before[..3], "the columns further left are not asked yet");
+	assert!(rows[0][3] < before[3], "Status is nearest the handle, so it gives what the name could not");
+	assert_eq!(rows[1][..4], Column::MINS[..4], "far enough, and everything left of it is on its floor");
+	let name = rdm.read_with(&cx, |rdm, _| rdm.name_width(&rows[1]));
+	assert_eq!(name, crate::ui::list::NAME_MIN, "the name column on its own floor with them");
+	assert_eq!(rows[2], before, "and the way back gives back exactly what the way out took");
+}
+
+/// The window will not go narrower than every floor together, and at that width the table is
+/// exactly its floors: what the window took from the widths on the way down, it gives back.
+#[gpui::test]
+fn at_the_windows_least_width_the_columns_are_their_floors_and_the_row_still_fits(
+	cx: &mut TestAppContext,
+) {
+	use gpui::{px, size};
+	let (rdm, mut cx) = open(cx);
+	cx.simulate_resize(size(px(crate::ui::MIN_WIDTH), px(crate::ui::MIN_HEIGHT)));
+	cx.run_until_parked();
+	let (drawn, name) = rdm.read_with(&cx, |rdm, _| (rdm.drawn(), rdm.name_width(&rdm.drawn())));
+	assert_eq!(drawn, Column::MINS, "every column on its floor");
+	assert_eq!(name, crate::ui::list::NAME_MIN, "the name column included");
+	let added = cx.debug_bounds("sort:Added").expect("the last title is drawn");
+	assert!(
+		added.right() <= px(crate::ui::MIN_WIDTH),
+		"the row is inside the window, not overflowing it: {:?}",
+		added.right()
+	);
+	cx.simulate_resize(size(px(960.0), px(600.0)));
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.drawn(), Column::DEFAULT_WIDTHS, "widened again, and back to what was asked for");
+	});
+}

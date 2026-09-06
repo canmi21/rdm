@@ -66,21 +66,37 @@ pub enum Column {
 }
 
 impl Column {
-	pub const MIN: f32 = 56.0;
+	/// The width a column will not go below. It is a floor, not a taste: enough that the cell is
+	/// still read -- "1.2G", a stub of a bar, a truncated word beside its mark -- and no wider,
+	/// because a floor anyone would willingly stop at is one that a drag runs into. What every
+	/// floor comes to, plus the name's and the chrome around them, is the window's own minimum
+	/// width, so the table is never given less room than its floors need. See spec/ui.md.
+	pub const MINS: [f32; 5] = [40.0, 40.0, 40.0, 40.0, 40.0];
 	/// The widths the columns start with, and go back to on the header's reset.
 	pub const DEFAULT_WIDTHS: [f32; 5] = [132.0, 150.0, 84.0, 112.0, 108.0];
+
+	pub fn min(self) -> f32 {
+		Self::MINS[self.index()]
+	}
 
 	fn index(self) -> usize {
 		self as usize
 	}
 }
 
-/// A drag on a column's edge in progress: which column, where the pointer started, how wide it was.
+/// A drag on a column's edge in progress: which column, where the pointer started, and every
+/// width as it stood then. A move recomputes the whole row from that snapshot rather than from
+/// the row it last left, so a drag back the way it came gives back exactly what it took.
 #[derive(Clone, Copy, Debug)]
 pub struct Resize {
 	pub column: Column,
 	pub from_x: gpui::Pixels,
-	pub from_width: f32,
+	/// The row as it was drawn when the press landed, which is the geometry the drag works in.
+	pub from_widths: [f32; 5],
+	/// The widths as they were asked for, which at a narrow window is not the row that was drawn.
+	/// A drag that comes to move nothing puts these back, so taking hold of a handle at a window
+	/// too narrow to give anything cannot quietly spend what the window is holding back.
+	pub asked: [f32; 5],
 }
 
 /// Where the folder's files are numbered from: far above any download's id, which the store
@@ -545,34 +561,83 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// What a column is drawn at. The stored width is what was asked for; this is what the table
+	/// has room for, which is less whenever the window is too narrow to hold them all. The
+	/// shortfall is shared out in proportion to what each column has to spare above its floor, so
+	/// narrowing the window compresses the table evenly rather than crushing one column, and every
+	/// column lands exactly on its floor at the window's own minimum width -- which is where that
+	/// minimum comes from. The stored widths are untouched, so widening gives back what narrowing
+	/// took, to the pixel.
 	pub(crate) fn width(&self, column: Column) -> f32 {
-		self.widths[column.index()]
+		self.drawn()[column.index()]
 	}
 
+	pub(crate) fn drawn(&self) -> [f32; 5] {
+		let mut widths = self.widths;
+		let short = crate::ui::list::NAME_MIN - self.name_width(&widths);
+		let spare: f32 = widths.iter().zip(Column::MINS).map(|(w, min)| (w - min).max(0.0)).sum();
+		if short <= 0.0 || spare <= 0.0 {
+			return widths;
+		}
+		let taken = short.min(spare);
+		for (width, min) in widths.iter_mut().zip(Column::MINS) {
+			*width -= (*width - min).max(0.0) / spare * taken;
+		}
+		widths
+	}
+
+	/// The drag starts from what is on screen, not from what was asked for: at a narrow window the
+	/// two differ, and the boundary has to leave from under the pointer.
 	pub(crate) fn begin_resize(&mut self, column: Column, at: gpui::Pixels) {
-		self.resizing = Some(Resize { column, from_x: at, from_width: self.width(column) });
+		self.resizing = Some(Resize { column, from_x: at, from_widths: self.drawn(), asked: self.widths });
+	}
+
+	/// What the name column is left once the fixed columns and their handles have taken theirs.
+	pub(crate) fn name_width(&self, widths: &[f32; 5]) -> f32 {
+		let table =
+			f32::from(self.viewport.width) - crate::ui::sidebar::WIDTH - crate::ui::list::TABLE_CHROME;
+		table - 5.0 * crate::ui::list::HANDLE_W - widths.iter().sum::<f32>()
 	}
 
 	/// Called for every pointer move over the window. The handle is a column's left edge and the
-	/// table is anchored at its right, so moving the boundary right narrows the column. A move
-	/// with the button up ends the drag: the release happened outside the window, unseen.
+	/// table is anchored at its right, so moving the boundary left widens the column. A move with
+	/// the button up ends the drag: the release happened outside the window, unseen.
+	///
+	/// What widening takes has to come from the left of the handle, and it is taken in the order
+	/// the eye expects the squeeze to travel: the name column first, since it is the one holding
+	/// the slack, then each fixed column between the name and the handle, nearest first, each down
+	/// to its own floor and no further. The boundary only stops once everything left of it is on
+	/// its floor -- there is no ceiling derived from any one column, so nothing to snap to when a
+	/// press lands, and a floor small enough that the stop is rarely reached at all.
 	pub(crate) fn resize_to(&mut self, at: gpui::Pixels, pressed: bool, cx: &mut Context<Self>) {
 		let Some(resize) = self.resizing else { return };
 		if !pressed {
 			self.end_resize(cx);
 			return;
 		}
-		// Widening one column narrows the name column, which keeps a floor: past it the row would
-		// overflow the window. What the others take is read from the widths as they stand now, not
-		// from the width this drag started at: the two agree only on the first move, and after that
-		// the ceiling would follow the column it bounds and the boundary would oscillate under the
-		// pointer.
-		let others: f32 = self.widths.iter().sum::<f32>() - self.width(resize.column);
-		let table =
-			f32::from(self.viewport.width) - crate::ui::sidebar::WIDTH - crate::ui::list::TABLE_CHROME;
-		let room = table - others - 5.0 * crate::ui::list::HANDLE_W - crate::ui::list::NAME_MIN;
-		let width = resize.from_width - f32::from(at - resize.from_x);
-		self.widths[resize.column.index()] = width.clamp(Column::MIN, room.max(Column::MIN));
+		let column = resize.column.index();
+		let mut widths = resize.from_widths;
+		widths[column] =
+			(resize.from_widths[column] - f32::from(at - resize.from_x)).max(resize.column.min());
+		// Narrowing owes nothing: the name column takes back what is given up. Widening owes the
+		// difference, and asks for it leftwards until it is met or nobody has any left.
+		let mut owed = widths[column] - resize.from_widths[column];
+		owed -= (self.name_width(&resize.from_widths) - crate::ui::list::NAME_MIN).max(0.0);
+		for other in (0..column).rev() {
+			if owed <= 0.0 {
+				break;
+			}
+			let spare = (resize.from_widths[other] - Column::MINS[other]).max(0.0).min(owed);
+			widths[other] = resize.from_widths[other] - spare;
+			owed -= spare;
+		}
+		// Asked for more than the row had: the boundary stops where the last of it was found.
+		if owed > 0.0 {
+			widths[column] = (widths[column] - owed).max(resize.column.min());
+		}
+		// A drag that has come to move nothing leaves the asked-for widths as they were, squeezed
+		// or not, so that letting go where the press landed is the same as never having pressed.
+		self.widths = if widths == resize.from_widths { resize.asked } else { widths };
 		cx.notify();
 	}
 

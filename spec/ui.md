@@ -66,10 +66,37 @@ drags that column: the table is anchored at its right and the name column absorb
 column's left edge is the one that can move, and a boundary that follows the pointer is what a
 drag means -- the first cut put the handle on the right and read as reversed. The widths live on
 the view, and every row spends the same twelve points on the handle's gap so cells stay under
-their titles. A drag is clamped at both ends: a column no narrower than fits its numbers, and no
-wider than leaves the name column its floor, because past that the row runs out of the window. A drag is tracked on the window root, not on the handle, because the pointer leaves
-the handle the moment it moves; a move with the button up ends it, since a release outside the
-window is never seen and would otherwise leave the next pointer movement resizing on its own. The
+their titles.
+
+**Every column has a floor, and the floors are what the window is measured by.** A column will
+not go below a width that leaves its cell merely legible -- "1.2G", a stub of a bar, a truncated
+word beside its mark -- and the name column keeps one of the same kind. They are floors, not
+widths anyone would choose to stop at, and that is the point: a floor somebody might want is a
+floor a drag runs into. Widening takes from the left of the handle and takes only what is above a
+floor: the name column first, since it is the one holding the slack, then each fixed column
+between it and the handle, nearest first. The boundary stops when everything to its left is on its
+floor, and nowhere earlier -- there is no ceiling derived from any one column, so a press changes
+nothing until the pointer moves. It did: the stop used to be worked out from the name column's
+floor alone, which the window's own default size already breached, so every column's ceiling sat
+below the width it already had and the first move of a press snapped it there, twenty-four points
+for a one-point nudge. Every floor added together, with the sidebar and the chrome around them, is
+the window's minimum width, which the system is told and enforces. Between that width and enough
+room for what was asked for, the table is drawn squeezed: the shortfall is shared out in
+proportion to what each column has above its floor, so narrowing compresses the table evenly
+rather than crushing one column, and at the least width every column is exactly on its floor. The
+widths asked for are not overwritten by the squeeze, so widening the window gives back what
+narrowing it took, to the point; and a drag that comes to move nothing leaves them alone too, so
+taking hold of a handle where the window can give nothing is the same as never having pressed.
+
+A drag works from a snapshot of the whole row taken when the press landed, not from the row the
+last move left, so the way back gives back exactly what the way out took, and no error
+accumulates. Reading the row as it stands is not the same thing, and the difference is a bug that
+was there: the ceiling was worked out against the width the drag started at while the sum it was
+subtracted from had already moved, so the ceiling fell as the column rose, the boundary alternated
+across the pointer, and each fresh press took half of what was left. A drag is tracked on the
+window root, not on the handle, because the pointer leaves the handle the moment it moves; a move
+with the button up ends it, since a release outside the window is never seen and would otherwise
+leave the next pointer movement resizing on its own. The
 corner over the type icons holds a funnel that stays: lit, the lists also hold what else the
 download folder holds -- every plain file that is not hidden, not one of a download's two
 files meanwhile, and not named by a row -- each as a completed row with the file's size and

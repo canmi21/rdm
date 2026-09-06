@@ -78,6 +78,9 @@ fn main() {
 					app_id: Some(identity::BUNDLE_ID.to_owned()),
 					// The desktop shows through the blur; the palette carries the alpha. See spec/ui.md.
 					window_background: WindowBackgroundAppearance::Blurred,
+					// Every column's floor and what sits around them: past this the table would have
+					// less room than its own floors need. See spec/ui.md.
+					window_min_size: Some(size(px(ui::MIN_WIDTH), px(ui::MIN_HEIGHT))),
 					titlebar: Some(TitlebarOptions {
 						title: Some(identity::DISPLAY_NAME.into()),
 						appears_transparent: true,

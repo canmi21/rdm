@@ -9,8 +9,9 @@ use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
 use crate::ui::tooltip::tooltip;
 
-/// The name column never drops below this; the fixed columns share what is left of the table.
-pub const NAME_MIN: f32 = 120.0;
+/// The name column's floor, the same kind of floor the fixed columns keep: a word and an
+/// ellipsis, not a width anyone would choose. See `Column::MINS`.
+pub const NAME_MIN: f32 = 48.0;
 /// The gap the drag handle takes before every fixed column, matched by the cells.
 pub const HANDLE_W: f32 = 12.0;
 /// The table's horizontal overhead: the type icon, and the margins and padding around the header.

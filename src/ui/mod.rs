@@ -25,6 +25,23 @@ use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::theme::Palette;
 use crate::ui::tooltip::tooltip;
 
+/// How narrow the window goes: the sidebar, the table's chrome, a handle before every fixed
+/// column, and every column's floor including the name's. Narrower than this the table would have
+/// less room than its own floors need, so the system is told to stop the drag here rather than
+/// leaving the row to overflow. See spec/ui.md.
+pub const MIN_WIDTH: f32 = sidebar::WIDTH
+	+ list::TABLE_CHROME
+	+ 5.0 * list::HANDLE_W
+	+ list::NAME_MIN
+	+ crate::app::Column::MINS[0]
+	+ crate::app::Column::MINS[1]
+	+ crate::app::Column::MINS[2]
+	+ crate::app::Column::MINS[3]
+	+ crate::app::Column::MINS[4];
+
+/// The toolbar and the status bar want a few rows of list under them to be worth opening.
+pub const MIN_HEIGHT: f32 = 320.0;
+
 /// The wash under every sheet. It takes every mouse event, so nothing behind the sheet can be
 /// pressed through it; and a press that lands on nothing focusable -- the card, a button, a
 /// row -- takes the keyboard away from whatever field had it. GPUI moves focus only onto a
