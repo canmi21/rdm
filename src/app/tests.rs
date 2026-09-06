@@ -1322,9 +1322,10 @@ fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppCont
 	click(&mut cx, "button:Later");
 	cx.run_until_parked();
 	assert!(cx.debug_bounds("toast:update").is_none(), "waved away for this build");
-	// The settings row names the check and its outcome.
+	// The settings row names the check and its outcome, under Updates.
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
+	click(&mut cx, "section:Updates");
 	assert!(cx.debug_bounds("setting:Update channel").is_some());
 	assert!(cx.debug_bounds("setting:Check for updates").is_some());
 	assert!(cx.debug_bounds("button:Check now").is_some());
@@ -1335,6 +1336,8 @@ fn the_update_settings_are_switches_and_a_choice_that_follows_the_switch(cx: &mu
 	let (rdm, mut cx) = open(cx);
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
+	// The update rows have a section of their own; General was a dozen rows in one run.
+	click(&mut cx, "section:Updates");
 	assert!(cx.debug_bounds("setting:Check for updates").is_some());
 	assert!(cx.debug_bounds("setting:Automatic updates").is_some());
 	assert!(cx.debug_bounds("choice:Download and install").is_some(), "the policy, while automatic");

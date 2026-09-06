@@ -60,16 +60,18 @@ pub enum Section {
 	Transfers,
 	Folder,
 	Notifications,
+	Updates,
 	Appearance,
 	About,
 }
 
 impl Section {
-	pub const ALL: [Section; 6] = [
+	pub const ALL: [Section; 7] = [
 		Section::General,
 		Section::Transfers,
 		Section::Folder,
 		Section::Notifications,
+		Section::Updates,
 		Section::Appearance,
 		Section::About,
 	];
@@ -80,6 +82,7 @@ impl Section {
 			Section::Transfers => "Transfers",
 			Section::Folder => "Folder",
 			Section::Notifications => "Notifications",
+			Section::Updates => "Updates",
 			Section::Appearance => "Appearance",
 			Section::About => "About",
 		}
@@ -91,6 +94,7 @@ impl Section {
 			Section::Transfers => Icon::Download,
 			Section::Folder => Icon::FolderOpen,
 			Section::Notifications => Icon::Bell,
+			Section::Updates => Icon::Download,
 			Section::Appearance => Icon::Palette,
 			Section::About => Icon::Info,
 		}
@@ -124,7 +128,15 @@ enum Control {
 
 struct Row {
 	section: Section,
+	/// The heading this row sits under within its section, empty for the rows that open it. A
+	/// section of a dozen rows in one run is a list to read rather than a page to use; the
+	/// headings are what make it three short lists.
+	group: &'static str,
 	label: &'static str,
+	/// One line under the label saying what the setting does, empty where the label already says
+	/// it. Most labels do not: `Auto update` names itself and says nothing about what happens,
+	/// and what happens used to be a second row away.
+	note: &'static str,
 	control: Control,
 }
 
@@ -290,7 +302,7 @@ impl Rdm {
 			Some(input) => Control::Field { input: input.clone(), note },
 			None => Control::Value(self.setting_text(key)),
 		};
-		Row { section, label: key, control }
+		Row { section, group: "", label: key, note: "", control }
 	}
 
 	/// Every setting there is, in the rail's order, with what it shows now.
@@ -301,20 +313,32 @@ impl Rdm {
 			.map(|p| p.downloads.display().to_string())
 			.unwrap_or_else(|| "the working directory".to_owned());
 		let mut rows = vec![
-			Row { section: Section::General, label: "Download folder", control: Control::Value(folder) },
 			Row {
 				section: Section::General,
+				group: "",
+				label: "Download folder",
+				note: "The folder this system calls Downloads.",
+				control: Control::Value(folder),
+			},
+			Row {
+				section: Section::General,
+				group: "Where things go",
+				note: "Nothing yet; a finished file is left where it landed.",
 				label: "On completion",
 				control: Control::Value("Do nothing".to_owned()),
 			},
 			// TODO: a picker once there is a second channel to pick.
 			Row {
-				section: Section::General,
+				section: Section::Updates,
+				group: "",
+				note: "Which builds the check follows.",
 				label: "Update channel",
 				control: Control::Value(self.preferences.update_channel.name().to_owned()),
 			},
 			Row {
-				section: Section::General,
+				section: Section::Updates,
+				group: "",
+				note: "Every five minutes, and once at launch.",
 				label: "Check for updates",
 				control: Control::Switch {
 					on: self.preferences.check_updates,
@@ -322,12 +346,16 @@ impl Rdm {
 				},
 			},
 			Row {
-				section: Section::General,
+				section: Section::Updates,
+				group: "",
+				note: "Every five minutes, and once at launch.",
 				label: "Automatic updates",
 				control: Control::Switch { on: self.preferences.auto_update, set: Rdm::set_auto_update },
 			},
 			Row {
-				section: Section::General,
+				section: Section::Updates,
+				group: "",
+				note: "What acting on it means.",
 				label: "When a build is found",
 				control: Control::Choice {
 					options: Policy::ALL.iter().map(|p| p.name()).collect(),
@@ -339,7 +367,9 @@ impl Rdm {
 				},
 			},
 			Row {
-				section: Section::General,
+				section: Section::Updates,
+				group: "",
+				note: "What the last check came to.",
 				label: "Latest build",
 				control: Control::Action {
 					word: "Check now",
@@ -349,6 +379,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
+				group: "What is listed",
+				note: "Nothing moves on disk; this is how it reads.",
 				label: "Folders in the download folder",
 				control: Control::Choice {
 					options: Folders::ALL.iter().map(|f| f.name()).collect(),
@@ -358,6 +390,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
+				group: "Opening a file",
+				note: "What shows a file where it lives.",
 				label: "Show a file with",
 				control: Control::Value(if cfg!(any(target_os = "macos", windows)) {
 					crate::reveal::manager_name().to_owned()
@@ -369,6 +403,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
+				group: "What is listed",
+				note: "System leavings and scratch files. Torrents still show under Torrents.",
 				label: "Hide the folder's junk",
 				control: Control::Switch {
 					on: self.preferences.hide_junk,
@@ -386,6 +422,8 @@ impl Rdm {
 			self.field_row(Section::Transfers, "Size limit"),
 			Row {
 				section: Section::Transfers,
+				group: "Per download",
+				note: "Which version to ask the server for.",
 				label: "HTTP version",
 				control: Control::Choice {
 					options: vec!["Auto", "HTTP/1.1", "HTTP/2"],
@@ -408,6 +446,8 @@ impl Rdm {
 			self.field_row(Section::Transfers, "Redirects"),
 			Row {
 				section: Section::Transfers,
+				group: "Per download",
+				note: "Claims the size up front, so a full disk is found early.",
 				label: "Preallocate files",
 				control: Control::Switch {
 					on: self.preferences.preallocate,
@@ -420,6 +460,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
+				group: "The table",
+				note: "Every column back to where it started.",
 				label: "Column widths",
 				control: Control::Action {
 					word: "Reset",
@@ -429,6 +471,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
+				group: "Colors",
+				note: "The sidebar's icons keep their hues always.",
 				label: "Always use colorful categories",
 				control: Control::Switch {
 					on: self.preferences.colorful_categories,
@@ -437,6 +481,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
+				group: "Colors",
+				note: "Off keeps its colors whether in front or not.",
 				label: "Dim the window when it is not in front",
 				control: Control::Switch { on: self.preferences.dim_inactive, set: Rdm::set_dim_inactive },
 			},
@@ -444,11 +490,15 @@ impl Rdm {
 			// build from another. See spec/release.md.
 			Row {
 				section: Section::About,
+				group: "This build",
+				note: "",
 				label: "Application",
 				control: Control::Value(identity::NAME.to_owned()),
 			},
 			Row {
 				section: Section::About,
+				group: "This build",
+				note: "",
 				label: "Version",
 				control: Control::Value(match self.updates.this {
 					Some(build) => format!("{} ({build})", identity::VERSION),
@@ -457,6 +507,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::About,
+				group: "This build",
+				note: "",
 				label: "Commit",
 				control: Control::Value(
 					identity::COMMIT
@@ -466,6 +518,8 @@ impl Rdm {
 			},
 			Row {
 				section: Section::About,
+				group: "",
+				note: "A development build says .dev here.",
 				label: "Identifier",
 				control: Control::Value(identity::id()),
 			},
@@ -474,6 +528,8 @@ impl Rdm {
 		// variant and nothing here.
 		rows.extend(Occasion::ALL.map(|occasion| Row {
 			section: Section::Notifications,
+			group: "Where each is said",
+			note: occasion.note(),
 			label: occasion.label(),
 			control: Control::Choice {
 				options: Style::ALL.iter().map(|style| style.name()).collect(),
@@ -544,19 +600,51 @@ impl Rdm {
 
 		// The pane: the section's rows under its name, or every match under each section's name.
 		let auto = self.preferences.auto_update;
-		let shown: Vec<&Row> = rows
+		let mut shown: Vec<&Row> = rows
 			.iter()
 			.filter(|row| auto || row.label != "When a build is found")
 			.filter(|row| {
 				if searching {
+					// A search reads the note as well as the label: somebody looking for "proxy"
+					// or "quarantine" is looking for what a setting does, and the label is often
+					// the one word that does not say it.
 					row.label.to_lowercase().contains(&query)
+						|| row.note.to_lowercase().contains(&query)
+						|| row.group.to_lowercase().contains(&query)
 				} else {
 					row.section == sheet.section
 				}
 			})
 			.collect();
+		// Rows of one group are gathered together, in the order their groups first appear. The
+		// heading is emitted when the group changes, so a group split in two by a row from
+		// another gets its heading twice -- which it did, and read as two lists of the same name.
+		if !searching {
+			let mut order: Vec<&'static str> = Vec::new();
+			for row in &shown {
+				if !order.contains(&row.group) {
+					order.push(row.group);
+				}
+			}
+			shown.sort_by_key(|row| order.iter().position(|g| *g == row.group).unwrap_or(0));
+		}
 		let complaint = sheet.complaint.clone();
-		let mut pane = div().flex().flex_col().flex_1().min_w_0().p_4().gap_1();
+		// The pane scrolls. A row is a label, a line saying what it does and a control, and a
+		// section of a dozen of those is taller than the sheet; without this the rows past the
+		// bottom were drawn outside it, where a press reaches the backdrop and closes the sheet.
+		let mut pane = div()
+			.id("settings-pane")
+			.flex()
+			.flex_col()
+			.flex_1()
+			.min_w_0()
+			// Without this the pane is as tall as its rows and grows past the sheet, whatever the
+			// sheet's own height says: a flex child does not shrink below its content unless it
+			// is told it may.
+			.min_h_0()
+			.overflow_y_scroll()
+			.p_4()
+			.gap_1();
 		if searching && shown.is_empty() {
 			pane = pane.child(div().text_color(p.muted).child(format!("Nothing matches \"{query}\"")));
 		} else if searching {
@@ -571,7 +659,14 @@ impl Rdm {
 			}
 		} else {
 			pane = pane.child(section_title(p, sheet.section.name()));
+			// The headings within a section, emitted as the rows walk past them: a dozen rows in
+			// one run is a list to read, and three short lists is a page to use.
+			let mut group: Option<&'static str> = None;
 			for row in shown {
+				if group != Some(row.group) && !row.group.is_empty() {
+					pane = pane.child(group_title(p, row.group));
+				}
+				group = Some(row.group);
 				pane = pane.child(self.setting_row(row, cx));
 				if let Some((label, message)) = &complaint
 					&& *label == row.label
@@ -595,7 +690,7 @@ impl Rdm {
 					.flex()
 					.flex_col()
 					.w(px(640.0))
-					.h(px(420.0))
+					.h(px(480.0))
 					.rounded_lg()
 					.border_1()
 					.border_color(p.border)
@@ -635,7 +730,9 @@ impl Rdm {
 		let p = self.palette;
 		let label = row.label;
 		let right = match &row.control {
-			Control::Value(value) => div().text_color(p.muted).child(value.clone()).into_any_element(),
+			Control::Value(value) => {
+				div().text_color(p.muted).truncate().child(value.clone()).into_any_element()
+			}
 			Control::Switch { on, set } => {
 				let (on, set) = (*on, *set);
 				div()
@@ -724,17 +821,56 @@ impl Rdm {
 		};
 		// A choice of several words does not fit beside its label, so it goes under it.
 		let stacked = matches!(row.control, Control::Choice { .. });
+		let note = row.note;
+		let fixed = matches!(row.control, Control::Switch { .. } | Control::Choice { .. });
 		div()
 			.debug_selector(move || format!("setting:{label}"))
 			.flex()
-			.when(!stacked, |s| s.justify_between().items_center().gap_4())
+			.when(!stacked, |s| s.justify_between().items_start().gap_4())
 			.when(stacked, |s| s.flex_col().items_start().gap_1p5())
 			.py_1p5()
 			.border_b_1()
 			.border_color(p.border)
-			.child(div().flex_none().child(label))
-			.child(div().min_w_0().truncate().child(right))
+			// The label and its note give way, and the control does not: a note is a sentence and
+			// will take every point it is given, and a control clipped to nothing is a control
+			// that cannot be pressed -- which is what happened when these were the other way
+			// round, and the switches stopped answering.
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					// Beside a control it gives way; under one there is nothing to give way to,
+					// and saying it may shrink to nothing there leaves the note a character wide
+					// and a row two thousand points tall.
+					.when(!stacked, |s| s.flex_1().min_w_0())
+					.gap_0p5()
+					.child(div().truncate().child(label))
+					.when(!note.is_empty(), |s| {
+						s.child(div().text_xs().text_color(p.muted).child(note))
+					}),
+			)
+			// A switch and a row of words are the size they are; a value, a note or a path is as
+			// long as it happens to be, and one of those given its natural width leaves the note
+			// beside it a character wide and the row a thousand points tall.
+			.child(
+				div()
+					.when(fixed, |s| s.flex_none())
+					.when(!fixed, |s| s.min_w_0().max_w(gpui::relative(0.6)).truncate())
+					.child(right),
+			)
 	}
+}
+
+/// A heading within a section: smaller than the section's own and set off above the rows it
+/// gathers, so the eye can skip a group whole rather than reading every label in it.
+fn group_title(p: crate::ui::theme::Palette, name: &'static str) -> gpui::Div {
+	div()
+		.debug_selector(move || format!("group:{name}"))
+		.pt_3()
+		.pb_0p5()
+		.text_xs()
+		.text_color(p.muted)
+		.child(name)
 }
 
 fn section_title(p: crate::ui::theme::Palette, name: &'static str) -> gpui::Div {

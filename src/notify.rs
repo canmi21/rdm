@@ -87,6 +87,17 @@ impl Occasion {
 	pub const ALL: [Occasion; 4] =
 		[Occasion::Finished, Occasion::Failed, Occasion::Queue, Occasion::Update];
 
+	/// The line under the row's label: what a notice about this moment would say, or what makes
+	/// this moment different from the one above it.
+	pub fn note(self) -> &'static str {
+		match self {
+			Occasion::Finished => "The dialog opens it, shows it, or brings the window back.",
+			Occasion::Failed => "Nothing to do but look, so the system is told.",
+			Occasion::Queue => "Off, or the last of a batch says it twice.",
+			Occasion::Update => "The card in the corner is where it is installed from.",
+		}
+	}
+
 	/// What Settings calls the row: the moment, said as it happens rather than as a setting.
 	pub fn label(self) -> &'static str {
 		match self {

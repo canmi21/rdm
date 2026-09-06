@@ -230,6 +230,21 @@ above the ordinary windows, it is invisible
 to `mise run shot`, which takes the application's window; `shot --floating` takes this one. See
 [workflow.md](workflow.md).
 
+**A settings row is a label, a line saying what it does, and a control**, and the rows are
+gathered under headings within their section. The line under the label is the part that was
+missing: `Auto update` names itself and says nothing about what happens, and what happened used
+to be a second row away. The headings are what make a section of a dozen rows into three short
+lists; rows of one group are gathered together whatever order they were written in, since a
+group split in two by a row from another gets its heading twice and reads as two lists of the
+same name. The search reads the note and the heading as well as the label, because somebody
+looking for `proxy` is looking for what a setting does and the label is often the one word that
+does not say it. `Updates` has a section of its own, General having been a dozen rows in one run.
+
+The pane scrolls, and the label gives way while the control does not: a note is a sentence and
+will take every point it is given, and a control clipped to nothing cannot be pressed. Both were
+learned the hard way -- the switches stopped answering, and a row with a long path in it grew to
+fifteen hundred points because the note beside it was left a character wide.
+
 **An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
 front", under Appearance and on to start with, is the switch behind the monochrome the palette
 takes when the window is not active; off, the window keeps its colors in front or not, for
