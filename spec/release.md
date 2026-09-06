@@ -67,13 +67,54 @@ pick its own file and verify it before replacing itself.
 }
 ```
 
+## The application notices a newer build, and says so
+
+`src/update.rs` reads the channel's `latest.json` and compares its `build` with the number this
+binary was made as, `identity::BUILD`; nothing else in the file decides anything. The window
+asks at launch and every five minutes after, `update::EVERY`, and asks only for that one small
+file, so a build is noticed even while the files themselves cannot be fetched. A check is a
+future on the engine's tokio runtime, `Engine::run`, whose answer the window polls the way it
+polls events. `Check now` in Settings asks at once; a check asked for while one is under way
+joins it.
+
+**Every file has two addresses, and where the reader is picks the first to try.** GitHub's
+own, `github.com/canmi21/rdm/releases/download/<tag>/<file>`, and the author's CDN,
+`cdn.ffoni.com/github/release/rdm/<tag>/<file>`. Before the first check the window asks
+Cloudflare's trace on two of the author's hosts, `canmi.net` then `cdn.ffoni.com`, each the
+other's backup, and reads `loc`: `CN` puts the CDN first, anywhere else -- and no answer --
+puts GitHub first. The other address is the fallback either way, since GitHub has its outages
+and a CDN its gaps. The region is asked once per run. The manifest is not read through
+jsDelivr, which was considered: its `gh` endpoint serves a repository's tree at a tag, not the
+files uploaded to a release, and `latest.json` is only the latter.
+
+**A newer build is a card in the corner, and a notification when the window is not in
+front.** The card sits over the list above the status bar, names the build and the version,
+and offers `Get`, which opens the file's first address in the browser -- the install itself is
+not written yet, see below -- and `Later`, which closes the card for that build; the next build
+brings it back. When the manifest arrives while the window is not the active one, the system
+is told once per build through `notify-rust`: D-Bus on Linux, the notification centre on
+macOS, WinRT on Windows. On macOS a notification is delivered only for an installed bundle, so
+a binary run from the build tree shows none, quietly. A hand build has no number and is never
+behind on its own; only a check asked for shows it what is published, so the development
+window is not nagged. The settings row `Check for updates` says how the last check went:
+the build found and whether this is it, or why it could not be read. `Update channel` shows
+Nightly, the only channel, and gets a picker when there is a second; the choice is kept in
+`config.json` as `update_channel`.
+
 ## What is decided elsewhere
 
 The daily release -- a dated tag cut from the nightly by a scheduled workflow, with a
-changelog -- and the application's own update check are not written yet; their shape is
-settled only as far as the two addresses the application will read: the nightly's
-`releases/download/nightly/latest.json` and the daily's `releases/latest/download/latest.json`,
-both plain links and neither the API.
+changelog -- is not written yet; the application will read its manifest at
+`releases/latest/download/latest.json` through the same two addresses.
+
+Replacing the binary is not written yet. Its shape is settled this far: the file is fetched by
+the same two addresses in the same order, verified against the manifest's `sha256` before
+anything is touched, and then swapped in. On macOS and Linux a running executable can be
+replaced with a rename over it. On Windows a running executable cannot be deleted or
+overwritten but can be renamed, so the running one is moved aside, the new one is put under
+its name, and the old one is removed on the next start; the `self-replace` crate does exactly
+this, opening the moved copy with `FILE_FLAG_DELETE_ON_CLOSE`, and is the way to take when the
+step is written.
 
 Signing and notarization are skipped: builds are signed ad hoc, and macOS asks the user to
 open the first one by hand. Certificates would go into the repository's secrets and a step

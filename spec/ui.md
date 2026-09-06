@@ -152,7 +152,14 @@ section and shows each match under its section's name, since a setting is looked
 does, not by where it was filed; while a search is on, no section is lit. Escape in the field
 closes the sheet, like Escape anywhere on a sheet with nothing to lose. Every setting belongs
 to exactly one section; a setting with nothing behind it yet is shown as a value that cannot
-be changed, marked `TODO` where it lives, rather than left out and rediscovered later.
+be changed, marked `TODO` where it lives, rather than left out and rediscovered later. A row
+can also be a word that does something -- `Check now` under `Check for updates` -- with a note
+beside it on how it last went; like a switch, it does not take the keyboard.
+
+**A newer build is a card in the corner, not a sheet.** It sits over the list above the status
+bar, at the right, and asks for nothing: the list stays usable, `Get` opens the file in the
+browser, `Later` closes the card until the next build. Nothing modal, because nothing is
+waiting on the answer. See [release.md](release.md).
 
 The detail pane this replaces cost the list a fifth of its height to show one item's fields, and
 was in the way whenever nothing was selected. The status bar it became is an editor's: one line
