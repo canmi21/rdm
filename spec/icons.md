@@ -11,6 +11,29 @@ on the svg element itself and never inherits it from the text around it, so an u
 is a blank square that raises no error -- which is how the first build looked. Making the
 color a parameter of `ui::icon::icon` turns that silent failure into a type error.
 
+## A status is ringed as a mark and bare as a legend
+
+The same five statuses are drawn in two places, and never the same way. Down the list's Status
+column they are **ringed** -- `circle-check`, `circle-x`, `circle-pause`, `circle-arrow-down`,
+and the clock, which is a circle drawn as a face. In the sidebar and in the funnel's menu they
+are **bare**: `check`, `x`, `pause`, `arrow-down`, `hourglass`.
+
+The reason is what each one has to do. A mark in the column is read down an edge, beside a word,
+at three points across; at that size a bare tick and a bare cross are two strokes each, and the
+column reads as scratches of different sizes. The ring gives every mark the same outline, so the
+eye finds the column before it reads any of it. A legend is the opposite: one glyph a line, with
+its word beside it and room around it, and there a ring is a box drawn around a picture that did
+not need one. The split also says which is which -- a ring in this window is a row's own state,
+never something to filter by.
+
+`Icon::for_status` is the ringed table and `Icon::for_status_filter` the bare one, both in
+`src/ui/icon.rs`, and a test holds them apart. Where the sidebar names the same thing the menu
+does -- Downloading, Completed -- `Icon::for_filter` returns the same glyph as the bare table,
+because they are one legend drawn in two places. Two of the sidebar's four name something no
+status does and are the exceptions: All Tasks is a **pyramid**, a shape rather than a mark, the
+one thing that holds everything under it; and Unfinished is a **dashed circle**, which is not a
+ring around anything but an outline not yet closed, which is what unfinished looks like.
+
 ## Declared in the source, fetched by a task
 
 The files are not committed. `assets/lucide/` is ignored, and `mise run icons` fetches whatever

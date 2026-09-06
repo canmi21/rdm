@@ -19,11 +19,21 @@ pub enum Icon {
 	Archive,
 	Package,
 	File,
+	/// The five rings, one a status, worn as a mark in the list's Status column.
 	CircleCheck,
 	CircleX,
 	CirclePause,
+	CircleArrowDown,
 	Clock,
+	/// And their bare cousins, worn where a status is something to filter by rather than
+	/// something a row is in. The bare pause is `Pause` above, which the toolbar already had,
+	/// and the bare cross is `X` below, with the other closes.
+	Check,
 	ArrowDown,
+	Hourglass,
+	/// Unfinished in the sidebar, and the exception to the rule below it: the ring is dashed, so
+	/// it reads as an outline not yet closed rather than as a mark in a ring.
+	CircleDashed,
 	LayoutList,
 	LayoutGrid,
 	ChevronUp,
@@ -31,7 +41,6 @@ pub enum Icon {
 	Settings,
 	/// All Tasks in the sidebar, and the funnel menu's All, which is the same thing.
 	Pyramid,
-	CircleDashed,
 	Funnel,
 	/// The status bar's spinner, turned by an animation.
 	Loader,
@@ -101,15 +110,18 @@ impl Icon {
 			Icon::CircleCheck => "lucide/circle-check.svg",
 			Icon::CircleX => "lucide/circle-x.svg",
 			Icon::CirclePause => "lucide/circle-pause.svg",
+			Icon::CircleArrowDown => "lucide/circle-arrow-down.svg",
 			Icon::Clock => "lucide/clock.svg",
+			Icon::Check => "lucide/check.svg",
 			Icon::ArrowDown => "lucide/arrow-down.svg",
+			Icon::Hourglass => "lucide/hourglass.svg",
+			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::LayoutList => "lucide/layout-list.svg",
 			Icon::LayoutGrid => "lucide/layout-grid.svg",
 			Icon::ChevronUp => "lucide/chevron-up.svg",
 			Icon::ChevronDown => "lucide/chevron-down.svg",
 			Icon::Settings => "lucide/settings.svg",
 			Icon::Pyramid => "lucide/pyramid.svg",
-			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::Funnel => "lucide/funnel.svg",
 			Icon::Loader => "lucide/loader-circle.svg",
 			Icon::X => "lucide/x.svg",
@@ -183,24 +195,48 @@ impl Icon {
 		Icon::CATEGORY_CHOICES.into_iter().find(|i| i.name() == name)
 	}
 
-	/// The state filters' icons; a category carries its own.
+	/// The state filters' icons, bare; a category carries its own, which is bare too. See
+	/// `for_status_filter` for why the legends go without the ring. Two of the four are not
+	/// statuses and so have no ringed cousin: All Tasks is a pyramid, and Unfinished is a dashed
+	/// circle, which is an outline left open rather than a ring closed around a mark.
 	pub fn for_filter(filter: Filter) -> Icon {
 		match filter {
+			// A shape rather than a mark: a pyramid holds everything under it.
 			Filter::All => Icon::Pyramid,
 			Filter::Downloading => Icon::ArrowDown,
 			Filter::Unfinished => Icon::CircleDashed,
-			Filter::Completed => Icon::CircleCheck,
+			Filter::Completed => Icon::Check,
 			Filter::Category(_) => Icon::File,
 		}
 	}
 
+	/// The mark a row wears in the Status column to say where it got to: the glyph in a ring.
+	/// The ring is what makes it a mark. It is read down a column, beside a word, at three
+	/// points across, and at that size a bare tick and a bare cross are two strokes each; the
+	/// ring gives every one of them the same outline, so the column reads as a column of marks
+	/// rather than as scratches of different sizes. See spec/icons.md.
 	pub fn for_status(status: Status) -> Icon {
 		match status {
 			Status::Queued => Icon::Clock,
-			Status::Downloading => Icon::ArrowDown,
+			Status::Downloading => Icon::CircleArrowDown,
 			Status::Paused => Icon::CirclePause,
 			Status::Completed => Icon::CircleCheck,
 			Status::Failed => Icon::CircleX,
+		}
+	}
+
+	/// The same five where a status is something to filter by rather than something a row is in:
+	/// bare, and each the bare cousin of the ring above it. The sidebar and the funnel's menu are
+	/// a legend -- a glyph beside the word it stands for, one to a line, with room around it --
+	/// and there a ring is a box drawn around a picture that did not need one. It also keeps the
+	/// two apart at a glance: a ring in this window means a row's own state, never a filter.
+	pub fn for_status_filter(status: Status) -> Icon {
+		match status {
+			Status::Queued => Icon::Hourglass,
+			Status::Downloading => Icon::ArrowDown,
+			Status::Paused => Icon::Pause,
+			Status::Completed => Icon::Check,
+			Status::Failed => Icon::X,
 		}
 	}
 }
@@ -219,5 +255,43 @@ pub fn hover_icon(icon: Icon, group: &'static str, color: Hsla, hover: Option<Hs
 	match hover {
 		Some(hover) => svg.group_hover(group, move |s| s.text_color(hover)),
 		None => svg,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// A status is drawn twice in this window and never the same way: ringed where a row states
+	/// what it is, bare where it is a line in a legend. The ring is what tells the two apart at a
+	/// glance, so nothing may wear one on the legend side.
+	#[test]
+	fn a_status_is_ringed_as_a_mark_and_bare_as_a_legend() {
+		for status in Status::ALL {
+			let mark = Icon::for_status(status);
+			let legend = Icon::for_status_filter(status);
+			assert_ne!(mark, legend, "{status:?} is drawn twice, differently, on purpose");
+			assert!(!legend.path().contains("circle"), "a legend goes bare: {}", legend.path());
+		}
+		// Four rings and a clock face, which is the fifth: a circle either way.
+		for status in [Status::Downloading, Status::Paused, Status::Completed, Status::Failed] {
+			assert!(Icon::for_status(status).path().contains("circle-"), "{status:?}");
+		}
+		assert_eq!(Icon::for_status(Status::Queued), Icon::Clock);
+	}
+
+	/// The sidebar and the funnel's menu are one legend drawn in two places, so where they name
+	/// the same thing they draw the same glyph. Two of the sidebar's four name something no
+	/// status does, and those are the two that are neither.
+	#[test]
+	fn the_sidebar_and_the_menu_draw_a_shared_name_the_same_way() {
+		assert_eq!(Icon::for_filter(Filter::Downloading), Icon::for_status_filter(Status::Downloading));
+		assert_eq!(Icon::for_filter(Filter::Completed), Icon::for_status_filter(Status::Completed));
+		assert_eq!(Icon::for_filter(Filter::All), Icon::Pyramid, "a shape, not a mark");
+		assert_eq!(
+			Icon::for_filter(Filter::Unfinished),
+			Icon::CircleDashed,
+			"an outline left open, which is why it keeps its circle"
+		);
 	}
 }
