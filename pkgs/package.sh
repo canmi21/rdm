@@ -1,17 +1,3 @@
-	# The installer: its background drawn from the SVG with the help line's face fetched from
-	# Google Fonts, then dmgbuild lays the window out. dmgbuild lives in a venv of its own under
-	# target/, made here, so a runner and a machine take the same path and neither has its
-	# python written to. The venv is asked whether it still is one, not whether its files are
-	# there: the runner's cache of target/ once handed back a venv whose python no longer knew
-	# it was in one, and pip then ran as the system's and was refused. See spec/packaging.md.
-	venv=target/installer/venv
-	font=target/installer/Kalam-Regular.ttf
-	mkdir -p target/installer
-	"$venv/bin/python3" -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null || {
-		rm -rf "$venv"
-		python3 -m venv "$venv"
-	}
-	"$venv/bin/python3" -c "import dmgbuild" 2>/dev/null || "$venv/bin/python3" -m pip install --quiet dmgbuild
 #!/usr/bin/env bash
 # Wraps the release binary for one target into dist/: a dmg with an Applications shortcut for
 # macOS, the bare exe for Windows, an AppImage and a tarball for Linux. The target names the
