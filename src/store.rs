@@ -17,7 +17,7 @@ use crate::download::{Download, Status};
 
 /// The schema's version, in SQLite's `user_version`. Bumped only when a database written before
 /// can no longer be read as it is; the same rule as state.json's.
-pub const VERSION: i64 = 4;
+pub const VERSION: i64 = 5;
 
 pub struct Store {
 	connection: Connection,
@@ -62,6 +62,11 @@ impl Store {
 					size INTEGER NOT NULL,
 					entries TEXT NOT NULL,
 					error TEXT
+				);
+				CREATE TABLE IF NOT EXISTS notices (
+					stage TEXT PRIMARY KEY,
+					version TEXT NOT NULL,
+					build INTEGER NOT NULL
 				);",
 			)?;
 			connection.pragma_update(None, "user_version", VERSION)?;
@@ -97,7 +102,43 @@ impl Store {
 			)?;
 			connection.pragma_update(None, "user_version", 4)?;
 		}
+		if version <= 4 && version != 0 {
+			// What the system has already been told about an update, so a restart or the next
+			// check five minutes later does not say it again. See src/app/updates.rs.
+			connection.execute_batch(
+				"CREATE TABLE IF NOT EXISTS notices (
+					stage TEXT PRIMARY KEY,
+					version TEXT NOT NULL,
+					build INTEGER NOT NULL
+				);",
+			)?;
+			connection.pragma_update(None, "user_version", 5)?;
+		}
 		Ok(Store { connection })
+	}
+
+	/// What the system was last told about at this stage, if it has been told anything: the
+	/// version and the build it named. See `update::worth_telling` for what makes the next one
+	/// worth saying.
+	pub fn notice(&self, stage: &str) -> Result<Option<(String, u64)>> {
+		let mut statement =
+			self.connection.prepare("SELECT version, build FROM notices WHERE stage = ?1")?;
+		let mut rows = statement.query([stage])?;
+		match rows.next()? {
+			Some(row) => Ok(Some((row.get(0)?, row.get::<_, i64>(1)? as u64))),
+			None => Ok(None),
+		}
+	}
+
+	/// Records what the system has just been told, replacing what it was told before at this
+	/// stage: only one notice a stage is ever kept, since only the last one decides the next.
+	pub fn told(&self, stage: &str, version: &str, build: u64) -> Result<()> {
+		self.connection.execute(
+			"INSERT INTO notices (stage, version, build) VALUES (?1, ?2, ?3)
+			 ON CONFLICT(stage) DO UPDATE SET version = excluded.version, build = excluded.build",
+			rusqlite::params![stage, version, build as i64],
+		)?;
+		Ok(())
 	}
 
 	/// Every archive indexed so far, by the file's path.
@@ -285,6 +326,31 @@ mod tests {
 		assert_eq!(again.next_id().unwrap(), 2, "the highest id in the table plus one");
 	}
 
+	/// One notice a stage, replaced rather than added to, and surviving the file being reopened
+	/// -- which is the restart that used to let the same update announce itself again.
+	#[test]
+	fn a_notice_is_kept_by_stage_replaced_in_place_and_read_back_after_reopening() {
+		let path = scratch("notices");
+		let store = Store::open(&path).unwrap();
+		assert_eq!(store.notice("ready").unwrap(), None, "nothing has been told yet");
+		store.told("ready", "2026.9.6", 41).unwrap();
+		store.told("downloaded", "2026.9.6", 41).unwrap();
+		assert_eq!(store.notice("ready").unwrap(), Some(("2026.9.6".to_owned(), 41)));
+		assert_eq!(store.notice("downloaded").unwrap(), Some(("2026.9.6".to_owned(), 41)));
+		store.told("ready", "2026.9.7", 42).unwrap();
+		let again = Store::open(&path).unwrap();
+		assert_eq!(
+			again.notice("ready").unwrap(),
+			Some(("2026.9.7".to_owned(), 42)),
+			"the stage keeps its last notice and no other"
+		);
+		assert_eq!(
+			again.notice("downloaded").unwrap(),
+			Some(("2026.9.6".to_owned(), 41)),
+			"and one stage does not answer for another"
+		);
+	}
+
 	#[test]
 	fn a_version_one_database_gains_the_connections_column_and_reads_none_for_old_rows() {
 		let path = scratch("migrate");
@@ -310,6 +376,9 @@ mod tests {
 		let version: i64 =
 			store.connection.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
 		assert_eq!(version, VERSION);
+		// Every table a later version added is there too, and answers rather than erroring.
+		assert_eq!(store.archives().unwrap().len(), 0);
+		assert_eq!(store.notice("ready").unwrap(), None);
 	}
 
 	#[test]

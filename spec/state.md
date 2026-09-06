@@ -27,7 +27,7 @@ Three files, because three kinds of writing:
   and then renamed over the old file, so a crash mid-write leaves the previous state rather than
   half of the new one. It is written on change and not at quit, because a forced quit gives no
   moment to write in, and losing a drag's worth of change is the most that can be lost.
-- **`internal.sqlite`** holds the downloads, one row each, at schema version 4: version 1's
+- **`internal.sqlite`** holds the downloads, one row each, at schema version 5: version 1's
   columns, `connections` from version 2, and from version 3 `directory`, `mirrors` as a JSON
   list, `checksum`, `range` as written and `speed_limit`, everything Add Task can ask for, NULL
   where it did not; an older file gains the columns on open. Version 4 adds a second table,
@@ -37,7 +37,13 @@ Three files, because three kinds of writing:
   file's modification time and size, or the reason it could not be read, so a file is read once
   and again only when it changed. Read in the background after launch, after a download
   finishes, and after the folder is read, one file at a time; a file gone from disk takes its
-  row with it. The categories judge an archive by what it holds as well as by its name, see
+  row with it. Version 5 adds a third, `notices`: what the system was last told about an update
+  and at which stage -- the version and the build named -- one row a stage, replaced rather than
+  added to. It is a table and not a line in `state.json` because the point of it is to outlive
+  the run that wrote it, and because the check runs every five minutes while the state file is
+  written a moment after each change; a notice is a fact about the past, which is what the
+  database is for. See [release.md](release.md). The categories judge an archive by what it
+  holds as well as by its name, see
   [ui.md](ui.md). See [engine.md](engine.md) and the store.
 - **`config.json`**, in the platform's *configuration* directory rather than its state directory,
   is the user's: the categories, and the switches the settings sheet offers, each with a default

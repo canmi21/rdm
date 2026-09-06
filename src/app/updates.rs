@@ -38,8 +38,10 @@ pub struct Updates {
 	pub outcome: Option<Result<u64, String>>,
 	/// The build the card was closed on; it stays closed until a newer one.
 	pub dismissed: Option<u64>,
-	/// The build the system was last told about, and at which stage; it is told once per stage.
-	pub notified: Option<(u64, &'static str)>,
+	/// What the system was last told at each stage, read from the database at launch and written
+	/// back whenever it is told again. It lived only in memory before, so every restart, and
+	/// every check five minutes apart, said the same thing again. See `update::worth_telling`.
+	pub notified: std::collections::HashMap<String, (String, u64)>,
 	/// Whether the window is the one in front, kept by the activation observer.
 	pub active: bool,
 	/// How far the install of the available build has come.
@@ -83,7 +85,7 @@ impl Default for Updates {
 			available: None,
 			outcome: None,
 			dismissed: None,
-			notified: None,
+			notified: std::collections::HashMap::new(),
 			active: false,
 			stage: Stage::Offered,
 			_poll: None,
@@ -221,13 +223,33 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Tells the system once per build and stage, and only while the window is not in front.
+	/// Tells the system once per stage for any one update, and only while the window is not in
+	/// front. Once means once for good: what was told is kept in the database, so neither the
+	/// next check nor the next run of the application says it again. Only a higher version, or
+	/// the same version built again with a higher number, is news worth telling twice.
 	fn tell(&mut self, stage: &'static str, body: &str, cx: &mut Context<Self>) {
-		let Some(build) = self.updates.available.as_ref().map(|a| a.build) else { return };
-		if self.updates.notified == Some((build, stage)) || self.updates.active {
+		let Some(available) = self.updates.available.as_ref() else { return };
+		let (version, build) = (available.version.clone(), available.build);
+		if self.updates.active {
 			return;
 		}
-		self.updates.notified = Some((build, stage));
+		// The map answers within a run; the database answers the first time in a run, which is
+		// the restart that used to let the same notice through again.
+		let told = match self.updates.notified.get(stage) {
+			Some(told) => Some(told.clone()),
+			None => self.store.as_ref().and_then(|store| store.notice(stage).ok().flatten()),
+		};
+		if !update::worth_telling(&version, build, told.as_ref().map(|(v, b)| (v.as_str(), *b))) {
+			return;
+		}
+		if let Some(store) = &self.store
+			&& let Err(error) = store.told(stage, &version, build)
+		{
+			// The notice is worth showing even if the note of it could not be kept; the cost is
+			// that this one may be shown again after a restart.
+			eprintln!("could not record the update notice: {error:#}");
+		}
+		self.updates.notified.insert(stage.to_owned(), (version, build));
 		notify(body, cx);
 	}
 

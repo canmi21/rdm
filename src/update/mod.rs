@@ -159,6 +159,27 @@ pub fn compare(manifest: &Manifest, this: Option<u64>) -> Option<Available> {
 	Some(Available { build: manifest.build, version: manifest.version.clone(), assets })
 }
 
+/// A version as its numbers. Versions here are the day they were made, `YYYY.M.D` without
+/// leading zeros, so read as text 2026.10.1 would sort before 2026.9.6; read as numbers it does
+/// not. A part that is no number counts as nothing, which is the nearest thing to an answer for
+/// a version this build should never have been handed.
+fn ordinal(version: &str) -> Vec<u64> {
+	version.split('.').map(|part| part.parse().unwrap_or(0)).collect()
+}
+
+/// Whether an update is worth telling the system about, given what it was last told. Only news
+/// is: a higher version, or the same version built again with a higher number. The same build
+/// found again by the next check five minutes later, or by the next run of the application, is
+/// the same news and is not repeated. See src/app/updates.rs.
+pub fn worth_telling(version: &str, build: u64, told: Option<(&str, u64)>) -> bool {
+	let Some((last, last_build)) = told else { return true };
+	match ordinal(version).cmp(&ordinal(last)) {
+		std::cmp::Ordering::Greater => true,
+		std::cmp::Ordering::Equal => build > last_build,
+		std::cmp::Ordering::Less => false,
+	}
+}
+
 /// Asks the traces where the reader is, the first that answers. No answer is elsewhere: GitHub
 /// first, the CDN behind it.
 pub async fn region(client: &reqwest::Client) -> Region {
@@ -266,6 +287,28 @@ pub fn file_client() -> reqwest::Client {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// The rule the corner's card and the system's notification are both held to: the same news
+	/// is told once. A restart is what used to undo it, since what had been told lived only in
+	/// the run that told it.
+	#[test]
+	fn an_update_is_told_once_and_a_higher_one_is_told_again() {
+		assert!(worth_telling("2026.9.6", 41, None), "nothing told yet, so anything is news");
+		assert!(!worth_telling("2026.9.6", 41, Some(("2026.9.6", 41))), "the same build is not");
+		assert!(worth_telling("2026.9.6", 42, Some(("2026.9.6", 41))), "the same day, built again");
+		assert!(!worth_telling("2026.9.6", 40, Some(("2026.9.6", 41))), "and not an older build");
+		assert!(worth_telling("2026.9.7", 1, Some(("2026.9.6", 99))), "a later day, whatever its run");
+		assert!(!worth_telling("2026.9.5", 99, Some(("2026.9.6", 1))), "an earlier day is not news");
+	}
+
+	/// Read as text, "2026.10.1" sorts before "2026.9.6"; the version is the day it was made and
+	/// October comes after September.
+	#[test]
+	fn a_version_is_ordered_by_its_numbers_and_not_by_its_text() {
+		assert!("2026.10.1" < "2026.9.6", "which is what reading them as text would say");
+		assert!(worth_telling("2026.10.1", 1, Some(("2026.9.6", 1))), "and what the numbers say");
+		assert!(!worth_telling("2026.9.6", 1, Some(("2026.10.1", 1))));
+	}
 
 	const MANIFEST: &str = r#"{
 		"channel": "nightly", "version": "2026.9.5", "build": 8, "sha": "abc",

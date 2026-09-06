@@ -95,7 +95,17 @@ apart appears only in Settings, after the version in brackets the way the system
 windows put it; `Later` closes the card for that build, and the next build
 brings it back. When the manifest arrives while the window is not the active one, the system
 is told once per build and stage through `notify-rust`: D-Bus on Linux, the notification
-centre on macOS, WinRT on Windows. Pressing the notification brings the window to the front,
+centre on macOS, WinRT on Windows.
+
+**Once means once, and the database is what remembers it.** Each notice is written to the
+`notices` table -- the stage, the version and the build -- and the next one is compared against
+what is written there: a higher version, or the same version built again with a higher number,
+is news; anything else is the same news and is not shown. This was memory alone before, which
+made "once" mean once per run: the check every five minutes did not repeat itself, but every
+restart did, so a build sitting unclaimed announced itself again at every launch. The version is
+compared as its numbers and not as its text, since it is the day it was made -- `2026.10.1` is
+after `2026.9.6`, which reading them as text gets backwards. A notice that cannot be written is
+still shown; the cost is that it may be shown once more. See [state.md](state.md) for the table. Pressing the notification brings the window to the front,
 where the card says what to do next: macOS activates the application the notification was
 delivered for by itself, on Linux the notification carries a default action the application
 waits on, and on Windows a press only closes the toast, since activation there needs an
