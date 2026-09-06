@@ -43,6 +43,29 @@ pub const MIN_WIDTH: f32 = sidebar::WIDTH
 /// The toolbar and the status bar want a few rows of list under them to be worth opening.
 pub const MIN_HEIGHT: f32 = 320.0;
 
+/// A surface that floats over the window: the funnel's menu, a notice, the update's card. It
+/// carries the panel's fill, a border and a shadow, and it **takes the mouse**, which is the half
+/// that is easy to forget and impossible to see in a screenshot.
+///
+/// GPUI hit-tests from the topmost element down and stops at the first one that occludes. An
+/// overlay that does not occlude is not a surface but a picture painted over one: the pointer
+/// goes through it, and everything it covers goes on lighting up, answering hovers and taking
+/// presses meant for the thing on top. Hover and press are the same test, so a floating thing
+/// that forgets this is wrong in both ways at once.
+///
+/// Every element drawn over the window is built from this, or sits inside `backdrop`, which
+/// occludes the whole window on a sheet's behalf. See spec/ui.md.
+pub fn floating(p: Palette, id: impl Into<ElementId>) -> Stateful<Div> {
+	div()
+		.id(id)
+		.occlude()
+		.rounded_md()
+		.border_1()
+		.border_color(p.border)
+		.bg(p.panel)
+		.shadow_md()
+}
+
 /// The wash under every sheet. It takes every mouse event, so nothing behind the sheet can be
 /// pressed through it; and a press that lands on nothing focusable -- the card, a button, a
 /// row -- takes the keyboard away from whatever field had it. GPUI moves focus only onto a

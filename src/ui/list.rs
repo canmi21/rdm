@@ -184,7 +184,18 @@ impl Rdm {
 			.flex_none()
 			.justify_center()
 			.child(div().w_px().h_full().bg(if dragging { p.accent } else { p.border }))
-			.child(
+			// The zone lies over the titles on either side of the boundary and has to take the press
+			// from both: a press on the line is a press on the line, and the title under the zone's
+			// edge must not also read it as a click and re-sort the column, which it did.
+			//
+			// Not by occluding. A drag is driven by the window root's own move and up handlers, and
+			// those run only while the root is the thing under the pointer; a zone that blocked the
+			// root would take the press and then never hear the drag it began. So the zone is
+			// deferred instead -- painted after the whole header, which puts its listener first,
+			// since mouse events are offered to the frontmost listener first -- and it stops the
+			// event there. The title behind it never learns a button went down, so no click of its
+			// own comes back up. Priority zero, so a sheet or the funnel's menu still covers it.
+			.child(gpui::deferred(
 				div()
 					.id(SharedString::from(format!("resize:{column:?}")))
 					.debug_selector(|| format!("resize:{column:?}"))
@@ -197,11 +208,12 @@ impl Rdm {
 					.on_mouse_down(
 						MouseButton::Left,
 						cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+							cx.stop_propagation();
 							this.begin_resize(column, event.position.x);
 							cx.notify();
 						}),
 					),
-			)
+			))
 	}
 
 	/// The selectable shell every view shares: one id, one click, one highlight.

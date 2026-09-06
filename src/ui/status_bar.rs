@@ -9,7 +9,7 @@ use crate::app::{Rdm, View};
 use crate::download::{Filter, Status, format_speed};
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::tooltip::tooltip;
-use crate::ui::{icon_button, menu_row, sidebar};
+use crate::ui::{floating, icon_button, menu_row, sidebar};
 
 /// The status bar's height, which the filter menu sits just above.
 pub const HEIGHT: f32 = 24.0;
@@ -216,19 +216,13 @@ impl Rdm {
 				.position(point(self.viewport.width - px(8.0), self.viewport.height - px(HEIGHT + 4.0)))
 				.snap_to_window_with_margin(px(8.0))
 				.child(
-					div()
-						.id("filter-menu")
+					floating(p, "filter-menu")
 						.debug_selector(|| "menu".to_owned())
 						.flex()
 						.flex_col()
 						.gap_px()
 						.w(px(168.0))
 						.p_1()
-						.rounded_md()
-						.border_1()
-						.border_color(p.border)
-						.bg(p.panel)
-						.shadow_md()
 						.on_mouse_down_out(cx.listener(|this, _, _, cx| this.toggle_filter_menu(false, cx)))
 						.children(rows),
 				),

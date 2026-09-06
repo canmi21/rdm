@@ -126,6 +126,78 @@ fn the_funnel_offers_what_the_state_holds_and_lets_go_of_what_it_cannot(cx: &mut
 	});
 }
 
+/// An overlay takes the mouse from what it covers. The funnel's menu floats over the rows, and
+/// a press on the card itself -- not on one of its lines -- must not reach the row underneath.
+/// GPUI hit-tests from the top down and stops at the first element that occludes; one that does
+/// not occlude is a picture, and everything behind it goes on answering a pointer that is
+/// nowhere near it.
+#[gpui::test]
+fn the_funnel_menu_takes_the_mouse_from_the_rows_it_covers(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	// Enough rows that the list reaches the corner the menu is drawn in. With the sample alone
+	// the menu floats over empty space and a press through it would prove nothing.
+	rdm.update(&mut cx, |rdm, cx| {
+		let sample = crate::download::sample();
+		let mut many = Vec::new();
+		for round in 0..12u64 {
+			for (at, download) in sample.iter().enumerate() {
+				let mut copy = download.clone();
+				copy.id = 100 + round * 10 + at as u64;
+				many.push(copy);
+			}
+		}
+		rdm.downloads = many;
+		rdm.selected = Some(100);
+		cx.notify();
+	});
+	cx.run_until_parked();
+	// The menu is opened and closed through the window rather than by pressing the funnel, so
+	// that the only pointer events in this test are the ones it is about.
+	let show = |rdm: &Entity<Rdm>, cx: &mut VisualTestContext, open: bool| {
+		rdm.update(cx, |rdm, cx| rdm.toggle_filter_menu(open, cx));
+		cx.run_until_parked();
+	};
+	show(&rdm, &mut cx, true);
+	let menu = cx.debug_bounds("menu").expect("the menu is drawn");
+	// Two points inside the card's top-left: on the menu, on no line of it, and over the list.
+	// The pointer is moved there before it presses, which is what a hand does and what makes the
+	// press read the same hit test a hover reads.
+	let corner = menu.origin + gpui::point(gpui::px(2.0), gpui::px(2.0));
+	let press = |cx: &mut VisualTestContext| {
+		cx.simulate_mouse_move(corner, None, Modifiers::default());
+		cx.simulate_click(corner, Modifiers::default());
+	};
+	// With nothing over it that point is a row, which is what gives the press below something to
+	// reach if the menu lets it through.
+	show(&rdm, &mut cx, false);
+	press(&mut cx);
+	let covered = rdm.read_with(&cx, |rdm, _| rdm.selected);
+	assert_ne!(covered, Some(100), "the menu's corner is over a row");
+	show(&rdm, &mut cx, true);
+	press(&mut cx);
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.selected, covered, "the row under the menu was not reached through it");
+	});
+}
+
+/// The band that takes a column's drag is laid over the titles on either side of the boundary,
+/// twice the width of the line, because a hot zone the width of the line was missed more often
+/// than hit. It takes the mouse too: a press on the line is a press on the handle, and the title
+/// under its edge must not also read it as a click and re-sort the column.
+#[gpui::test]
+fn the_resize_band_takes_the_press_from_the_title_behind_it(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	let before = rdm.read_with(&cx, |rdm, _| (rdm.sort, rdm.ascending));
+	let band = cx.debug_bounds("resize:Size").expect("the handle is drawn");
+	let title = cx.debug_bounds("sort:Size").expect("the title is drawn");
+	let over_both = gpui::point(band.origin.x + band.size.width - gpui::px(2.0), title.center().y);
+	assert!(title.contains(&over_both), "the band does lie over the title, which is the case at issue");
+	cx.simulate_click(over_both, Modifiers::default());
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!((rdm.sort, rdm.ascending), before, "pressing a boundary is not sorting by it");
+	});
+}
+
 #[gpui::test]
 fn a_row_selects_and_the_view_switch_redraws_it(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);

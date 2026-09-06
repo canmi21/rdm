@@ -484,12 +484,11 @@ impl Rdm {
 		};
 		let busy = action.is_none();
 		Some(
-			div()
+			crate::ui::floating(p, "update-toast")
 				.absolute()
 				.bottom(px(status_bar::HEIGHT + 12.0))
 				.right(px(12.0))
 				.max_w(px(420.0))
-				.id("update-toast")
 				.role(Role::Alert)
 				.debug_selector(|| "toast:update".to_owned())
 				.flex()
@@ -498,11 +497,6 @@ impl Rdm {
 				.pl_2p5()
 				.pr_1()
 				.py_1()
-				.rounded_md()
-				.border_1()
-				.border_color(p.border)
-				.bg(p.panel)
-				.shadow_md()
 				.child(icon(Icon::Download, p.accent).size_3p5().flex_none())
 				.child(div().min_w_0().truncate().child(title))
 				.when_some(action, |s, (word, run)| s.child(word_button(p, word, run, cx)))

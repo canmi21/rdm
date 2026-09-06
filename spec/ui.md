@@ -590,6 +590,47 @@ window draws its first frame inside `open_window`, that frame reads the main vie
 view is still being updated by the click -- which panics. Opening is therefore deferred to after
 the update, in `Rdm::open_download`.
 
+## Anything drawn over the window takes the pointer
+
+GPUI decides what the pointer is on by walking a frame's elements from the topmost down and
+stopping at the first one that **occludes**. Drawing over something implies nothing else: an
+overlay that does not occlude is not a surface but a picture painted on the window, and the
+pointer goes straight through it. Everything it covers goes on answering -- lighting up under a
+hover, taking a press meant for the thing on top. Hover and press read the same test, so a
+floating thing that forgets this is wrong in both ways at once, and the hover is the half anybody
+notices first: a row lighting up under the menu that is lying on it.
+
+So **every element drawn over the window is built from `ui::floating`** -- a card with the panel's
+fill, a border, a shadow, and the occlusion -- or it sits inside `ui::backdrop`, which occludes
+the whole window on a sheet's behalf. The funnel's menu, a notice in the corner and the update's
+card are the floating ones; every sheet and the guide are the backdropped ones. An overlay that is
+neither is this bug coming back.
+
+**Drawing order decides what is on top, not position.** `absolute` moves an element; it does not
+lift it. The header row is laid out handle, title, handle, title, so a column's title is painted
+after its own handle and sits above it -- and the handle's hot zone, twice the width of the line
+it draws and lying over the titles on both sides, could not take the press from the title to its
+right by occluding, because the title was never behind it. The zone is `deferred`, which paints it
+after the whole header; that is what puts it on top, at priority zero, so a sheet or the menu
+still covers it.
+
+**A hot zone stops the press; it does not occlude.** The column drag is driven by the window
+root's own move and up handlers, and a listener on an element runs only while that element is the
+one under the pointer. A zone that occluded would take the press and then never hear the drag it
+began: the root would be blind for as long as the pointer stayed over the zone, which is exactly
+where a drag starts. So the zone stops the event where it lands instead -- the press goes no
+further, the title behind it never learns a button went down, and no click of its own comes back
+up. It was that click, not the drag, that re-sorted a column every time somebody pressed its
+boundary.
+
+A window of its own is not this problem: the download window and the finished-download notice are
+real windows, and the toolkit clears the hover under them when the pointer leaves.
+
+Both rules are held by tests that press a point and read what answered -- one presses the funnel's
+menu where a row lies under it, the other presses the boundary where a title lies under it. Each
+first presses the same point with nothing over it, so a test that stopped covering the overlap
+would fail rather than quietly pass, which is what the first pair of them did.
+
 ## A sheet is modal, and a click outside closes it only while it is clean
 
 **One rule for every sheet, and Escape follows it.** A sheet with nothing unsaved -- nothing
@@ -627,9 +668,10 @@ takes that away.
 
 
 A sheet lies over a backdrop that takes every mouse event, so nothing behind it can be pressed
-through it. Without that, a press on the sheet was also a press on whatever row lay under the
-pointer -- two presets toggled twice became a double-click on a row and opened its window from
-behind a sheet that was supposed to have the screen.
+through it -- the rule above, applied to the whole window at once. Without it, a press on the
+sheet was also a press on whatever row lay under the pointer: two presets toggled twice became a
+double-click on a row and opened its window from behind a sheet that was supposed to have the
+screen.
 
 Clicking outside the sheet closes it, which is the habit every native dialog teaches, with one
 line drawn: **only while there is nothing to lose.** A sheet with no input, or one whose fields
