@@ -294,12 +294,17 @@ impl Rdm {
 		if self.updates.checking {
 			return "Checking".to_owned();
 		}
-		match (&self.updates.outcome, self.updates.this) {
-			(None, _) => "Not checked yet".to_owned(),
-			(Some(Err(error)), _) => format!("Could not check: {error}"),
-			(Some(Ok(build)), Some(this)) if *build > this => format!("Build {build} is available"),
-			(Some(Ok(build)), Some(_)) => format!("Build {build} is the latest, and this is it"),
-			(Some(Ok(build)), None) => format!("Build {build} is the latest; this build has no number"),
+		let latest = self.updates.latest.as_ref().map(|m| label(&m.version, m.build));
+		match (&self.updates.outcome, self.updates.this, latest) {
+			(None, _, _) | (Some(Ok(_)), _, None) => "Not checked yet".to_owned(),
+			(Some(Err(error)), _, _) => format!("Could not check: {error}"),
+			(Some(Ok(build)), Some(this), Some(latest)) if *build > this => {
+				format!("{latest} is available")
+			}
+			(Some(Ok(_)), Some(_), Some(latest)) => format!("{latest} is the latest, and this is it"),
+			(Some(Ok(_)), None, Some(latest)) => {
+				format!("{latest} is the latest; this build has no number")
+			}
 		}
 	}
 
@@ -312,35 +317,30 @@ impl Rdm {
 		if self.updates.dismissed == Some(available.build) {
 			return None;
 		}
-		let build = available.build;
+		let build = available.version.clone();
 		let channel = self.preferences.update_channel.name();
-		let (title, detail, action): (String, String, Option<Action>) = match &self.updates.stage {
+		let (title, action): (String, Option<Action>) = match &self.updates.stage {
 			Stage::Offered => (
-				format!("Build {build} is ready"),
-				format!("{} of {channel}", available.version),
+				format!("{channel} {build} is ready"),
 				Some(("Install", |this, cx| this.install_update(cx))),
 			),
 			Stage::Downloading { done, total } => (
-				format!("Getting build {build}"),
 				match total {
-					Some(total) => format!("{} of {}", format_bytes(*done), format_bytes(*total)),
-					None => format_bytes(*done),
+					Some(total) => {
+						format!("Getting {build}, {} of {}", format_bytes(*done), format_bytes(*total))
+					}
+					None => format!("Getting {build}, {}", format_bytes(*done)),
 				},
 				None,
 			),
-			Stage::Installing => {
-				(format!("Installing build {build}"), "Checked; putting it in place".to_owned(), None)
-			}
+			Stage::Installing => (format!("Installing {build}"), None),
 			Stage::Installed { .. } => (
-				format!("Build {build} is installed"),
-				"Restart to run it".to_owned(),
+				format!("{build} is installed"),
 				Some(("Restart", |this, cx| this.restart_into_update(cx))),
 			),
-			Stage::Failed(error) => (
-				format!("Build {build} could not be installed"),
-				error.clone(),
-				Some(("Retry", |this, cx| this.install_update(cx))),
-			),
+			Stage::Failed(error) => {
+				(format!("{build}: {error}"), Some(("Retry", |this, cx| this.install_update(cx))))
+			}
 		};
 		let busy = action.is_none();
 		Some(
@@ -354,23 +354,17 @@ impl Rdm {
 				.debug_selector(|| "toast:update".to_owned())
 				.flex()
 				.items_center()
-				.gap_3()
-				.px_3()
-				.py_2()
+				.gap_2()
+				.pl_2p5()
+				.pr_1()
+				.py_1()
 				.rounded_md()
 				.border_1()
 				.border_color(p.border)
 				.bg(p.panel)
 				.shadow_md()
-				.child(icon(Icon::Download, p.accent).size_4().flex_none())
-				.child(
-					div()
-						.flex()
-						.flex_col()
-						.min_w_0()
-						.child(div().text_sm().child(title))
-						.child(div().text_xs().text_color(p.muted).truncate().child(detail)),
-				)
+				.child(icon(Icon::Download, p.accent).size_3p5().flex_none())
+				.child(div().min_w_0().truncate().child(title))
 				.when_some(action, |s, (word, run)| s.child(word_button(p, word, run, cx)))
 				.when(!busy, |s| {
 					s.child(icon_button(
@@ -386,6 +380,14 @@ impl Rdm {
 	}
 }
 
+/// A build as Settings names it: the version, which is the day, and the run number in
+/// brackets, the way the system's own About windows put it. The card and the notification say
+/// the version alone; the number is for telling two builds of one day apart, which is a
+/// settings matter.
+fn label(version: &str, build: u64) -> String {
+	format!("{version} ({build})")
+}
+
 /// The card's one word that does something.
 fn word_button(
 	p: Palette,
@@ -399,10 +401,10 @@ fn word_button(
 		.aria_label(word)
 		.debug_selector(move || format!("button:{word}"))
 		.flex_none()
+		.ml_1()
 		.px_2()
 		.py_0p5()
 		.rounded_sm()
-		.text_xs()
 		.text_color(p.accent)
 		.cursor_pointer()
 		.hover(move |s| s.bg(p.hover))
@@ -413,7 +415,7 @@ fn word_button(
 /// Tells the system, for a window that is not in front. Failing to is nothing to report: the
 /// card is still there when the window is.
 fn notify(available: &Available, cx: &mut Context<Rdm>) {
-	let body = format!("Build {} of {} is ready to install.", available.build, available.version);
+	let body = format!("{} is ready to install.", available.version);
 	cx.background_executor()
 		.spawn(async move {
 			// macOS delivers a notification only on behalf of an installed bundle; a binary

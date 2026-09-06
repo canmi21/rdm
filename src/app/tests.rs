@@ -854,7 +854,11 @@ fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppCont
 	assert!(cx.debug_bounds("toast:update").is_some(), "build 99 is newer than no number");
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.updates.available.as_ref().map(|a| a.build), Some(99));
-		assert!(rdm.update_status().starts_with("Build 99 is the latest"), "{}", rdm.update_status());
+		assert!(
+			rdm.update_status().starts_with("2026.9.5 (99) is the latest"),
+			"{}",
+			rdm.update_status()
+		);
 	});
 	assert!(cx.debug_bounds("button:Install").is_some(), "the card offers the install");
 	click(&mut cx, "button:Later");

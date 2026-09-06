@@ -88,8 +88,11 @@ jsDelivr, which was considered: its `gh` endpoint serves a repository's tree at 
 files uploaded to a release, and `latest.json` is only the latter.
 
 **A newer build is a card in the corner, and a notification when the window is not in
-front.** The card sits over the list above the status bar, names the build and the version,
-and offers `Install` and `Later`; `Later` closes the card for that build, and the next build
+front.** The card sits over the list above the status bar, one line at the density of the bars
+around it -- `Nightly 2026.9.6 is ready` -- and offers `Install` and `Later`; the version is
+the day and is what a person is told, while the run number that tells two builds of one day
+apart appears only in Settings, after the version in brackets the way the system's own About
+windows put it; `Later` closes the card for that build, and the next build
 brings it back. When the manifest arrives while the window is not the active one, the system
 is told once per build through `notify-rust`: D-Bus on Linux, the notification centre on
 macOS, WinRT on Windows. On macOS a notification is delivered only for an installed bundle, so
