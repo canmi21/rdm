@@ -258,13 +258,31 @@ impl Filter {
 		}
 	}
 
+	/// The statuses a state gathers, and the one place that says so. The four at the top of the
+	/// sidebar are a grouping rather than a list of statuses: what is moving is shown beside what
+	/// is waiting its turn, since a queue is downloading as far as anybody watching it is
+	/// concerned; Unfinished adds what is paused, so it holds everything still owed; and
+	/// Completed holds what finished beside what gave up, since neither is owed anything more. A
+	/// file that was already on disk arrives as Completed and lands there too, when the header's
+	/// funnel is letting those in. All holds everything, and so does a category, which cuts by
+	/// what a file is rather than by how far it got.
+	///
+	/// The funnel's menu reads this to know which statuses are worth offering inside the state
+	/// the sidebar is on, so the two cannot come to disagree about what a group contains. See
+	/// src/ui/status_bar.rs and spec/ui.md.
+	pub fn statuses(self) -> &'static [Status] {
+		match self {
+			Filter::All | Filter::Category(_) => &Status::ALL,
+			Filter::Downloading => &[Status::Queued, Status::Downloading],
+			Filter::Unfinished => &[Status::Queued, Status::Downloading, Status::Paused],
+			Filter::Completed => &[Status::Completed, Status::Failed],
+		}
+	}
+
 	pub fn matches(self, download: &Download, categories: &[Category]) -> bool {
 		match self {
-			Filter::All => true,
-			Filter::Downloading => download.status == Status::Downloading,
-			Filter::Unfinished => download.status != Status::Completed,
-			Filter::Completed => download.status == Status::Completed,
 			Filter::Category(id) => categories_of(categories, download).iter().any(|c| c.id == id),
+			state => state.statuses().contains(&download.status),
 		}
 	}
 }
@@ -503,6 +521,43 @@ mod tests {
 		assert_eq!(junk(".ds_store"), Some(Junk::Noise), "the name is judged without its case");
 	}
 
+
+	/// The four states at the top of the sidebar are a grouping, not a list of statuses: what is
+	/// queued is downloading as far as anybody watching it is concerned, what is paused is still
+	/// owed, and what failed is as finished as what completed. One table says so and `matches`
+	/// reads it, which is what keeps the funnel's menu from saying something else.
+	#[test]
+	fn a_state_holds_the_statuses_the_sidebar_groups_under_it() {
+		assert_eq!(Filter::Downloading.statuses(), [Status::Queued, Status::Downloading]);
+		assert_eq!(Filter::Unfinished.statuses(), [
+			Status::Queued,
+			Status::Downloading,
+			Status::Paused
+		]);
+		assert_eq!(Filter::Completed.statuses(), [Status::Completed, Status::Failed]);
+		assert_eq!(Filter::All.statuses(), Status::ALL, "All holds everything there is");
+		for status in Status::ALL {
+			// Nothing is in neither: a download that is not still owed is one that is over.
+			let over = matches!(status, Status::Completed | Status::Failed);
+			assert_eq!(Filter::Completed.statuses().contains(&status), over, "{status:?}");
+			assert_eq!(Filter::Unfinished.statuses().contains(&status), !over, "{status:?}");
+		}
+	}
+
+	/// And the rows land where the grouping says. A file the folder scan found arrives Completed
+	/// and lands under Completed with them, which is where somebody looking for a file they
+	/// already have goes looking.
+	#[test]
+	fn a_row_is_shown_by_the_state_that_holds_its_status() {
+		for download in sample() {
+			assert!(Filter::All.matches(&download, &[]), "All shows everything");
+			let over = matches!(download.status, Status::Completed | Status::Failed);
+			assert_eq!(Filter::Completed.matches(&download, &[]), over, "{}", download.name);
+			assert_eq!(Filter::Unfinished.matches(&download, &[]), !over, "{}", download.name);
+			let moving = matches!(download.status, Status::Downloading | Status::Queued);
+			assert_eq!(Filter::Downloading.matches(&download, &[]), moving, "{}", download.name);
+		}
+	}
 
 	#[test]
 	fn a_rate_is_read_in_kilobytes_by_default_and_off_when_empty() {

@@ -6,9 +6,8 @@ use gpui::{
 };
 
 use crate::app::{Rdm, View};
-use crate::download::{Status, format_speed};
+use crate::download::{Filter, Status, format_speed};
 use crate::ui::icon::{Icon, hover_icon, icon};
-use crate::ui::theme::Tint;
 use crate::ui::tooltip::tooltip;
 use crate::ui::{icon_button, menu_row, sidebar};
 
@@ -177,30 +176,37 @@ impl Rdm {
 	/// It hangs off the window root, not the funnel: an anchored element inside a centred flex
 	/// row is laid out off its own origin and lands that far from where it was told. Positioned
 	/// in window space at the corner just above the status bar.
+	///
+	/// Its first row is the sidebar's own All -- the same glyph, hue and word, taken from the
+	/// filter rather than written again here, since a second definition of one thing is how the
+	/// two came to show different icons for it. After it come only the statuses the chosen state
+	/// holds: a state that cannot hold Failed has no business offering a row that would count
+	/// nothing whatever the list held. See `Filter::statuses`.
 	pub(crate) fn filter_popover(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
+		let all = (Icon::for_filter(Filter::All), p.hue(Filter::All.color(&self.categories)));
 		let rows: Vec<_> = std::iter::once(None)
-			.chain(Status::ALL.into_iter().map(Some))
+			.chain(self.filter.statuses().iter().copied().map(Some))
 			.map(|status| {
-				let label = status.map_or("All", Status::label);
+				let label =
+					status.map_or_else(|| Filter::All.label(&self.categories), |s| s.label().to_owned());
+				// The same rows the sidebar counts, so the number beside Completed here is the
+				// number beside Completed there, funnelled folder files and all.
 				let count = self
-					.downloads
-					.iter()
+					.rows()
 					.filter(|d| self.passes(self.filter, d) && status.is_none_or(|s| d.status == s))
 					.count();
+				let selector = label.clone();
 				menu_row(
 					p,
 					SharedString::from(format!("chip:{label}")),
-					(
-						status.map_or(Icon::List, Icon::for_status),
-						status.map_or_else(|| p.hue(Tint::Snow.rgb()), |s| p.status(s)),
-					),
+					status.map_or(all, |s| (Icon::for_status(s), p.status(s))),
 					label,
 					count,
 					self.status == status,
 					cx.listener(move |this, _, _, cx| this.set_status(status, cx)),
 				)
-				.debug_selector(|| format!("chip:{label}"))
+				.debug_selector(move || format!("chip:{selector}"))
 			})
 			.collect();
 		deferred(

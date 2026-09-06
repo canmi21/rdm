@@ -736,6 +736,12 @@ impl Rdm {
 
 	pub(crate) fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
 		self.filter = filter;
+		// The funnel cuts inside the state, so a status the new state does not hold is not a
+		// narrower list but an empty one, under a funnel lit with a word that cannot match. It
+		// is dropped rather than kept, and the menu stops offering it. See `Filter::statuses`.
+		if self.status.is_some_and(|status| !filter.statuses().contains(&status)) {
+			self.status = None;
+		}
 		cx.notify();
 	}
 

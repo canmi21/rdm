@@ -177,6 +177,25 @@ ended in a menu: a filter is consulted far less often than the rows are read, so
 and a click, not a strip of the window. The sidebar answers "which downloads", the menu answers
 "in what state", and neither duplicates the other.
 
+**The four states above the categories are a grouping, and one table says what each holds.**
+All Tasks holds everything. Downloading holds what is moving and what is waiting its turn, since
+a queue is downloading as far as anybody watching it is concerned. Unfinished holds those and
+what is paused, which is everything still owed. Completed holds what finished and what gave up,
+since neither is owed anything more -- and, when the header's funnel is lit, the files that were
+already on disk, which arrive as completed and belong beside the downloads that became them.
+`Filter::statuses` in `src/download.rs` is that table, and it is the only one: the sidebar filters
+rows through it, and the funnel's menu reads it to know which statuses are worth offering inside
+the state that is chosen. A state that cannot hold Failed does not offer a Failed row, which
+would count nothing whatever the list held.
+
+The menu's first row is the sidebar's own All -- the same glyph, the same hue, the same word,
+taken from the filter rather than written again beside it. It was written again once, and the two
+drifted: the sidebar's All Tasks became a pyramid and the menu's All stayed a list glyph, because
+nothing tied them together. Counts follow the same rule and are counted over the same rows the
+sidebar counts, so the number beside Completed in the menu is the number beside Completed in the
+sidebar. A status chosen in the menu is let go when the sidebar moves to a state that cannot hold
+it, since the second cut is only meaningful inside the first.
+
 The view, sort and chip are not yet remembered across launches; that waits on there being any
 persistence at all.
 

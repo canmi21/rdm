@@ -29,8 +29,7 @@ pub enum Icon {
 	ChevronUp,
 	ChevronDown,
 	Settings,
-	List,
-	/// All Tasks in the sidebar.
+	/// All Tasks in the sidebar, and the funnel menu's All, which is the same thing.
 	Pyramid,
 	CircleDashed,
 	Funnel,
@@ -109,7 +108,6 @@ impl Icon {
 			Icon::ChevronUp => "lucide/chevron-up.svg",
 			Icon::ChevronDown => "lucide/chevron-down.svg",
 			Icon::Settings => "lucide/settings.svg",
-			Icon::List => "lucide/list.svg",
 			Icon::Pyramid => "lucide/pyramid.svg",
 			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::Funnel => "lucide/funnel.svg",

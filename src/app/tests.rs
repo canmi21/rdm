@@ -101,8 +101,29 @@ fn the_funnel_menu_narrows_within_the_sidebar_and_all_clears_it(cx: &mut TestApp
 		assert!(rdm.shown().iter().all(|d| d.status == Status::Completed));
 	});
 	click(&mut cx, "button:Filter by status");
-	click(&mut cx, "chip:All");
+	click(&mut cx, "chip:All Tasks");
 	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.status, None));
+}
+
+/// The funnel cuts inside whatever the sidebar chose, so it offers only the statuses that state
+/// holds; a status the next state cannot hold is let go rather than left to empty the list under
+/// a funnel lit with a word that cannot match anything.
+#[gpui::test]
+fn the_funnel_offers_what_the_state_holds_and_lets_go_of_what_it_cannot(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	click(&mut cx, "filter:Unfinished");
+	click(&mut cx, "button:Filter by status");
+	click(&mut cx, "chip:Paused");
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.status, Some(Status::Paused), "Unfinished holds what is paused");
+		assert!(rdm.shown().iter().all(|d| d.status == Status::Paused));
+	});
+	click(&mut cx, "filter:Completed");
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.filter, Filter::Completed);
+		assert_eq!(rdm.status, None, "and Completed holds nothing paused, so the cut is dropped");
+		assert!(rdm.shown().iter().all(|d| Filter::Completed.statuses().contains(&d.status)));
+	});
 }
 
 #[gpui::test]
