@@ -133,7 +133,9 @@ fn reset_under_appearance_puts_every_column_width_back(cx: &mut TestAppContext) 
 }
 
 #[gpui::test]
-fn the_funnel_in_the_corner_lists_the_folder_files_under_all_only(cx: &mut TestAppContext) {
+fn the_funnel_in_the_corner_lets_the_folder_files_into_every_list_they_fit(
+	cx: &mut TestAppContext,
+) {
 	let (rdm, mut cx) = open_in(cx, "folder-files");
 	let directory = rdm.read_with(&cx, |rdm, _| rdm.paths.as_ref().unwrap().downloads.clone());
 	for stale in std::fs::read_dir(&directory).unwrap().flatten() {
@@ -158,9 +160,16 @@ fn the_funnel_in_the_corner_lists_the_folder_files_under_all_only(cx: &mut TestA
 	});
 	click(&mut cx, "filter:Completed");
 	rdm.read_with(&cx, |rdm, _| {
-		assert!(rdm.shown().iter().all(|d| !Rdm::is_folder_file(d.id)), "only All lists them");
+		assert!(
+			rdm.shown().iter().any(|d| Rdm::is_folder_file(d.id)),
+			"a folder file is complete, so Completed lists it too"
+		);
 	});
-	assert!(cx.debug_bounds("button:Folder files").is_some(), "the funnel stays, dimmed");
+	click(&mut cx, "filter:Images");
+	rdm.read_with(&cx, |rdm, _| {
+		let names: Vec<&str> = rdm.shown().iter().map(|d| d.name.as_str()).collect();
+		assert!(names.contains(&"photo.jpg"), "and the category its name fits: {names:?}");
+	});
 	click(&mut cx, "filter:All Tasks");
 	click(&mut cx, "button:Folder files");
 	rdm.read_with(&cx, |rdm, _| {

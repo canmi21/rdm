@@ -117,7 +117,8 @@ pub struct Rdm {
 	pub(crate) status: Option<Status>,
 	/// The status menu under the funnel is open.
 	pub(crate) filter_open: bool,
-	/// The header's funnel is lit: All also lists what else the download folder holds.
+	/// The header's funnel is lit: the lists also hold what else the download folder holds.
+	/// Remembered in state.json.
 	pub(crate) folder_shown: bool,
 	/// The folder's other files as rows, read when the funnel is lit and whenever the folder
 	/// changes while it is; empty otherwise. Their ids start at `FOLDER_ID`.
@@ -227,7 +228,7 @@ impl Rdm {
 			filter: Filter::All,
 			status: None,
 			filter_open: false,
-			folder_shown: false,
+			folder_shown: saved.folder_shown,
 			folder_files: Vec::new(),
 			sort: SortKey::Added,
 			ascending: false,
@@ -269,18 +270,23 @@ impl Rdm {
 		this
 	}
 
-	/// The rows the list shows, in the order it shows them: the downloads the sidebar's filter
-	/// and the status menu let through, and under All with the funnel lit, the folder's other
-	/// files after them.
+	/// Every row the lists are cut from: the downloads, and with the funnel lit, the folder's
+	/// other files. A filter or a count reads these, so a file the funnel let in is under All
+	/// Tasks, under Completed, and under whichever category its name fits, like a download
+	/// that finished.
+	pub(crate) fn rows(&self) -> impl Iterator<Item = &Download> {
+		let folder = if self.folder_shown { &self.folder_files[..] } else { &[] };
+		self.downloads.iter().chain(folder)
+	}
+
+	/// The rows the list shows, in the order it shows them: what the sidebar's filter and the
+	/// status menu let through.
 	pub(crate) fn shown(&self) -> Vec<&Download> {
-		let folder =
-			if self.folder_shown && self.filter == Filter::All { &self.folder_files[..] } else { &[] };
 		let mut rows: Vec<&Download> = self
-			.downloads
-			.iter()
-			.filter(|d| self.filter.matches(d, &self.categories))
-			.chain(folder)
-			.filter(|d| self.status.is_none_or(|s| d.status == s))
+			.rows()
+			.filter(|d| {
+				self.filter.matches(d, &self.categories) && self.status.is_none_or(|s| d.status == s)
+			})
 			.collect();
 		rows.sort_by(|a, b| {
 			let order = match self.sort {
@@ -331,10 +337,8 @@ impl Rdm {
 		id >= FOLDER_ID
 	}
 
-	/// The funnel in the header's corner: lit, All also lists the folder's other files; pressed
-	/// again, it lists the downloads alone. Only All is affected, since the sidebar's other
-	/// lists are made of downloads by what they are, which a file that arrived by other means
-	/// is not.
+	/// The funnel in the header's corner: lit, the lists also hold the folder's other files;
+	/// pressed again, the downloads alone. The state is kept for the next launch.
 	pub(crate) fn toggle_folder_files(&mut self, cx: &mut Context<Self>) {
 		self.folder_shown = !self.folder_shown;
 		if self.folder_shown {
@@ -345,6 +349,7 @@ impl Rdm {
 				self.selected = None;
 			}
 		}
+		self.schedule_save(cx);
 		cx.notify();
 	}
 
@@ -523,6 +528,7 @@ impl Rdm {
 			maximized: self.maximized,
 			widths: Some(self.widths),
 			view: Some(self.view),
+			folder_shown: self.folder_shown,
 			last_build: crate::update::this_build(),
 			..State::default()
 		}

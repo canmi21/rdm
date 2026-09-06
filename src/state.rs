@@ -78,6 +78,10 @@ pub struct State {
 	pub widths: Option<[f32; 5]>,
 	#[serde(default)]
 	pub view: Option<View>,
+	/// The header's funnel: whether the lists also hold the download folder's other files.
+	/// Off in a file that does not say, and to begin with.
+	#[serde(default)]
+	pub folder_shown: bool,
 	/// The build that last ran, so the next can tell what it came after: absent in a file an
 	/// older build wrote, or a hand build. See src/update/install.rs on the legacy names.
 	#[serde(default)]
@@ -92,6 +96,7 @@ impl Default for State {
 			maximized: false,
 			widths: None,
 			view: None,
+			folder_shown: false,
 			last_build: None,
 		}
 	}
@@ -212,6 +217,7 @@ mod tests {
 			window: Some(Frame { x: 1.0, y: 2.0, width: 3.0, height: 4.0 }),
 			widths: Some([1.0; 5]),
 			view: Some(View::Grid),
+			folder_shown: true,
 			..State::default()
 		};
 		save(&path, &state).unwrap();

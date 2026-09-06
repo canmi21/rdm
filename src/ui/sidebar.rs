@@ -92,7 +92,7 @@ impl Rdm {
 			Filter::Category(id) => Category::find(&self.categories, id).map_or(Icon::File, |c| c.icon),
 			other => Icon::for_filter(other),
 		};
-		let count = self.downloads.iter().filter(|d| filter.matches(d, &self.categories)).count();
+		let count = self.rows().filter(|d| filter.matches(d, &self.categories)).count();
 		let selector = label.clone();
 		// A category's icon wears its own hue always when the categories are set to be colorful;
 		// otherwise, and for the state filters above them always, only while the row is chosen

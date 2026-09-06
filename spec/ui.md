@@ -70,14 +70,15 @@ their titles. A drag is clamped at both ends: a column no narrower than fits its
 wider than leaves the name column its floor, because past that the row runs out of the window. A drag is tracked on the window root, not on the handle, because the pointer leaves
 the handle the moment it moves; a move with the button up ends it, since a release outside the
 window is never seen and would otherwise leave the next pointer movement resizing on its own. The
-corner over the type icons holds a funnel that stays: lit, All Tasks also lists what else the
+corner over the type icons holds a funnel that stays: lit, the lists also hold what else the
 download folder holds -- every plain file that is not hidden, not one of a download's two
 files meanwhile, and not named by a row -- each as a completed row with the file's size and
-time and no address; pressed again, the downloads alone. It acts on All Tasks only, since the
-sidebar's other lists are made of downloads by what they are, which a file that arrived by
-other means is not, so under any other list it is dimmed and takes no press. The rows are read
-when the funnel is lit and again whenever the folder changes while it is; they are not
-remembered across launches, like the sidebar's filter. Remove on one of them takes it off the
+time and no address; pressed again, the downloads alone. Such a file is treated as a download
+that finished: it is under All Tasks, under Completed, and under whichever category its name
+fits, and the sidebar's counts include it. The rows are read when the funnel is lit and again
+whenever the folder changes while it is. Whether the funnel is lit is remembered in state.json,
+off to begin with, since a folder of a thousand files is not what a first launch should show,
+and a choice to see them is one the user keeps. Remove on one of them takes it off the
 list for the session and leaves the file where it is, since a file that was never downloaded
 here is not this application's to delete. The corner held the column widths' reset before,
 shown only while the pointer rested on it; that moved to `Reset` under `Column widths` in
