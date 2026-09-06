@@ -36,6 +36,7 @@ impl Rdm {
 			.map(|d| match self.view {
 				View::Detailed => self.table_row(d, cx).into_any_element(),
 				View::Compact => self.compact(d, cx).into_any_element(),
+				View::Thumbnails => self.thumbnail_row(d, cx).into_any_element(),
 				View::Grid => self.card(d, cx).into_any_element(),
 			})
 			.collect();
@@ -54,7 +55,7 @@ impl Rdm {
 					.overflow_y_scroll()
 					.map(|s| match self.view {
 						View::Grid => s.flex_row().flex_wrap().gap_1p5().content_start().p_2(),
-						View::Detailed | View::Compact => s.flex_col().px_1p5().py_1(),
+						View::Detailed | View::Compact | View::Thumbnails => s.flex_col().px_1p5().py_1(),
 					})
 					.children(items)
 					.when(empty, |s| {
@@ -298,6 +299,37 @@ impl Rdm {
 					.size_3(),
 				)
 			})
+	}
+
+	/// A row with a picture on it: what the system draws for a file of this kind, at the size a
+	/// file manager draws it, and the name beside it. Nothing else -- somebody in this view is
+	/// looking for a file by eye, and columns would be in the way. The system's own icon is not
+	/// always there to be had, and the category's glyph stands in when it is not.
+	fn thumbnail_row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
+		self
+			.item(download, cx)
+			.flex()
+			.items_center()
+			.gap_2p5()
+			.h(px(36.0))
+			.px_2()
+			.child(self.folder_indent(download))
+			.child(self.thumbnail(download, 20.0))
+			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
+			.child(
+				div()
+					.flex_none()
+					.text_xs()
+					.text_color(p.muted)
+					.child(format_bytes(download.size)),
+			)
+	}
+
+	/// The picture for a row: the system's own where there is one, the category's glyph where
+	/// there is not. See src/thumbnail.rs.
+	fn thumbnail(&self, download: &Download, size: f32) -> gpui::AnyElement {
+		tinted_icon(self.category_icon(download)).size(px(size)).into_any_element()
 	}
 
 	fn compact(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {

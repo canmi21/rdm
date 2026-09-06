@@ -38,15 +38,19 @@ no controls. Add Task starts at the strip's left edge wherever there are no traf
 clear, which on macOS includes full screen, where the system hides them. A release build on
 Windows also says it is a windowed program, or a console opens beside it.
 
-## Three views, Detailed by default
+## Four views, Detailed by default
 
 The list draws three ways and a segmented control at the toolbar's right end picks one:
 
-| View     | A row is                                                        | For                        |
-| -------- | --------------------------------------------------------------- | -------------------------- |
-| Detailed | a table row: type, name, size, progress with percent, speed, status | the default; shows it all |
-| Compact  | one 22px line: type, name, a short bar, size, a status mark     | a long queue               |
-| Grid     | a card with a large type icon                                   | scanning by type           |
+| View       | A row is                                                        | For                       |
+| ---------- | --------------------------------------------------------------- | ------------------------- |
+| Compact    | one 22px line: type, name, a short bar, size, a status mark     | a long queue              |
+| Thumbnails | one 36px line: the system's own icon for the file, name, size   | finding a file by eye     |
+| Detailed   | a table row: type, name, size, progress with percent, speed, status | the default; shows it all |
+| Grid       | a card with a large type icon, or a picture of the file         | scanning by type          |
+
+They are offered densest first, and the glyph on each button says what a row looks like: bare
+lines, lines with a picture on them, a table, cards.
 
 Detailed is the default because it is the only one that shows everything at once, which is what
 a download manager is open for. It is a table rather than a card list because a card list spends

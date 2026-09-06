@@ -36,13 +36,20 @@ mod updates;
 /// speed and size at once; the others trade that for density or for a glance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub enum View {
-	Detailed,
+	/// One line a row: what a long queue is read in.
 	Compact,
+	/// The system's own icon for the file, and its name. What a file manager shows.
+	Thumbnails,
+	/// The table: type, name, size, progress, speed, status, added.
+	Detailed,
+	/// A card with a large icon, or a picture of the file where one can be made.
 	Grid,
 }
 
 impl View {
-	pub const ALL: [View; 3] = [View::Detailed, View::Compact, View::Grid];
+	/// In the order the switcher offers them, densest first: a line, a row with a picture in it,
+	/// the whole table, and cards.
+	pub const ALL: [View; 4] = [View::Compact, View::Thumbnails, View::Detailed, View::Grid];
 }
 
 /// A column the table can be ordered by. `Added` is the default: the order downloads arrived in.
