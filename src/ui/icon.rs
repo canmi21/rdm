@@ -31,6 +31,8 @@ pub enum Icon {
 	ChevronDown,
 	Settings,
 	List,
+	/// All Tasks in the sidebar.
+	Pyramid,
 	CircleDashed,
 	Funnel,
 	/// The status bar's spinner, turned by an animation.
@@ -94,6 +96,7 @@ impl Icon {
 			Icon::ChevronDown => "lucide/chevron-down.svg",
 			Icon::Settings => "lucide/settings.svg",
 			Icon::List => "lucide/list.svg",
+			Icon::Pyramid => "lucide/pyramid.svg",
 			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::Funnel => "lucide/funnel.svg",
 			Icon::Loader => "lucide/loader-circle.svg",
@@ -171,7 +174,7 @@ impl Icon {
 	/// The state filters' icons; a category carries its own.
 	pub fn for_filter(filter: Filter) -> Icon {
 		match filter {
-			Filter::All => Icon::List,
+			Filter::All => Icon::Pyramid,
 			Filter::Downloading => Icon::ArrowDown,
 			Filter::Unfinished => Icon::CircleDashed,
 			Filter::Completed => Icon::CircleCheck,

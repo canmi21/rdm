@@ -143,7 +143,10 @@ program, a tar of `.mp3`s is audio, a zip of a `.pdf` and a `.mp4` is only an ar
 level is the first path component of each entry, a directory's children folded into it, and a
 lone wrapping folder that is not itself a bundle looked through, since `project-1.0/` is the
 archive's own name and says nothing. The download window names the contents, up to six and a
-count of the rest. Programs is where a program goes whatever wrapped it: the preset names the
+count of the rest. Such an archive wears the icon and hue of the category its contents earned
+it, in every list including Archives, since what is inside is what the thing is and the wrapper
+is how it arrived; an archive whose contents say nothing more than its name keeps the archive
+icon. All Tasks in the sidebar is a pyramid, the one shape that holds everything under it. Programs is where a program goes whatever wrapped it: the preset names the
 installers and packages by extension, and the rule above brings the archives that hold one.
 
 **The categories' hues are always on, unless asked otherwise.** "Always use colorful

@@ -11,7 +11,7 @@ use gpui::{
 
 use serde::Serialize;
 
-use crate::category::{Category, categories_with_contents};
+use crate::category::{self, Category, categories_with_contents};
 use crate::config::{Config, Preferences};
 use crate::download::{Download, Filter, Status};
 use crate::engine::{self, Engine, Event, TaskId};
@@ -369,6 +369,12 @@ impl Rdm {
 	/// The category a row is drawn as: the filtered one when one is filtered and matches, else
 	/// the first that matches. None when nothing does and there is no catch-all.
 	fn category_shown(&self, download: &Download) -> Option<&Category> {
+		// An archive that is a program, or an album, by what it holds wears that icon in every
+		// list, the Archives list included: the contents are what it is.
+		if let Some(nature) = category::nature(&self.categories, download, &self.contents_of(download))
+		{
+			return Some(nature);
+		}
 		let matched = self.categories_of(download);
 		if let Filter::Category(id) = self.filter
 			&& let Some(c) = matched.iter().find(|c| c.id == id)

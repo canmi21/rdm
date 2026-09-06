@@ -403,6 +403,24 @@ pub fn categories_of<'a>(categories: &'a [Category], download: &Download) -> Vec
 	categories_with_contents(categories, download, &[])
 }
 
+/// What an archive is by what it holds: the first category that every one of its contents
+/// matches and its own name does not -- Programs for a zip of one `.exe`, Audio for a tar of
+/// songs. None for a row that is not an archive, or one whose contents say nothing more than
+/// its name. The row's icon is this one's wherever the row is listed, since what is inside is
+/// what the thing is; the wrapper is how it arrived.
+pub fn nature<'a>(
+	categories: &'a [Category],
+	download: &Download,
+	contents: &[String],
+) -> Option<&'a Category> {
+	if contents.is_empty() {
+		return None;
+	}
+	categories.iter().find(|c| {
+		!c.is_catch_all() && !c.matches(download) && contents.iter().all(|n| c.matches_name(n))
+	})
+}
+
 /// The same, for a download that is an archive whose top-level names are known: it is in every
 /// category its own name matches, and also in every category that every one of its contents
 /// matches -- a zip of one `.exe` is a program, a tar of `.mp3`s is audio, a zip of a `.pdf`
@@ -457,6 +475,14 @@ mod tests {
 		assert_eq!(names("mixed.zip", &["a.pdf", "b.mp4"]), ["Archives"]);
 		assert_eq!(names("mixed.zip", &[]), ["Archives"]);
 		assert_eq!(names("plain.xyz", &["a.mp3"]), ["Audio"], "the contents alone can place it");
+		let contents = |c: &[&str]| -> Vec<String> { c.iter().map(|c| (*c).to_owned()).collect() };
+		let what = |name: &str, c: &[&str]| {
+			nature(&categories, &named(name), &contents(c)).map(|c| c.name.clone())
+		};
+		assert_eq!(what("tool.zip", &["setup.exe"]).as_deref(), Some("Programs"));
+		assert_eq!(what("mixed.zip", &["a.pdf", "b.mp4"]), None);
+		assert_eq!(what("inner.zip", &["a.zip", "b.zip"]), None, "archives of archives stay so");
+		assert_eq!(what("tool.zip", &[]), None);
 	}
 
 	#[test]
