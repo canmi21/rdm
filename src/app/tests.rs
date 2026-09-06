@@ -201,7 +201,7 @@ fn an_archive_in_the_folder_is_indexed_and_placed_by_what_it_holds(cx: &mut Test
 		zip.write_all(b"MZ").unwrap();
 		zip.finish().unwrap();
 	}
-	click(&mut cx, "button:Folder files");
+	rdm.update(&mut cx, |rdm, _| rdm.scan_folder());
 	wait_for_folder(&rdm, &mut cx);
 	wait_for_index(&rdm, &mut cx);
 	rdm.read_with(&cx, |rdm, _| {
@@ -238,8 +238,13 @@ fn the_funnel_in_the_corner_lets_the_folder_files_into_every_list_they_fit(
 	std::fs::create_dir(directory.join("folder")).unwrap();
 	let sample = rdm.read_with(&cx, |rdm, _| rdm.downloads[0].name.clone());
 	std::fs::write(directory.join(&sample), b"already a row").unwrap();
-	let downloads = rdm.read_with(&cx, |rdm, _| rdm.shown().len());
-	click(&mut cx, "button:Folder files");
+	let downloads = rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.folder_shown, "a first launch shows the folder's files without being asked");
+		rdm.shown().len()
+	});
+	// The files were written after the window opened, so the folder is read again, as the watcher
+	// has it read whenever it changes while the funnel is lit.
+	rdm.update(&mut cx, |rdm, _| rdm.scan_folder());
 	wait_for_folder(&rdm, &mut cx);
 	rdm.read_with(&cx, |rdm, _| {
 		let shown = rdm.shown();

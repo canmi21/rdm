@@ -79,9 +79,12 @@ pub struct State {
 	#[serde(default)]
 	pub view: Option<View>,
 	/// The header's funnel: whether the lists also hold the download folder's other files.
-	/// Off in a file that does not say, and to begin with.
+	/// Absent only in a file this application has never written -- a first launch -- since a save
+	/// writes the field whether the funnel was ever touched or not. That is what makes the
+	/// absence mean "nobody has chosen", which is the one case the default is allowed to change
+	/// under. See src/app/mod.rs and spec/ui.md.
 	#[serde(default)]
-	pub folder_shown: bool,
+	pub folder_shown: Option<bool>,
 	/// The build that last ran, so the next can tell what it came after: absent in a file an
 	/// older build wrote, or a hand build. See src/update/install.rs on the legacy names.
 	#[serde(default)]
@@ -96,7 +99,7 @@ impl Default for State {
 			maximized: false,
 			widths: None,
 			view: None,
-			folder_shown: false,
+			folder_shown: None,
 			last_build: None,
 		}
 	}
@@ -190,6 +193,20 @@ mod tests {
 		assert_eq!(state.view, None);
 	}
 
+	/// The funnel's default was off and is now on, which is allowed to move only for somebody who
+	/// has never chosen. A save writes the field either way, so a file that names it has been
+	/// chosen for and is left alone; only a file this application has never written says nothing.
+	#[test]
+	fn a_funnel_never_chosen_for_is_absent_and_one_chosen_for_is_kept() {
+		assert_eq!(State::default().folder_shown, None, "nobody has chosen yet");
+		let off = parse(r#"{ "version": 1, "folder_shown": false }"#).unwrap();
+		assert_eq!(off.folder_shown, Some(false), "off on purpose stays off");
+		let on = parse(r#"{ "version": 1, "folder_shown": true }"#).unwrap();
+		assert_eq!(on.folder_shown, Some(true));
+		let never = parse(r#"{ "version": 1 }"#).unwrap();
+		assert_eq!(never.folder_shown, None, "and a file from before the field says nothing");
+	}
+
 	#[test]
 	fn a_newer_file_is_refused_and_a_versionless_one_too() {
 		assert!(parse(r#"{ "version": 99 }"#).is_err());
@@ -217,7 +234,7 @@ mod tests {
 			window: Some(Frame { x: 1.0, y: 2.0, width: 3.0, height: 4.0 }),
 			widths: Some([1.0; 5]),
 			view: Some(View::Grid),
-			folder_shown: true,
+			folder_shown: Some(true),
 			..State::default()
 		};
 		save(&path, &state).unwrap();

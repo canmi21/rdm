@@ -107,8 +107,16 @@ time and no address; pressed again, the downloads alone. Such a file is treated 
 that finished: it is under All Tasks, under Completed, and under whichever category its name
 fits, and the sidebar's counts include it. The rows are read when the funnel is lit and again
 whenever the folder changes while it is. Whether the funnel is lit is remembered in state.json,
-off to begin with, since a folder of a thousand files is not what a first launch should show,
-and a choice to see them is one the user keeps. Remove on one of them takes it off the
+and **lit to begin with**: what the download folder holds is what somebody opening a download
+manager came to see, and a first launch that showed only rows this application happens to have
+written would look emptier than the folder is. It began the other way, off, on the argument that
+a folder of a thousand files is not a first impression; the answer is that the funnel is right
+there to press. **The default moves only for somebody who has never chosen.** A save writes the
+field whether the funnel was touched or not, so a state.json that names it has been chosen for,
+either way, and is left exactly as it is; the field is absent only in a file this application
+has never written, which is a first launch. That is why it is an `Option` in `state.rs` rather
+than a `bool`: the absence is the only thing that can tell the two apart, and a default that
+quietly flipped a user's own "off" back on would be the worst of the three outcomes. Remove on one of them takes it off the
 list for the session and leaves the file where it is, since a file that was never downloaded
 here is not this application's to delete. The corner held the column widths' reset before,
 shown only while the pointer rested on it; that moved to `Reset` under `Column widths` in

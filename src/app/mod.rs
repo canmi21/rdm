@@ -287,7 +287,9 @@ impl Rdm {
 			filter: Filter::All,
 			status: None,
 			filter_open: false,
-			folder_shown: saved.folder_shown,
+			// A first launch shows the folder's files; a state file that names the funnel has been
+			// chosen for, either way, and is left alone. See spec/ui.md.
+			folder_shown: saved.folder_shown.unwrap_or(true),
 			folder_files: Vec::new(),
 			folder_scan: None,
 			archives: HashMap::new(),
@@ -689,7 +691,7 @@ impl Rdm {
 			maximized: self.maximized,
 			widths: Some(self.widths),
 			view: Some(self.view),
-			folder_shown: self.folder_shown,
+			folder_shown: Some(self.folder_shown),
 			last_build: crate::update::this_build(),
 			..State::default()
 		}
