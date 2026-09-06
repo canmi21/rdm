@@ -19,6 +19,9 @@ fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
 
 /// The same, with a download folder of the test's own, for one that reads the folder.
 fn open_in(cx: &mut TestAppContext, name: &str) -> (Entity<Rdm>, VisualTestContext) {
+	// The tests read English, whatever the machine this runs on is set to: a test that asserted
+	// on what the window says would otherwise pass or fail by where it was run.
+	crate::i18n::use_language(crate::i18n::Language::En);
 	let window = cx.update(|cx| {
 		cx.open_window(Default::default(), |window, cx| {
 			cx.new(|cx| {
@@ -1080,9 +1083,9 @@ fn the_colorful_categories_switch_flips_the_preference(cx: &mut TestAppContext) 
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories, "on to start with"));
 	click(&mut cx, "button:Settings");
 	click(&mut cx, "section:Appearance");
-	click(&mut cx, "switch:Always use colorful categories");
+	click(&mut cx, "switch:settings.label.colorful");
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.colorful_categories));
-	click(&mut cx, "switch:Always use colorful categories");
+	click(&mut cx, "switch:settings.label.colorful");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories));
 }
 
@@ -1213,25 +1216,25 @@ fn settings_has_sections_and_a_search_that_cuts_across_them(cx: &mut TestAppCont
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.settings.as_ref().map(|s| s.section), Some(Section::General))
 	});
-	assert!(cx.debug_bounds("setting:Download folder").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.download_folder").is_some());
 	assert!(
-		cx.debug_bounds("setting:Always use colorful categories").is_none(),
+		cx.debug_bounds("setting:settings.label.colorful").is_none(),
 		"another section's rows are not shown"
 	);
 	click(&mut cx, "section:Appearance");
-	assert!(cx.debug_bounds("setting:Always use colorful categories").is_some());
-	assert!(cx.debug_bounds("setting:Download folder").is_none());
+	assert!(cx.debug_bounds("setting:settings.label.colorful").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.download_folder").is_none());
 	let search = rdm.read_with(&cx, |rdm, _| rdm.settings.as_ref().unwrap().search.clone());
 	cx.update(|_, cx| search.update(cx, |i, cx| i.set_content("speed", cx)));
 	cx.run_until_parked();
 	assert!(
-		cx.debug_bounds("setting:Speed limit").is_some(),
+		cx.debug_bounds("setting:settings.label.speed_limit").is_some(),
 		"a search shows every section's matches"
 	);
-	assert!(cx.debug_bounds("setting:Always use colorful categories").is_none());
+	assert!(cx.debug_bounds("setting:settings.label.colorful").is_none());
 	cx.update(|_, cx| search.update(cx, |i, cx| i.set_content("nothing like this", cx)));
 	cx.run_until_parked();
-	assert!(cx.debug_bounds("setting:Speed limit").is_none(), "no match, no rows");
+	assert!(cx.debug_bounds("setting:settings.label.speed_limit").is_none(), "no match, no rows");
 	cx.simulate_keystrokes("escape");
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.settings_open(), "escape in the field closes"));
 }
@@ -1326,8 +1329,8 @@ fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppCont
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
 	click(&mut cx, "section:Updates");
-	assert!(cx.debug_bounds("setting:Update channel").is_some());
-	assert!(cx.debug_bounds("setting:Check for updates").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.update_channel").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.check_for_updates").is_some());
 	assert!(cx.debug_bounds("button:Check now").is_some());
 }
 
@@ -1338,19 +1341,19 @@ fn the_update_settings_are_switches_and_a_choice_that_follows_the_switch(cx: &mu
 	cx.run_until_parked();
 	// The update rows have a section of their own; General was a dozen rows in one run.
 	click(&mut cx, "section:Updates");
-	assert!(cx.debug_bounds("setting:Check for updates").is_some());
-	assert!(cx.debug_bounds("setting:Automatic updates").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.check_for_updates").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.automatic_updates").is_some());
 	assert!(cx.debug_bounds("choice:Download and install").is_some(), "the policy, while automatic");
 	click(&mut cx, "choice:Download only");
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.preferences.update_policy, crate::update::Policy::Download);
 	});
-	click(&mut cx, "switch:Automatic updates");
+	click(&mut cx, "switch:settings.label.automatic_updates");
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.auto_update));
 	assert!(cx.debug_bounds("choice:Download only").is_none(), "no policy without the switch");
-	click(&mut cx, "switch:Check for updates");
+	click(&mut cx, "switch:settings.label.check_for_updates");
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.check_updates));
 }
@@ -1427,20 +1430,20 @@ fn the_transfer_fields_apply_on_enter_and_say_no_to_nonsense(cx: &mut TestAppCon
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
 	rdm.update(&mut cx, |rdm, cx| {
-		rdm.apply_setting("Speed limit", "2m", cx);
-		rdm.apply_setting("Connections", "32", cx);
+		rdm.apply_setting("settings.label.speed_limit", "2m", cx);
+		rdm.apply_setting("settings.label.connections", "32", cx);
 	});
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.preferences.speed_limit, Some(2 * 1024 * 1024));
 		assert_eq!(rdm.preferences.connections, Some(32));
 	});
-	rdm.update(&mut cx, |rdm, cx| rdm.apply_setting("Connections", "lots", cx));
+	rdm.update(&mut cx, |rdm, cx| rdm.apply_setting("settings.label.connections", "lots", cx));
 	cx.run_until_parked();
 	click(&mut cx, "section:Transfers");
 	assert!(cx.debug_bounds("settings-complaint").is_some(), "nonsense is said no to under its row");
 	rdm.update(&mut cx, |rdm, cx| {
-		rdm.apply_setting("Connections", "auto", cx);
-		rdm.apply_setting("Speed limit", "", cx);
+		rdm.apply_setting("settings.label.connections", "auto", cx);
+		rdm.apply_setting("settings.label.speed_limit", "", cx);
 	});
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!((rdm.preferences.connections, rdm.preferences.speed_limit), (None, None));

@@ -205,7 +205,7 @@ impl Rdm {
 				if let Some(file) = &file {
 					self.thumbnails.borrow_mut().forget(&file.path);
 				}
-				let mut notice = Notice::new("Download finish", name);
+				let mut notice = Notice::new(crate::i18n::t("dialog.finished"), name);
 				if let Some(file) = file {
 					notice = notice.about(file);
 				}

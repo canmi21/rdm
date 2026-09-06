@@ -73,6 +73,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "m
 tokio-util = "0.7"
 url = "2"
 
+# What language the machine is set to, for a first launch that has to guess. One small crate
+# against three platform APIs. See src/i18n.rs.
+sys-locale = "0.3"
 # Decodes the tray's PNG, rendered from the artwork by `mise run icon`.
 png = "0.18"
 # The system's own icon for a file, which arrives as TIFF and is drawn as a gpui RenderImage.

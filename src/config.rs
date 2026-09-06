@@ -132,6 +132,11 @@ pub struct Preferences {
 	/// Who resolves names, how they are asked, and what does the asking. Each its own answer,
 	/// because the reasons for changing one are not the reasons for changing the others. All
 	/// three are the system's to start with. See src/dns.rs.
+	/// What the window is read in. `System` is what a first launch has, and what a file written
+	/// before this arrangement reads as: the machine's own language decides until somebody picks
+	/// one, and picking one is picking it for good. See src/i18n.rs.
+	#[serde(default)]
+	pub language: crate::i18n::Language,
 	/// Starts with the machine. Off to begin with: an application that put itself in the login
 	/// items without being asked would be one of those applications. The switch is what the user
 	/// last chose; whether the entry is really there is asked of the system. See src/startup.rs.
@@ -289,6 +294,7 @@ impl Default for Preferences {
 			headers: Vec::new(),
 			proxy: None,
 			proxy_source: crate::proxy::Source::default(),
+			language: crate::i18n::Language::default(),
 			start_at_login: false,
 			agent: crate::agent::Agent::default(),
 			dns_servers: crate::dns::Servers::default(),

@@ -34,9 +34,9 @@ impl Source {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Source::Found => "Whatever is running",
-			Source::Fixed => "This address",
-			Source::Direct => "No proxy",
+			Source::Found => crate::i18n::t("proxy.source.found"),
+			Source::Fixed => crate::i18n::t("proxy.source.fixed"),
+			Source::Direct => crate::i18n::t("proxy.source.direct"),
 		}
 	}
 }

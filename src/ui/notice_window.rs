@@ -115,7 +115,7 @@ impl Render for NoticeWindow {
 						div()
 							.id("notice-close")
 							.role(Role::Button)
-							.aria_label("Close")
+							.aria_label(crate::i18n::t("dialog.close"))
 							.debug_selector(|| "notice:close".to_owned())
 							.flex()
 							.flex_none()
@@ -140,7 +140,7 @@ impl Render for NoticeWindow {
 					.gap_2()
 					.child(self.action(
 						"open",
-						"Open".into(),
+						crate::i18n::t("dialog.open").into(),
 						move |this, _, _| {
 							if let Some(file) = &this.notice.file {
 								crate::reveal::open(&file.path);
@@ -150,7 +150,7 @@ impl Render for NoticeWindow {
 					))
 					.child(self.action(
 						"show",
-						format!("Show in {}", crate::reveal::manager_name()).into(),
+						crate::i18n::t("dialog.show_in").replace("{}", crate::reveal::manager_name()).into(),
 						move |this, _, _| {
 							if let Some(file) = &this.notice.file {
 								crate::reveal::show(&file.path, &this.manager);
@@ -160,7 +160,7 @@ impl Render for NoticeWindow {
 					))
 					.child(self.action(
 						"window",
-						"Downloads".into(),
+						crate::i18n::t("dialog.window").into(),
 						|_, _, cx| {
 							cx.activate(true);
 							for handle in cx.windows() {

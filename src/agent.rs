@@ -59,11 +59,11 @@ impl Agent {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Agent::Own => "This application",
-			Agent::Windows => "Chrome on Windows",
-			Agent::Macos => "Chrome on macOS",
-			Agent::Linux => "Chrome on Linux",
-			Agent::Custom => "Something else",
+			Agent::Own => crate::i18n::t("agent.own"),
+			Agent::Windows => crate::i18n::t("agent.windows"),
+			Agent::Macos => crate::i18n::t("agent.macos"),
+			Agent::Linux => crate::i18n::t("agent.linux"),
+			Agent::Custom => crate::i18n::t("agent.custom"),
 		}
 	}
 

@@ -36,8 +36,8 @@ impl Servers {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Servers::System => "The system's",
-			Servers::Named => "These servers",
+			Servers::System => crate::i18n::t("dns.servers.system"),
+			Servers::Named => crate::i18n::t("dns.servers.named"),
 		}
 	}
 }
@@ -58,8 +58,8 @@ impl Transport {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Transport::Plain => "Port 53",
-			Transport::Https => "Over HTTPS",
+			Transport::Plain => crate::i18n::t("dns.transport.plain"),
+			Transport::Https => crate::i18n::t("dns.transport.https"),
 		}
 	}
 }
@@ -81,8 +81,8 @@ impl Stack {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Stack::System => "The system's",
-			Stack::Hickory => "Hickory",
+			Stack::System => crate::i18n::t("dns.stack.system"),
+			Stack::Hickory => crate::i18n::t("dns.stack.hickory"),
 		}
 	}
 }

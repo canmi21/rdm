@@ -14,6 +14,7 @@ mod ctl;
 mod dns;
 mod download;
 mod engine;
+mod i18n;
 mod identity;
 mod index;
 mod notify;
@@ -76,6 +77,9 @@ fn main() {
 		} else {
 			WindowBounds::Windowed(bounds)
 		};
+		// The language before the first frame: a window that came up in English and turned
+		// Chinese a moment later would be a window that flickered.
+		i18n::use_language(config.settings.language);
 		let main = cx
 			.open_window(
 				WindowOptions {

@@ -34,28 +34,28 @@ pub struct SettingsSheet {
 
 /// Every field there is: its row's label, its placeholder, and a word on what it takes.
 const FIELDS: [(&str, &str, &str); 14] = [
-	("Concurrent downloads", "3", "How many run at once; the rest wait"),
-	("Speed limit", "Off", "KB/s, or with m or g; empty for none"),
-	("Connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
-	("Smallest segment", "1m", "A file below this is never split; bytes, or with k, m or g"),
-	("Connect timeout", "30", "Seconds to establish a connection"),
-	("Idle timeout", "60", "Seconds without a byte before a connection is dropped and retried"),
-	("Retries", "5", "Times a failing connection is tried again"),
-	("Retry wait", "1", "Seconds before the first retry, doubling each time"),
-	("Size limit", "Off", "A file the server declares larger is refused; empty for none"),
-	("User agent", "rdm/version", "Sent with every request; empty for the engine's own"),
+	("settings.label.concurrent_downloads", "3", "How many run at once; the rest wait"),
+	("settings.label.speed_limit", "Off", "KB/s, or with m or g; empty for none"),
+	("settings.label.connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
+	("settings.label.smallest_segment", "1m", "A file below this is never split; bytes, or with k, m or g"),
+	("settings.label.connect_timeout", "30", "Seconds to establish a connection"),
+	("settings.label.idle_timeout", "60", "Seconds without a byte before a connection is dropped and retried"),
+	("settings.label.retries", "5", "Times a failing connection is tried again"),
+	("settings.label.retry_wait", "1", "Seconds before the first retry, doubling each time"),
+	("settings.label.size_limit", "Off", "A file the server declares larger is refused; empty for none"),
+	("settings.label.user_agent", "rdm/version", "Sent with every request; empty for the engine's own"),
 	(
-		"Proxy",
+		"settings.label.proxy",
 		"Address",
 		"http://, https:// or socks5://, credentials in the address",
 	),
 	(
-		"Name servers",
+		"settings.label.name_servers",
 		"Cloudflare, Google",
 		"Addresses for port 53, https:// URLs for HTTPS; empty for the offered pair",
 	),
-	("Headers", "", "Name: value, several apart by semicolons"),
-	("Redirects", "10", "How many a request follows"),
+	("settings.label.headers", "", "Name: value, several apart by semicolons"),
+	("settings.label.redirects", "10", "How many a request follows"),
 ];
 
 /// The sections down the rail, in their order. A setting belongs to exactly one.
@@ -85,14 +85,14 @@ impl Section {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Section::General => "General",
-			Section::Transfers => "Transfers",
-			Section::Folder => "Folder",
-			Section::Notifications => "Notifications",
-			Section::Network => "Network",
-			Section::Updates => "Updates",
-			Section::Appearance => "Appearance",
-			Section::About => "About",
+			Section::General => crate::i18n::t("settings.section.general"),
+			Section::Transfers => crate::i18n::t("settings.section.transfers"),
+			Section::Folder => crate::i18n::t("settings.section.folder"),
+			Section::Notifications => crate::i18n::t("settings.section.notifications"),
+			Section::Network => crate::i18n::t("settings.section.network"),
+			Section::Updates => crate::i18n::t("settings.section.updates"),
+			Section::Appearance => crate::i18n::t("settings.section.appearance"),
+			Section::About => crate::i18n::t("settings.section.about"),
 		}
 	}
 
@@ -221,22 +221,22 @@ impl Rdm {
 		let size = |n: Option<u64>| n.map(format_bytes).unwrap_or_default();
 		let number = |n: Option<u64>| n.map(|n| n.to_string()).unwrap_or_default();
 		match key {
-			"Concurrent downloads" => p.max_active.to_string(),
-			"Speed limit" => p.speed_limit.map(|l| format_rate(Some(l))).unwrap_or_default(),
-			"Connections" => number(p.connections.map(u64::from)),
-			"Smallest segment" => size(p.min_segment),
-			"Connect timeout" => number(p.connect_timeout),
-			"Idle timeout" => number(p.idle_timeout),
-			"Retries" => number(p.retries.map(u64::from)),
-			"Retry wait" => number(p.retry_wait),
-			"Size limit" => size(p.max_size),
-			"User agent" => p.user_agent.clone().unwrap_or_default(),
-			"Proxy" => p.proxy.clone().unwrap_or_default(),
-			"Name servers" => p.dns_servers_written.clone(),
-			"Headers" => {
+			"settings.label.concurrent_downloads" => p.max_active.to_string(),
+			"settings.label.speed_limit" => p.speed_limit.map(|l| format_rate(Some(l))).unwrap_or_default(),
+			"settings.label.connections" => number(p.connections.map(u64::from)),
+			"settings.label.smallest_segment" => size(p.min_segment),
+			"settings.label.connect_timeout" => number(p.connect_timeout),
+			"settings.label.idle_timeout" => number(p.idle_timeout),
+			"settings.label.retries" => number(p.retries.map(u64::from)),
+			"settings.label.retry_wait" => number(p.retry_wait),
+			"settings.label.size_limit" => size(p.max_size),
+			"settings.label.user_agent" => p.user_agent.clone().unwrap_or_default(),
+			"settings.label.proxy" => p.proxy.clone().unwrap_or_default(),
+			"settings.label.name_servers" => p.dns_servers_written.clone(),
+			"settings.label.headers" => {
 				p.headers.iter().map(|(n, v)| format!("{n}: {v}")).collect::<Vec<_>>().join("; ")
 			}
-			"Redirects" => number(p.max_redirects.map(|n| n as u64)),
+			"settings.label.redirects" => number(p.max_redirects.map(|n| n as u64)),
 			_ => String::new(),
 		}
 	}
@@ -248,38 +248,38 @@ impl Rdm {
 		let text = text.trim();
 		let result: Result<(), String> = (|| {
 			match key {
-				"Concurrent downloads" => {
+				"settings.label.concurrent_downloads" => {
 					let n = parse_number(text)?.unwrap_or(3).clamp(1, 64) as usize;
 					self.preferences.max_active = n;
 					self.engine.set_max_active(n);
 				}
-				"Speed limit" => {
+				"settings.label.speed_limit" => {
 					let limit = parse_rate(text)?;
 					self.preferences.speed_limit = limit;
 					self.engine.set_speed_limit(limit);
 				}
-				"Connections" => {
+				"settings.label.connections" => {
 					self.preferences.connections = if text.is_empty() || text.eq_ignore_ascii_case("auto") {
 						None
 					} else {
 						Some(crate::ui::add_dialog::parse_count(text)?)
 					};
 				}
-				"Smallest segment" => self.preferences.min_segment = parse_size(text)?,
-				"Connect timeout" => self.preferences.connect_timeout = parse_number(text)?,
-				"Idle timeout" => self.preferences.idle_timeout = parse_number(text)?,
-				"Retries" => self.preferences.retries = parse_number(text)?.map(|n| n as u32),
-				"Retry wait" => self.preferences.retry_wait = parse_number(text)?,
-				"Size limit" => self.preferences.max_size = parse_size(text)?,
-				"User agent" => self.preferences.user_agent = (!text.is_empty()).then(|| text.to_owned()),
-				"Proxy" => {
+				"settings.label.smallest_segment" => self.preferences.min_segment = parse_size(text)?,
+				"settings.label.connect_timeout" => self.preferences.connect_timeout = parse_number(text)?,
+				"settings.label.idle_timeout" => self.preferences.idle_timeout = parse_number(text)?,
+				"settings.label.retries" => self.preferences.retries = parse_number(text)?.map(|n| n as u32),
+				"settings.label.retry_wait" => self.preferences.retry_wait = parse_number(text)?,
+				"settings.label.size_limit" => self.preferences.max_size = parse_size(text)?,
+				"settings.label.user_agent" => self.preferences.user_agent = (!text.is_empty()).then(|| text.to_owned()),
+				"settings.label.proxy" => {
 					let schemed = ["http://", "https://", "socks5://"].iter().any(|s| text.starts_with(s));
 					if !text.is_empty() && !schemed {
 						return Err("A proxy starts with http://, https:// or socks5://.".to_owned());
 					}
 					self.preferences.proxy = (!text.is_empty()).then(|| text.to_owned());
 				}
-				"Name servers" => {
+				"settings.label.name_servers" => {
 					// Only what the transport in use can be given: an address where the question
 					// goes over 53, a URL where it goes over HTTPS. Writing one where the other
 					// belongs is the mistake worth catching, since it fails silently otherwise.
@@ -296,7 +296,7 @@ impl Rdm {
 					}
 					self.preferences.dns_servers_written = text.to_owned();
 				}
-				"Headers" => {
+				"settings.label.headers" => {
 					let mut headers = Vec::new();
 					for part in text.split(';').map(str::trim).filter(|p| !p.is_empty()) {
 						let Some((name, value)) = part.split_once(':') else {
@@ -306,7 +306,7 @@ impl Rdm {
 					}
 					self.preferences.headers = headers;
 				}
-				"Redirects" => self.preferences.max_redirects = parse_number(text)?.map(|n| n as usize),
+				"settings.label.redirects" => self.preferences.max_redirects = parse_number(text)?.map(|n| n as usize),
 				_ => {}
 			}
 			Ok(())
@@ -352,9 +352,25 @@ impl Rdm {
 		let mut rows = vec![
 			Row {
 				section: Section::General,
-				group: "Starting",
-				label: "Start at login",
-				note: "Opens with the machine, where the system keeps its login items.",
+				group: "settings.group.language",
+				label: "settings.label.language",
+				note: "settings.note.language",
+				control: Control::Choice {
+					options: crate::i18n::Language::ALL.iter().map(|l| l.name()).collect(),
+					chosen: crate::i18n::Language::ALL
+						.iter()
+						.position(|l| *l == self.preferences.language)
+						.unwrap_or(0),
+					set: |this, index, cx| {
+						this.set_language(crate::i18n::Language::ALL[index], cx);
+					},
+				},
+			},
+			Row {
+				section: Section::General,
+				group: "settings.group.starting",
+				label: "settings.label.start_at_login",
+				note: "settings.note.start_at_login",
 				control: Control::Switch {
 					on: self.preferences.start_at_login,
 					set: Rdm::set_start_at_login,
@@ -362,31 +378,31 @@ impl Rdm {
 			},
 			Row {
 				section: Section::General,
-				group: "Where things go",
-				label: "Download folder",
-				note: "The folder this system calls Downloads.",
+				group: "settings.group.where_things_go",
+				label: "settings.label.download_folder",
+				note: "settings.note.download_folder",
 				control: Control::Value(folder),
 			},
 			Row {
 				section: Section::General,
-				group: "Where things go",
-				note: "Nothing yet; a finished file is left where it landed.",
-				label: "On completion",
+				group: "settings.group.where_things_go",
+				note: "settings.note.on_completion",
+				label: "settings.label.on_completion",
 				control: Control::Value("Do nothing".to_owned()),
 			},
 			// TODO: a picker once there is a second channel to pick.
 			Row {
 				section: Section::Updates,
 				group: "",
-				note: "Which builds the check follows.",
-				label: "Update channel",
+				note: "settings.note.update_channel",
+				label: "settings.label.update_channel",
 				control: Control::Value(self.preferences.update_channel.name().to_owned()),
 			},
 			Row {
 				section: Section::Updates,
 				group: "",
-				note: "Every five minutes, and once at launch.",
-				label: "Check for updates",
+				note: "settings.note.check_for_updates",
+				label: "settings.label.check_for_updates",
 				control: Control::Switch {
 					on: self.preferences.check_updates,
 					set: Rdm::set_check_updates,
@@ -395,15 +411,15 @@ impl Rdm {
 			Row {
 				section: Section::Updates,
 				group: "",
-				note: "Every five minutes, and once at launch.",
-				label: "Automatic updates",
+				note: "settings.note.check_for_updates",
+				label: "settings.label.automatic_updates",
 				control: Control::Switch { on: self.preferences.auto_update, set: Rdm::set_auto_update },
 			},
 			Row {
 				section: Section::Updates,
 				group: "",
-				note: "What acting on it means.",
-				label: "When a build is found",
+				note: "settings.note.when_found",
+				label: "settings.label.when_a_build_is_found",
 				control: Control::Choice {
 					options: Policy::ALL.iter().map(|p| p.name()).collect(),
 					chosen: Policy::ALL
@@ -416,8 +432,8 @@ impl Rdm {
 			Row {
 				section: Section::Updates,
 				group: "",
-				note: "What the last check came to.",
-				label: "Latest build",
+				note: "settings.note.latest_build",
+				label: "settings.label.latest_build",
 				control: Control::Action {
 					word: "Check now",
 					note: self.update_status(),
@@ -426,9 +442,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
-				group: "What is listed",
-				note: "Nothing moves on disk; this is how it reads.",
-				label: "Folders in the download folder",
+				group: "settings.group.what_is_listed",
+				note: "settings.note.folders",
+				label: "settings.label.folders",
 				control: Control::Choice {
 					options: Folders::ALL.iter().map(|f| f.name()).collect(),
 					chosen: Folders::ALL.iter().position(|f| *f == self.preferences.folders).unwrap_or(0),
@@ -437,9 +453,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
-				group: "Opening a file",
-				note: "What shows a file where it lives.",
-				label: "Show a file with",
+				group: "settings.group.opening_a_file",
+				note: "settings.note.show_with",
+				label: "settings.label.show_with",
 				control: Control::Value(if cfg!(any(target_os = "macos", windows)) {
 					crate::reveal::manager_name().to_owned()
 				} else if self.preferences.file_manager.trim().is_empty() {
@@ -450,9 +466,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
-				group: "What is listed",
-				note: "System leavings and scratch files. Torrents still show under Torrents.",
-				label: "Hide the folder's junk",
+				group: "settings.group.what_is_listed",
+				note: "settings.note.hide_junk",
+				label: "settings.label.hide_junk",
 				control: Control::Switch {
 					on: self.preferences.hide_junk,
 					set: Rdm::set_hide_junk,
@@ -460,9 +476,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Network,
-				group: "Proxy",
-				label: "Where the proxy comes from",
-				note: "The address a proxy listens on is its choice, so the machine is asked.",
+				group: "settings.group.proxy",
+				label: "settings.label.proxy_source",
+				note: "settings.note.proxy_source",
 				control: Control::Choice {
 					options: crate::proxy::Source::ALL.iter().map(|s| s.name()).collect(),
 					chosen: crate::proxy::Source::ALL
@@ -474,9 +490,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Network,
-				group: "What we call ourselves",
-				label: "User agent",
-				note: "Some servers hand a download manager a different file, or none.",
+				group: "settings.group.what_we_call_ourselves",
+				label: "settings.label.user_agent",
+				note: "settings.note.user_agent",
 				control: Control::Choice {
 					options: crate::agent::Agent::offered().iter().map(|a| a.name()).collect(),
 					chosen: crate::agent::Agent::offered()
@@ -489,13 +505,13 @@ impl Rdm {
 					},
 				},
 			},
-			self.field_row(Section::Network, "User agent").under("What we call ourselves"),
-			self.field_row(Section::Network, "Proxy").under("Proxy"),
+			self.field_row(Section::Network, "settings.label.user_agent").under("settings.group.what_we_call_ourselves"),
+			self.field_row(Section::Network, "settings.label.proxy").under("settings.group.proxy"),
 			Row {
 				section: Section::Network,
-				group: "Names",
-				label: "Who is asked",
-				note: "The machine's own servers, or the ones named below.",
+				group: "settings.group.names",
+				label: "settings.label.dns_who",
+				note: "settings.note.dns_who",
 				control: Control::Choice {
 					options: crate::dns::Servers::ALL.iter().map(|s| s.name()).collect(),
 					chosen: crate::dns::Servers::ALL
@@ -507,9 +523,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Network,
-				group: "Names",
-				label: "How they are asked",
-				note: "Port 53 is in the clear; over HTTPS is not.",
+				group: "settings.group.names",
+				label: "settings.label.dns_how",
+				note: "settings.note.dns_how",
 				control: Control::Choice {
 					options: crate::dns::Transport::ALL.iter().map(|t| t.name()).collect(),
 					chosen: crate::dns::Transport::ALL
@@ -519,12 +535,12 @@ impl Rdm {
 					set: |this, index, cx| this.set_dns_transport(crate::dns::Transport::ALL[index], cx),
 				},
 			},
-			self.field_row(Section::Network, "Name servers").under("Names"),
+			self.field_row(Section::Network, "settings.label.name_servers").under("settings.group.names"),
 			Row {
 				section: Section::Network,
-				group: "Names",
-				label: "What does the asking",
-				note: "The system knows your hosts file and your VPN; Hickory knows what it is told.",
+				group: "settings.group.names",
+				label: "settings.label.dns_what",
+				note: "settings.note.dns_what",
 				control: Control::Choice {
 					options: crate::dns::Stack::ALL.iter().map(|s| s.name()).collect(),
 					chosen: crate::dns::Stack::ALL
@@ -536,29 +552,29 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Network,
-				group: "Proxy",
-				label: "In use",
-				note: "What every download goes through.",
+				group: "settings.group.proxy",
+				label: "settings.label.proxy_in_use",
+				note: "settings.note.proxy_in_use",
 				control: Control::Action {
 					word: "Look again",
 					note: self.proxy_status(),
 					run: |this, cx| this.look_for_proxy(cx),
 				},
 			},
-			self.field_row(Section::Transfers, "Concurrent downloads"),
-			self.field_row(Section::Transfers, "Speed limit"),
-			self.field_row(Section::Transfers, "Connections"),
-			self.field_row(Section::Transfers, "Smallest segment"),
-			self.field_row(Section::Transfers, "Connect timeout"),
-			self.field_row(Section::Transfers, "Idle timeout"),
-			self.field_row(Section::Transfers, "Retries"),
-			self.field_row(Section::Transfers, "Retry wait"),
-			self.field_row(Section::Transfers, "Size limit"),
+			self.field_row(Section::Transfers, "settings.label.concurrent_downloads").under("settings.group.at_once"),
+			self.field_row(Section::Transfers, "settings.label.speed_limit").under("settings.group.at_once"),
+			self.field_row(Section::Transfers, "settings.label.connections").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.smallest_segment").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.connect_timeout").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.idle_timeout").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.retries").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.retry_wait").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.size_limit").under("settings.group.per_download"),
 			Row {
 				section: Section::Transfers,
-				group: "Per download",
-				note: "Which version to ask the server for.",
-				label: "HTTP version",
+				group: "settings.group.per_download",
+				note: "settings.note.http_version",
+				label: "settings.label.http_version",
 				control: Control::Choice {
 					options: vec!["Auto", "HTTP/1.1", "HTTP/2"],
 					chosen: match self.preferences.http {
@@ -574,13 +590,13 @@ impl Rdm {
 					},
 				},
 			},
-			self.field_row(Section::Transfers, "Headers"),
-			self.field_row(Section::Transfers, "Redirects"),
+			self.field_row(Section::Transfers, "settings.label.headers").under("settings.group.per_download"),
+			self.field_row(Section::Transfers, "settings.label.redirects").under("settings.group.per_download"),
 			Row {
 				section: Section::Transfers,
-				group: "Per download",
-				note: "Claims the size up front, so a full disk is found early.",
-				label: "Preallocate files",
+				group: "settings.group.per_download",
+				note: "settings.note.preallocate",
+				label: "settings.label.preallocate",
 				control: Control::Switch {
 					on: self.preferences.preallocate,
 					set: |this, on, cx| {
@@ -592,9 +608,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
-				group: "The table",
-				note: "Every column back to where it started.",
-				label: "Column widths",
+				group: "settings.group.the_table",
+				note: "settings.note.column_widths",
+				label: "settings.label.column_widths",
 				control: Control::Action {
 					word: "Reset",
 					note: String::new(),
@@ -603,9 +619,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
-				group: "Colors",
-				note: "The sidebar's icons keep their hues always.",
-				label: "Always use colorful categories",
+				group: "settings.group.colors",
+				note: "settings.note.colorful",
+				label: "settings.label.colorful",
 				control: Control::Switch {
 					on: self.preferences.colorful_categories,
 					set: Rdm::set_colorful_categories,
@@ -613,25 +629,25 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
-				group: "Colors",
-				note: "Off keeps its colors whether in front or not.",
-				label: "Dim the window when it is not in front",
+				group: "settings.group.colors",
+				note: "settings.note.dim",
+				label: "settings.label.dim",
 				control: Control::Switch { on: self.preferences.dim_inactive, set: Rdm::set_dim_inactive },
 			},
 			// What this build is: the name in full lives here, and the numbers that tell one
 			// build from another. See spec/release.md.
 			Row {
 				section: Section::About,
-				group: "This build",
+				group: "settings.group.this_build",
 				note: "",
-				label: "Application",
+				label: "settings.label.application",
 				control: Control::Value(identity::NAME.to_owned()),
 			},
 			Row {
 				section: Section::About,
-				group: "This build",
+				group: "settings.group.this_build",
 				note: "",
-				label: "Version",
+				label: "settings.label.version",
 				control: Control::Value(match self.updates.this {
 					Some(build) => format!("{} ({build})", identity::VERSION),
 					None => format!("{}, built by hand", identity::VERSION),
@@ -639,9 +655,9 @@ impl Rdm {
 			},
 			Row {
 				section: Section::About,
-				group: "This build",
+				group: "settings.group.this_build",
 				note: "",
-				label: "Commit",
+				label: "settings.label.commit",
 				control: Control::Value(
 					identity::COMMIT
 						.map(|sha| sha[..sha.len().min(12)].to_owned())
@@ -651,8 +667,8 @@ impl Rdm {
 			Row {
 				section: Section::About,
 				group: "",
-				note: "A development build says .dev here.",
-				label: "Identifier",
+				note: "settings.note.identifier",
+				label: "settings.label.identifier",
 				control: Control::Value(identity::id()),
 			},
 		];
@@ -660,7 +676,7 @@ impl Rdm {
 		// variant and nothing here.
 		rows.extend(Occasion::ALL.map(|occasion| Row {
 			section: Section::Notifications,
-			group: "Where each is said",
+			group: "settings.group.where_each_is_said",
 			note: occasion.note(),
 			label: occasion.label(),
 			control: Control::Choice {
@@ -734,15 +750,16 @@ impl Rdm {
 		let auto = self.preferences.auto_update;
 		let mut shown: Vec<&Row> = rows
 			.iter()
-			.filter(|row| auto || row.label != "When a build is found")
+			.filter(|row| auto || row.label != "settings.label.when_a_build_is_found")
 			.filter(|row| {
 				if searching {
-					// A search reads the note as well as the label: somebody looking for "proxy"
-					// or "quarantine" is looking for what a setting does, and the label is often
-					// the one word that does not say it.
-					row.label.to_lowercase().contains(&query)
-						|| row.note.to_lowercase().contains(&query)
-						|| row.group.to_lowercase().contains(&query)
+					// A search reads what is on screen -- the label, the line under it and the
+					// heading -- rather than the keys behind them: somebody looking for "proxy"
+					// is looking for what a setting does, and in the language they are reading.
+					let seen = |key: &str| crate::i18n::t(key).to_lowercase();
+					seen(row.label).contains(&query)
+						|| seen(row.note).contains(&query)
+						|| seen(row.group).contains(&query)
 				} else {
 					row.section == sheet.section
 				}
@@ -796,7 +813,7 @@ impl Rdm {
 			let mut group: Option<&'static str> = None;
 			for row in shown {
 				if group != Some(row.group) && !row.group.is_empty() {
-					pane = pane.child(group_title(p, row.group));
+					pane = pane.child(group_title(p, crate::i18n::t(row.group)));
 				}
 				group = Some(row.group);
 				pane = pane.child(self.setting_row(row, cx));
@@ -953,7 +970,7 @@ impl Rdm {
 		};
 		// A choice of several words does not fit beside its label, so it goes under it.
 		let stacked = matches!(row.control, Control::Choice { .. });
-		let note = row.note;
+		let note = crate::i18n::t(row.note);
 		let fixed = matches!(row.control, Control::Switch { .. } | Control::Choice { .. });
 		div()
 			.debug_selector(move || format!("setting:{label}"))
@@ -976,7 +993,7 @@ impl Rdm {
 					// and a row two thousand points tall.
 					.when(!stacked, |s| s.flex_1().min_w_0())
 					.gap_0p5()
-					.child(div().truncate().child(label))
+					.child(div().truncate().child(crate::i18n::t(label)))
 					.when(!note.is_empty(), |s| {
 						s.child(div().text_xs().text_color(p.muted).child(note))
 					}),

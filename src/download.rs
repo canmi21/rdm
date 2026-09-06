@@ -36,11 +36,11 @@ impl Status {
 
 	pub fn label(self) -> &'static str {
 		match self {
-			Status::Queued => "Queued",
-			Status::Downloading => "Downloading",
-			Status::Paused => "Paused",
-			Status::Completed => "Completed",
-			Status::Failed => "Failed",
+			Status::Queued => crate::i18n::t("status.queued"),
+			Status::Downloading => crate::i18n::t("status.downloading"),
+			Status::Paused => crate::i18n::t("status.paused"),
+			Status::Completed => crate::i18n::t("status.completed"),
+			Status::Failed => crate::i18n::t("status.failed"),
 		}
 	}
 
@@ -156,9 +156,9 @@ impl Folders {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Folders::Ignore => "Ignore them",
-			Folders::Flatten => "Show what is inside",
-			Folders::Tree => "Keep them as folders",
+			Folders::Ignore => crate::i18n::t("folders.ignore"),
+			Folders::Flatten => crate::i18n::t("folders.flatten"),
+			Folders::Tree => crate::i18n::t("folders.tree"),
 		}
 	}
 }
@@ -236,10 +236,10 @@ impl Filter {
 	/// The state filters' names; a category's is the category's own.
 	pub fn label(self, categories: &[Category]) -> String {
 		match self {
-			Filter::All => "All Tasks".to_owned(),
-			Filter::Downloading => "Downloading".to_owned(),
-			Filter::Unfinished => "Unfinished".to_owned(),
-			Filter::Completed => "Completed".to_owned(),
+			Filter::All => crate::i18n::t("filter.all").to_owned(),
+			Filter::Downloading => crate::i18n::t("filter.downloading").to_owned(),
+			Filter::Unfinished => crate::i18n::t("filter.unfinished").to_owned(),
+			Filter::Completed => crate::i18n::t("filter.completed").to_owned(),
 			Filter::Category(id) => {
 				Category::find(categories, id).map(|c| c.name.clone()).unwrap_or_default()
 			}

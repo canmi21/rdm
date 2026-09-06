@@ -230,6 +230,26 @@ above the ordinary windows, it is invisible
 to `mise run shot`, which takes the application's window; `shot --floating` takes this one. See
 [workflow.md](workflow.md).
 
+**The window is read in one of three languages**: American English, simplified Chinese and
+Japanese. `Language` is the first row under General and takes effect at the next frame, which is
+what "immediately" looks like -- nothing is restarted and nothing is rebuilt. `System` is what a
+first launch has and what a `config.json` written before this reads as: the machine's own
+language decides until somebody picks one, and picking one is picking it for good.
+
+Every string the user reads is a flat key -- `settings.section.network` rather than a tree, three
+files that must agree being easier to compare than three trees to walk -- and the files are one a
+language under `locales/`, embedded at build time, since a translation that can go missing at run
+time is a window that can come up blank. English is the source of truth for the set of keys and
+the fallback for anything a translation has not caught up with. A test compares the three key
+sets, so a string added in English and forgotten in the others is caught before it is shipped.
+
+**Not everything is translated, on purpose.** A name is a name: `rdm`, `Downloads`, `Finder`,
+`Chrome`, `Hickory`, `HTTPS`, `SOCKS5`, `.DS_Store`, `Download finish`. A Chinese or Japanese
+sentence with those left in English is what somebody who uses this software writes; one with them
+translated is what a machine writes. Debug selectors name the key rather than the text, so a test
+means the same thing whatever language the machine running it is set to, and the tests pin
+themselves to English for the same reason.
+
 **A settings row is a label, a line saying what it does, and a control**, and the rows are
 gathered under headings within their section. The line under the label is the part that was
 missing: `Auto update` names itself and says nothing about what happens, and what happened used

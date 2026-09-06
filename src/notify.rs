@@ -36,10 +36,10 @@ impl Style {
 
 	pub fn name(self) -> &'static str {
 		match self {
-			Style::System => "System notification",
-			Style::InApp => "In the window",
-			Style::Window => "A window of its own",
-			Style::Silent => "Nothing",
+			Style::System => crate::i18n::t("notice.style.system"),
+			Style::InApp => crate::i18n::t("notice.style.in_app"),
+			Style::Window => crate::i18n::t("notice.style.window"),
+			Style::Silent => crate::i18n::t("notice.style.silent"),
 		}
 	}
 }
@@ -91,20 +91,20 @@ impl Occasion {
 	/// this moment different from the one above it.
 	pub fn note(self) -> &'static str {
 		match self {
-			Occasion::Finished => "The dialog opens it, shows it, or brings the window back.",
-			Occasion::Failed => "Nothing to do but look, so the system is told.",
-			Occasion::Queue => "Off, or the last of a batch says it twice.",
-			Occasion::Update => "The card in the corner is where it is installed from.",
+			Occasion::Finished => crate::i18n::t("notice.occasion.finished.note"),
+			Occasion::Failed => crate::i18n::t("notice.occasion.failed.note"),
+			Occasion::Queue => crate::i18n::t("notice.occasion.queue.note"),
+			Occasion::Update => crate::i18n::t("notice.occasion.update.note"),
 		}
 	}
 
 	/// What Settings calls the row: the moment, said as it happens rather than as a setting.
 	pub fn label(self) -> &'static str {
 		match self {
-			Occasion::Finished => "A download finishes",
-			Occasion::Failed => "A download fails",
-			Occasion::Queue => "Every download finishes",
-			Occasion::Update => "A newer build is found",
+			Occasion::Finished => crate::i18n::t("notice.occasion.finished.label"),
+			Occasion::Failed => crate::i18n::t("notice.occasion.failed.label"),
+			Occasion::Queue => crate::i18n::t("notice.occasion.queue.label"),
+			Occasion::Update => crate::i18n::t("notice.occasion.update.label"),
 		}
 	}
 }

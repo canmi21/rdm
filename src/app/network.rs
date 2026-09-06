@@ -67,6 +67,15 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// Settings' row: what the window is read in. It takes effect at the next frame, which is
+	/// what "immediately" looks like; nothing is restarted and nothing is rebuilt.
+	pub(crate) fn set_language(&mut self, language: crate::i18n::Language, cx: &mut Context<Self>) {
+		self.preferences.language = language;
+		crate::i18n::use_language(language);
+		self.save_config();
+		cx.notify();
+	}
+
 	/// Settings' row: whether this build starts with the machine. What the system says after the
 	/// attempt is what the switch shows, so a write that failed reads as off rather than as on.
 	pub(crate) fn set_start_at_login(&mut self, on: bool, cx: &mut Context<Self>) {
@@ -122,15 +131,15 @@ impl Rdm {
 	/// there is none.
 	pub(crate) fn proxy_status(&self) -> String {
 		match self.preferences.proxy_source {
-			Source::Direct => "Straight out".to_owned(),
+			Source::Direct => crate::i18n::t("proxy.status.direct").to_owned(),
 			Source::Fixed => match self.proxy_in_use() {
 				Some(address) => address,
-				None => "No address set".to_owned(),
+				None => crate::i18n::t("proxy.status.unset").to_owned(),
 			},
-			Source::Found if self.looking_for_proxy => "Looking...".to_owned(),
+			Source::Found if self.looking_for_proxy => crate::i18n::t("proxy.status.looking").to_owned(),
 			Source::Found => match &self.found_proxy {
 				Some(address) => format!("Found {address}"),
-				None => "Nothing found; straight out".to_owned(),
+				None => crate::i18n::t("proxy.status.nothing").to_owned(),
 			},
 		}
 	}
