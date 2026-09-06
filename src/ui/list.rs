@@ -105,14 +105,12 @@ impl Rdm {
 			.children(cells)
 	}
 
-	/// The corner over the type icons holds a funnel that stays: lit, All also lists what else
-	/// the download folder holds; pressed again, the downloads alone. Under any other list it
-	/// is dimmed and takes no press, since it acts on All only. The slot keeps the width the
-	/// cells match.
+	/// The corner over the type icons holds a funnel that stays: lit, the lists also hold what
+	/// else the download folder holds, wherever a file fits; pressed again, the downloads
+	/// alone. The slot keeps the width the cells match.
 	fn folder_control(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let lit = self.folder_shown;
-		let acts = self.filter == crate::download::Filter::All;
 		div()
 			.id("folder-files")
 			.role(Role::Button)
@@ -124,17 +122,10 @@ impl Rdm {
 			.flex_none()
 			.items_center()
 			.justify_center()
-			.when(acts, |s| {
-				s.cursor_pointer()
-					.tooltip(tooltip(if lit { "Downloads only" } else { "Include folder files" }))
-					.on_click(cx.listener(|this, _, _, cx| this.toggle_folder_files(cx)))
-			})
-			.when(!acts, |s| s.tooltip(tooltip("Folder files, under All")))
-			.child(
-				icon(Icon::Funnel, if lit { p.accent } else { p.muted })
-					.size_3()
-					.when(!acts, |s| s.opacity(0.35)),
-			)
+			.cursor_pointer()
+			.tooltip(tooltip(if lit { "Downloads only" } else { "Include folder files" }))
+			.on_click(cx.listener(|this, _, _, cx| this.toggle_folder_files(cx)))
+			.child(icon(Icon::Funnel, if lit { p.accent } else { p.muted }).size_3())
 	}
 
 	/// A title sits over its cells' edge -- the name left, the numbers right -- and the chevron's
@@ -275,8 +266,16 @@ impl Rdm {
 			.child(tinted_icon(self.category_icon(download)).size_3())
 			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
 			.child(div().w(px(96.0)).flex_none().child(progress_bar(p, download, tint)))
+			// The size takes what it needs on one line -- "649.0 MB / 4.0 GB" while a download is
+			// under way is wider than a finished size -- with a floor so the finished ones line up.
 			.child(
-				div().w(px(90.0)).flex_none().text_right().text_color(p.muted).child(size_cell(download)),
+				div()
+					.min_w(px(90.0))
+					.flex_none()
+					.whitespace_nowrap()
+					.text_right()
+					.text_color(p.muted)
+					.child(size_cell(download)),
 			)
 			.child(icon(Icon::for_status(download.status), tint).size_3())
 	}
