@@ -103,11 +103,24 @@ the build found and whether this is it, or why it could not be read. `Update cha
 Nightly, the only channel, and gets a picker when there is a second; the choice is kept in
 `config.json` as `update_channel`.
 
+**The check and what follows it are the user's to set, in three rows of General.** `Check for
+updates` is the loop itself; off, nothing is asked on its own and only `Check now` asks.
+`Automatic updates` is whether a build the check finds is acted on without a press, and under
+it, only while it is on, `When a build is found` says how far: `Download and install`, the
+default, fetches the file and puts it in place and the card then offers `Restart`; `Download
+only` fetches and keeps it, and the card's `Install` is then instant; `Notify only` is the card
+alone. Nothing restarts on its own, whatever the setting: a restart is a press. A hand build
+takes no automatic step, having no number to be behind. The three are `check_updates`,
+`auto_update` and `update_policy` in `config.json`, each with its default.
+
 ## The application replaces itself, by a rename
 
 `Install` fetches the build's file for where this binary runs from -- `update::install::place`
-reads that off the executable's path: the `.app` around it on macOS, the executable itself on
-Windows, the AppImage the runtime names in `APPIMAGE` or else the bare binary on Linux -- by
+reads that off the executable's path and never off its name, since the user may have called
+the application anything and keeps it: the `.app` around it on macOS, whatever it is called,
+the executable itself on Windows, the AppImage the runtime names in `APPIMAGE` or else the
+bare binary on Linux. A build in this checkout's own `target/` is the developer's and is not
+replaced; a folder that merely happens to be called `target` is not that. The file is fetched by
 the same two addresses in the same order, into `updates/` under the state directory, and
 checks it against the manifest's `sha256` as it lands. A file that does not match is dropped
 and the next address tried, since a mirror can be stale. The card shows the bytes as they
@@ -123,8 +136,11 @@ the installed one with `ditto`, and the two swapped by rename, the old one remov
 Windows a running executable cannot be deleted or overwritten but can be renamed, so the
 `self-replace` crate moves the running one aside, puts the one from the zip under its name,
 and has the moved one go when it closes. On Linux the AppImage, or the binary from the
-tarball, is written beside the old one, marked executable and renamed over it; the desktop
-entry and the icon are where `install.sh` put them and did not change. The new file is written
+tarball -- known by its shape, an executable file with no extension, not by its name, which
+a release may change -- is written beside the old one, marked executable and renamed over
+it; the desktop entry and the icon are where `install.sh` put them and did not change. In
+every case the new build lands under the path the old one had, so a name the user gave the
+application survives its updates. The new file is written
 whole beside the old before anything is renamed, so a failure leaves the old build in place.
 
 ## What is decided elsewhere

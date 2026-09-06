@@ -37,6 +37,31 @@ impl Channel {
 	}
 }
 
+/// What the automatic update does with a newer build once the check has found one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Policy {
+	/// Fetch it and put it in place; the card then offers the restart.
+	#[default]
+	Install,
+	/// Fetch it and keep it; the card then offers the install, which is instant.
+	Download,
+	/// Say so and do nothing; the card offers the install, which fetches first.
+	Notify,
+}
+
+impl Policy {
+	pub const ALL: [Policy; 3] = [Policy::Install, Policy::Download, Policy::Notify];
+
+	pub fn name(self) -> &'static str {
+		match self {
+			Policy::Install => "Download and install",
+			Policy::Download => "Download only",
+			Policy::Notify => "Notify only",
+		}
+	}
+}
+
 /// How often the manifest is asked for while the application runs.
 pub const EVERY: Duration = Duration::from_secs(5 * 60);
 
@@ -336,8 +361,11 @@ mod tests {
 	}
 
 	#[test]
-	fn the_channel_is_spelled_lowercase_in_the_file() {
+	fn the_channel_and_the_policy_are_spelled_lowercase_in_the_file() {
 		assert_eq!(serde_json::to_string(&Channel::Nightly).unwrap(), "\"nightly\"");
 		assert_eq!(serde_json::from_str::<Channel>("\"nightly\"").unwrap(), Channel::Nightly);
+		assert_eq!(serde_json::to_string(&Policy::Install).unwrap(), "\"install\"");
+		assert_eq!(serde_json::from_str::<Policy>("\"download\"").unwrap(), Policy::Download);
+		assert_eq!(Policy::default(), Policy::Install);
 	}
 }

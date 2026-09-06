@@ -1,7 +1,8 @@
 //! The window's side of the update: a check at launch and every few minutes after, a card in
 //! the corner when a newer build is published, a system notification when the window is not
-//! the one in front, and from the card the download, the install and the restart. The check,
-//! the download and the install themselves are `src/update`. See spec/release.md.
+//! the one in front, and the download, the install and the restart, taken from the card or
+//! taken on their own as the settings say. The check, the download and the install themselves
+//! are `src/update`. See spec/release.md.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,7 +18,7 @@ use crate::ui::icon::{Icon, icon};
 use crate::ui::icon_button;
 use crate::ui::status_bar;
 use crate::ui::theme::Palette;
-use crate::update::{self, Available, Manifest, Region, install};
+use crate::update::{self, Available, Manifest, Policy, Region, install};
 
 /// What the check knows and what it last said.
 pub struct Updates {
@@ -37,8 +38,8 @@ pub struct Updates {
 	pub outcome: Option<Result<u64, String>>,
 	/// The build the card was closed on; it stays closed until a newer one.
 	pub dismissed: Option<u64>,
-	/// The build the system was told about; it is told once per build.
-	pub notified: Option<u64>,
+	/// The build the system was last told about, and at which stage; it is told once per stage.
+	pub notified: Option<(u64, &'static str)>,
 	/// Whether the window is the one in front, kept by the activation observer.
 	pub active: bool,
 	/// How far the install of the available build has come.
@@ -47,19 +48,28 @@ pub struct Updates {
 	_poll: Option<Task<()>>,
 }
 
-/// The install, from the card's button to the restart.
+/// The install, from the card's button or the settings' say-so to the restart.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Stage {
 	/// Nothing started; the card offers Install.
 	Offered,
 	/// The file on its way in, so far and out of.
 	Downloading { done: u64, total: Option<u64> },
-	/// The file is whole and checked; it is being put in place.
+	/// The file is whole and checked, and kept; the card offers Install, which is instant.
+	Downloaded { file: PathBuf },
+	/// The file is being put in place.
 	Installing,
 	/// The new build is in place; the card offers Restart, which launches it and quits this.
 	Installed { launch: PathBuf },
 	/// What went wrong; the card offers to try again.
 	Failed(String),
+}
+
+/// How far to take the file: keep it, or put it in place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Step {
+	Download,
+	Install,
 }
 
 impl Default for Updates {
@@ -100,7 +110,8 @@ type Action = (&'static str, fn(&mut Rdm, &mut Context<Rdm>));
 
 impl Rdm {
 	/// Starts the loop: a check now, then one every `update::EVERY` for as long as the window
-	/// lives. Returned so the caller keeps the task alive.
+	/// lives, each skipped while the setting is off. Returned so the caller keeps the task
+	/// alive.
 	pub(crate) fn start_update_checks(
 		&mut self,
 		window: &mut Window,
@@ -113,7 +124,12 @@ impl Rdm {
 		.detach();
 		cx.spawn(async move |this, cx| {
 			loop {
-				if this.update(cx, |this, cx| this.check_for_updates(false, cx)).is_err() {
+				let alive = this.update(cx, |this, cx| {
+					if this.preferences.check_updates {
+						this.check_for_updates(false, cx);
+					}
+				});
+				if alive.is_err() {
 					break;
 				}
 				cx.background_executor().timer(update::EVERY).await;
@@ -122,10 +138,12 @@ impl Rdm {
 	}
 
 	/// One check, on the engine's runtime; the answer is polled back onto the window. A check
-	/// asked for while one is under way joins it; none is made while an install is.
+	/// asked for while one is under way joins it; none is made while a file is on its way.
 	pub(crate) fn check_for_updates(&mut self, by_hand: bool, cx: &mut Context<Self>) {
 		self.updates.by_hand |= by_hand;
-		if self.updates.checking || !matches!(self.updates.stage, Stage::Offered | Stage::Failed(_)) {
+		if self.updates.checking
+			|| matches!(self.updates.stage, Stage::Downloading { .. } | Stage::Installing)
+		{
 			return;
 		}
 		self.updates.checking = true;
@@ -167,8 +185,9 @@ impl Rdm {
 	}
 
 	/// What a manifest means here. A hand build has no number and is never behind on its own;
-	/// only a check asked for shows it what is published. A newer build than the one offered
-	/// starts the offer over.
+	/// only a check asked for shows it what is published, and nothing is done for it on its
+	/// own. A newer build than the one offered starts the offer over, and a numbered build
+	/// then takes the automatic step the settings name.
 	pub(crate) fn apply_manifest(
 		&mut self,
 		manifest: Manifest,
@@ -179,18 +198,37 @@ impl Rdm {
 		let this = self.updates.this;
 		let available = update::compare(&manifest, this).filter(|_| this.is_some() || by_hand);
 		self.updates.latest = Some(manifest);
-		if let Some(available) = &available
-			&& self.updates.notified != Some(available.build)
-			&& !self.updates.active
-		{
-			self.updates.notified = Some(available.build);
-			notify(available, cx);
-		}
-		if available.as_ref().map(|a| a.build) != self.updates.available.as_ref().map(|a| a.build) {
+		let fresh =
+			available.as_ref().map(|a| a.build) != self.updates.available.as_ref().map(|a| a.build);
+		if fresh {
 			self.updates.stage = Stage::Offered;
 		}
 		self.updates.available = available;
+		let Some(available) = self.updates.available.clone() else {
+			cx.notify();
+			return;
+		};
+		let step =
+			match (this.is_some() && self.preferences.auto_update, self.preferences.update_policy) {
+				(true, Policy::Install) => Some(Step::Install),
+				(true, Policy::Download) => Some(Step::Download),
+				_ => None,
+			};
+		match step {
+			Some(step) if fresh => self.take_step(step, cx),
+			_ => self.tell("ready", &format!("{} is ready to install.", available.version), cx),
+		}
 		cx.notify();
+	}
+
+	/// Tells the system once per build and stage, and only while the window is not in front.
+	fn tell(&mut self, stage: &'static str, body: &str, cx: &mut Context<Self>) {
+		let Some(build) = self.updates.available.as_ref().map(|a| a.build) else { return };
+		if self.updates.notified == Some((build, stage)) || self.updates.active {
+			return;
+		}
+		self.updates.notified = Some((build, stage));
+		notify(body, cx);
 	}
 
 	pub(crate) fn dismiss_update(&mut self, cx: &mut Context<Self>) {
@@ -198,11 +236,16 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Fetches the build's file for where this runs from, checks it, and puts it in place, all
-	/// on the engine's runtime, the window polling how far it has come. What cannot be replaced
-	/// -- a build in its build tree, an application still on its disk image -- is said on the
-	/// card and nothing is fetched.
+	/// The card's Install: from the file already kept, or after fetching it.
 	pub(crate) fn install_update(&mut self, cx: &mut Context<Self>) {
+		self.take_step(Step::Install, cx);
+	}
+
+	/// Fetches the build's file for where this runs from and checks it, then keeps it or puts
+	/// it in place, all on the engine's runtime, the window polling how far it has come. What
+	/// cannot be replaced -- a build in its build tree, an application still on its disk image
+	/// -- is said on the card and nothing is fetched.
+	fn take_step(&mut self, step: Step, cx: &mut Context<Self>) {
 		let Some(available) = self.updates.available.clone() else { return };
 		if matches!(self.updates.stage, Stage::Downloading { .. } | Stage::Installing) {
 			return;
@@ -218,32 +261,45 @@ impl Rdm {
 		else {
 			return self.fail_update("nowhere to keep the file".to_owned(), cx);
 		};
+		let kept = match &self.updates.stage {
+			Stage::Downloaded { file } if file.exists() => Some(file.clone()),
+			_ => None,
+		};
 		let region = self.updates.region.unwrap_or(Region::Elsewhere);
 		let urls = update::routes(self.preferences.update_channel, region, &asset.file).to_vec();
 		let counted = Arc::new(Counted::default());
 		let counting = counted.clone();
 		let receiver = self.engine.run(async move {
-			let _ = std::fs::remove_dir_all(&dir);
-			std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-			let file = dir.join(&asset.file);
-			let client = update::file_client();
-			let counted = counting.clone();
-			let progress = move |done: u64, total: Option<u64>| {
-				counted.done.store(done, Ordering::Relaxed);
-				counted.total.store(total.unwrap_or(0), Ordering::Relaxed);
+			let file = match kept {
+				Some(file) => file,
+				None => {
+					let _ = std::fs::remove_dir_all(&dir);
+					std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+					let file = dir.join(&asset.file);
+					let client = update::file_client();
+					let counted = counting.clone();
+					let progress = move |done: u64, total: Option<u64>| {
+						counted.done.store(done, Ordering::Relaxed);
+						counted.total.store(total.unwrap_or(0), Ordering::Relaxed);
+					};
+					update::download(&client, &urls, &file, &asset.sha256, &progress).await?;
+					file
+				}
 			};
-			update::download(&client, &urls, &file, &asset.sha256, &progress).await?;
+			if step == Step::Download {
+				return Ok::<Stage, String>(Stage::Downloaded { file });
+			}
 			counting.done.store(u64::MAX, Ordering::Relaxed);
 			let launch = install::install(&file, &place)?;
 			let _ = std::fs::remove_dir_all(&dir);
-			Ok::<PathBuf, String>(launch)
+			Ok(Stage::Installed { launch })
 		});
 		self.updates.stage = Stage::Downloading { done: 0, total: None };
 		self.updates._poll = Some(cx.spawn(async move |this, cx| {
 			loop {
 				cx.background_executor().timer(Duration::from_millis(200)).await;
 				let stage = match receiver.try_recv() {
-					Ok(Ok(launch)) => Stage::Installed { launch },
+					Ok(Ok(stage)) => stage,
 					Ok(Err(error)) => Stage::Failed(error),
 					Err(mpsc::TryRecvError::Disconnected) => {
 						Stage::Failed("the install stopped without a word".to_owned())
@@ -261,7 +317,10 @@ impl Rdm {
 				let settled = !matches!(stage, Stage::Downloading { .. } | Stage::Installing);
 				let updated = this.update(cx, |this, cx| {
 					if this.updates.stage != stage {
-						this.updates.stage = stage;
+						this.updates.stage = stage.clone();
+						if settled {
+							this.tell_of_stage(cx);
+						}
 						cx.notify();
 					}
 				});
@@ -271,6 +330,20 @@ impl Rdm {
 			}
 		}));
 		cx.notify();
+	}
+
+	/// The word to the system once a step is done, for a window not in front.
+	fn tell_of_stage(&mut self, cx: &mut Context<Self>) {
+		let Some(version) = self.updates.available.as_ref().map(|a| a.version.clone()) else { return };
+		match &self.updates.stage {
+			Stage::Installed { .. } => {
+				self.tell("installed", &format!("{version} is installed. Restart to run it."), cx)
+			}
+			Stage::Downloaded { .. } => {
+				self.tell("downloaded", &format!("{version} is downloaded and ready to install."), cx)
+			}
+			_ => {}
+		}
 	}
 
 	fn fail_update(&mut self, error: String, cx: &mut Context<Self>) {
@@ -287,6 +360,27 @@ impl Rdm {
 				Err(error) => self.fail_update(error, cx),
 			}
 		}
+	}
+
+	pub(crate) fn set_check_updates(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.check_updates = on;
+		self.save_config();
+		if on {
+			self.check_for_updates(false, cx);
+		}
+		cx.notify();
+	}
+
+	pub(crate) fn set_auto_update(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.auto_update = on;
+		self.save_config();
+		cx.notify();
+	}
+
+	pub(crate) fn set_update_policy(&mut self, policy: Policy, cx: &mut Context<Self>) {
+		self.preferences.update_policy = policy;
+		self.save_config();
+		cx.notify();
 	}
 
 	/// The settings row's word on the last check.
@@ -309,8 +403,8 @@ impl Rdm {
 	}
 
 	/// The card in the corner, over the list and above the status bar, while a newer build is
-	/// published and has not been waved away: what it is, how far it has come, and the one
-	/// thing to press next.
+	/// published and has not been waved away: one line on what it is and how far it has come,
+	/// and the one thing to press next.
 	pub(crate) fn update_toast(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
 		let p = self.palette;
 		let available = self.updates.available.as_ref()?;
@@ -332,6 +426,10 @@ impl Rdm {
 					None => format!("Getting {build}, {}", format_bytes(*done)),
 				},
 				None,
+			),
+			Stage::Downloaded { .. } => (
+				format!("{channel} {build} is downloaded"),
+				Some(("Install", |this, cx| this.install_update(cx))),
 			),
 			Stage::Installing => (format!("Installing {build}"), None),
 			Stage::Installed { .. } => (
@@ -412,10 +510,10 @@ fn word_button(
 		.child(word)
 }
 
-/// Tells the system, for a window that is not in front. Failing to is nothing to report: the
-/// card is still there when the window is.
-fn notify(available: &Available, cx: &mut Context<Rdm>) {
-	let body = format!("{} is ready to install.", available.version);
+/// Tells the system. Failing to is nothing to report: the card is still there when the window
+/// is.
+fn notify(body: &str, cx: &mut Context<Rdm>) {
+	let body = body.to_owned();
 	cx.background_executor()
 		.spawn(async move {
 			// macOS delivers a notification only on behalf of an installed bundle; a binary

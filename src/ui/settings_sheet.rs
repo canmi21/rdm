@@ -11,6 +11,7 @@ use crate::app::Rdm;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::{LeavesFocus, backdrop, icon_button};
+use crate::update::Policy;
 
 // TODO: every value row here is a label until there is a setting behind it and a store to keep it
 // in; the folder is the one the engine writes to, the rest are the engine's defaults, read only.
@@ -57,6 +58,8 @@ enum Control {
 	Switch { on: bool, set: fn(&mut Rdm, bool, &mut Context<Rdm>) },
 	/// A word that does something when pressed, with a note on how it last went.
 	Action { word: &'static str, note: String, run: fn(&mut Rdm, &mut Context<Rdm>) },
+	/// One of a few words, the chosen one lit.
+	Choice { options: Vec<&'static str>, chosen: usize, set: fn(&mut Rdm, usize, &mut Context<Rdm>) },
 }
 
 struct Row {
@@ -127,6 +130,31 @@ impl Rdm {
 			Row {
 				section: Section::General,
 				label: "Check for updates",
+				control: Control::Switch {
+					on: self.preferences.check_updates,
+					set: Rdm::set_check_updates,
+				},
+			},
+			Row {
+				section: Section::General,
+				label: "Automatic updates",
+				control: Control::Switch { on: self.preferences.auto_update, set: Rdm::set_auto_update },
+			},
+			Row {
+				section: Section::General,
+				label: "When a build is found",
+				control: Control::Choice {
+					options: Policy::ALL.iter().map(|p| p.name()).collect(),
+					chosen: Policy::ALL
+						.iter()
+						.position(|p| *p == self.preferences.update_policy)
+						.unwrap_or(0),
+					set: |this, index, cx| this.set_update_policy(Policy::ALL[index], cx),
+				},
+			},
+			Row {
+				section: Section::General,
+				label: "Latest build",
 				control: Control::Action {
 					word: "Check now",
 					note: self.update_status(),
@@ -208,8 +236,10 @@ impl Rdm {
 			.children(sections);
 
 		// The pane: the section's rows under its name, or every match under each section's name.
+		let auto = self.preferences.auto_update;
 		let shown: Vec<&Row> = rows
 			.iter()
+			.filter(|row| auto || row.label != "When a build is found")
 			.filter(|row| {
 				if searching {
 					row.label.to_lowercase().contains(&query)
@@ -310,6 +340,33 @@ impl Rdm {
 					.child(div().size(px(14.0)).rounded_full().bg(p.text))
 					.into_any_element()
 			}
+			Control::Choice { options, chosen, set } => {
+				let (chosen, set) = (*chosen, *set);
+				div()
+					.flex()
+					.items_center()
+					.gap_1()
+					.children(options.iter().enumerate().map(|(index, option)| {
+						let on = index == chosen;
+						div()
+							.id(SharedString::from(format!("choice:{label}:{option}")))
+							.role(Role::RadioButton)
+							.aria_label(*option)
+							.aria_selected(on)
+							.debug_selector(move || format!("choice:{option}"))
+							.px_2()
+							.py_0p5()
+							.rounded_sm()
+							.cursor_pointer()
+							.leaves_focus()
+							.text_color(if on { p.text } else { p.muted })
+							.when(on, |s| s.bg(p.selection))
+							.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
+							.on_click(cx.listener(move |this, _, _, cx| set(this, index, cx)))
+							.child(*option)
+					}))
+					.into_any_element()
+			}
 			Control::Action { word, note, run } => {
 				let (word, run) = (*word, *run);
 				div()
@@ -338,12 +395,13 @@ impl Rdm {
 					.into_any_element()
 			}
 		};
+		// A choice of several words does not fit beside its label, so it goes under it.
+		let stacked = matches!(row.control, Control::Choice { .. });
 		div()
 			.debug_selector(move || format!("setting:{label}"))
 			.flex()
-			.justify_between()
-			.items_center()
-			.gap_4()
+			.when(!stacked, |s| s.justify_between().items_center().gap_4())
+			.when(stacked, |s| s.flex_col().items_start().gap_1p5())
 			.py_1p5()
 			.border_b_1()
 			.border_color(p.border)

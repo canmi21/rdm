@@ -187,8 +187,11 @@ does, not by where it was filed; while a search is on, no section is lit. Escape
 closes the sheet, like Escape anywhere on a sheet with nothing to lose. Every setting belongs
 to exactly one section; a setting with nothing behind it yet is shown as a value that cannot
 be changed, marked `TODO` where it lives, rather than left out and rediscovered later. A row
-can also be a word that does something -- `Check now` under `Check for updates` -- with a note
-beside it on how it last went; like a switch, it does not take the keyboard.
+can also be a word that does something -- `Check now` under `Latest build` -- with a note
+beside it on how it last went, or a choice of a few words with the chosen one lit -- `When a
+build is found`; like a switch, neither takes the keyboard. A row that only means something
+under another is shown only then: the choice under `Automatic updates` goes when the switch
+is off. See [release.md](release.md) for what the three update rows do.
 
 **A newer build is a card in the corner, not a sheet.** It sits over the list above the status
 bar, at the right, and asks for nothing: the list stays usable, `Get` opens the file in the

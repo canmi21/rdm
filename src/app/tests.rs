@@ -871,3 +871,25 @@ fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppCont
 	assert!(cx.debug_bounds("setting:Check for updates").is_some());
 	assert!(cx.debug_bounds("button:Check now").is_some());
 }
+
+#[gpui::test]
+fn the_update_settings_are_switches_and_a_choice_that_follows_the_switch(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("setting:Check for updates").is_some());
+	assert!(cx.debug_bounds("setting:Automatic updates").is_some());
+	assert!(cx.debug_bounds("choice:Download and install").is_some(), "the policy, while automatic");
+	click(&mut cx, "choice:Download only");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.preferences.update_policy, crate::update::Policy::Download);
+	});
+	click(&mut cx, "switch:Automatic updates");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.auto_update));
+	assert!(cx.debug_bounds("choice:Download only").is_none(), "no policy without the switch");
+	click(&mut cx, "switch:Check for updates");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.check_updates));
+}

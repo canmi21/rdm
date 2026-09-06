@@ -12,7 +12,7 @@ use crate::category::{Category, Overrides, extensions_of_pattern};
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
 use crate::ui::theme::{format_hex, parse_color};
-use crate::update::Channel;
+use crate::update::{Channel, Policy};
 
 pub const VERSION: u64 = 1;
 
@@ -39,6 +39,14 @@ pub struct Preferences {
 	/// Which channel's builds the update check follows. Nightly, the only one there is.
 	#[serde(default)]
 	pub update_channel: Channel,
+	/// The check runs on its own every few minutes; off, only Check now asks.
+	#[serde(default = "yes")]
+	pub check_updates: bool,
+	/// A build the check finds is acted on without asking, as `update_policy` says.
+	#[serde(default = "yes")]
+	pub auto_update: bool,
+	#[serde(default)]
+	pub update_policy: Policy,
 }
 
 fn yes() -> bool {
@@ -47,7 +55,13 @@ fn yes() -> bool {
 
 impl Default for Preferences {
 	fn default() -> Self {
-		Preferences { colorful_categories: true, update_channel: Channel::default() }
+		Preferences {
+			colorful_categories: true,
+			update_channel: Channel::default(),
+			check_updates: true,
+			auto_update: true,
+			update_policy: Policy::default(),
+		}
 	}
 }
 
@@ -289,6 +303,16 @@ mod tests {
 		assert!(old.settings.colorful_categories, "a file from before the switch");
 		let off = parse(r#"{ "version": 1, "settings": { "colorful_categories": false } }"#).unwrap();
 		assert!(!off.settings.colorful_categories);
+		assert!(
+			off.settings.check_updates && off.settings.auto_update,
+			"the update switches default on"
+		);
+		let quiet = parse(
+			r#"{ "version": 1, "settings": { "check_updates": false, "update_policy": "notify" } }"#,
+		)
+		.unwrap();
+		assert!(!quiet.settings.check_updates);
+		assert_eq!(quiet.settings.update_policy, Policy::Notify);
 		let text = serde_json::to_string(&off).unwrap();
 		assert_eq!(parse(&text).unwrap().settings, off.settings);
 	}

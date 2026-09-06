@@ -41,12 +41,17 @@ pub fn place() -> Result<Place, String> {
 	locate(&exe, appimage.as_deref(), std::env::consts::OS)
 }
 
-/// What `place` decides, from the executable's path alone. A build run from its build tree is
-/// not replaced: that is the developer's, and Cargo's to overwrite. On macOS the bundle is the
-/// third ancestor of the executable, `X.app/Contents/MacOS/X`, and one on a mounted disk image
-/// is running from the installer rather than installed.
+/// Where Cargo puts this checkout's builds, which no update replaces.
+const BUILD_TREE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target");
+
+/// What `place` decides, from the executable's path alone, and never from its name: the user
+/// may have called the application anything, and the place is theirs to keep. A build run
+/// from this checkout's build tree is not replaced: that is the developer's, and Cargo's to
+/// overwrite. On macOS the bundle is the third ancestor of the executable,
+/// `X.app/Contents/MacOS/Y`, and one on a mounted disk image is running from the installer
+/// rather than installed.
 pub fn locate(exe: &Path, appimage: Option<&Path>, os: &str) -> Result<Place, String> {
-	if exe.components().any(|c| c.as_os_str() == "target") {
+	if exe.starts_with(BUILD_TREE) {
 		return Err("this build runs from its build tree and is not replaced".to_owned());
 	}
 	if let Some(appimage) = appimage {
@@ -189,8 +194,10 @@ fn install_exe(_zip: &Path, exe: &Path) -> Result<PathBuf, String> {
 	Err(format!("{} is a Windows executable and this is not Windows", exe.display()))
 }
 
-/// The tarball holds `rdm/rdm` beside the desktop entry and the icon; the binary alone is
-/// taken, since the entry and the icon are where `install.sh` put them and did not change.
+/// The tarball holds the binary beside the desktop entry, the icon and the install script; the
+/// binary alone is taken, since the rest are where `install.sh` put them and did not change.
+/// It is known by its shape, an executable file with no extension, not by its name, which a
+/// release may change.
 #[cfg(target_os = "linux")]
 fn install_binary(tarball: &Path, binary: &Path) -> Result<PathBuf, String> {
 	let file = std::fs::File::open(tarball).map_err(|e| format!("open the tarball: {e}"))?;
@@ -200,7 +207,9 @@ fn install_binary(tarball: &Path, binary: &Path) -> Result<PathBuf, String> {
 	for entry in archive.entries().map_err(|e| format!("read the tarball: {e}"))? {
 		let mut entry = entry.map_err(|e| format!("read the tarball: {e}"))?;
 		let path = entry.path().map_err(|e| format!("read the tarball: {e}"))?.into_owned();
-		if path.file_name().is_some_and(|n| n == "rdm") && entry.header().entry_type().is_file() {
+		let executable = entry.header().mode().is_ok_and(|mode| mode & 0o111 != 0);
+		let plain = path.extension().is_none();
+		if entry.header().entry_type().is_file() && executable && plain {
 			let mut out = std::fs::File::create(&staged).map_err(|e| format!("write the binary: {e}"))?;
 			std::io::copy(&mut entry, &mut out).map_err(|e| format!("write the binary: {e}"))?;
 			found = true;
@@ -288,8 +297,28 @@ mod tests {
 	}
 
 	#[test]
-	fn a_build_in_its_build_tree_is_not_replaced() {
-		let exe = Path::new("/Users/x/rdm/target/release/Downloads");
-		assert!(locate(exe, None, "macos").unwrap_err().contains("build tree"));
+	fn the_place_is_the_path_whatever_the_user_named_it() {
+		let exe = Path::new("/Users/x/Apps/My Fetcher.app/Contents/MacOS/Downloads");
+		assert_eq!(
+			locate(exe, None, "macos"),
+			Ok(Place::Bundle(PathBuf::from("/Users/x/Apps/My Fetcher.app")))
+		);
+		let exe = Path::new("D:\\tools\\dl.exe");
+		assert_eq!(locate(exe, None, "windows"), Ok(Place::Exe(exe.to_path_buf())));
+		let image = Path::new("/home/x/target/fetch");
+		let mounted = Path::new("/tmp/.mount_abc/usr/bin/rdm");
+		assert_eq!(
+			locate(mounted, Some(image), "linux"),
+			Ok(Place::AppImage(image.to_path_buf())),
+			"a folder called target is not the build tree"
+		);
+	}
+
+	#[test]
+	fn a_build_in_this_checkouts_build_tree_is_not_replaced() {
+		let exe = Path::new(BUILD_TREE).join("release/Downloads");
+		assert!(locate(&exe, None, "macos").unwrap_err().contains("build tree"));
+		let elsewhere = Path::new("/Users/x/rdm/target/release/Downloads.app/Contents/MacOS/Downloads");
+		assert!(locate(elsewhere, None, "macos").is_ok(), "another checkout's tree is not this one's");
 	}
 }
