@@ -136,6 +136,11 @@ brings that window forward rather than opening another. Secondary windows keep t
 documents, and the main window is the application, so closing the main window quits and closing a
 secondary one closes only itself.
 
+**A field's shortcuts take the system's modifier.** Select all, paste, copy and cut are
+Command on macOS and Control on Windows and Linux, bound once in `text_input.rs` by platform; a
+field bound to Command alone could not be pasted into anywhere else, which is how it shipped
+first.
+
 **Add Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
 clipboard, and if what is there is under a thousand characters and reads as an address --
 with a scheme, or without one and tried as https -- the field starts with it; anything else

@@ -36,10 +36,14 @@ actions!(
 	]
 );
 
-/// Bound once, in main: the keys every text field answers to.
+/// Bound once, in main: the keys every text field answers to. The clipboard and select-all
+/// take the system's own modifier: Command on macOS, Control everywhere else, where there is
+/// no Command and a field that answers only to it cannot be pasted into.
 pub fn key_bindings() -> Vec<gpui::KeyBinding> {
 	use gpui::KeyBinding;
 	let context = Some("TextInput");
+	let modifier = if cfg!(target_os = "macos") { "cmd" } else { "ctrl" };
+	let with = |key: &str| format!("{modifier}-{key}");
 	vec![
 		KeyBinding::new("backspace", Backspace, context),
 		KeyBinding::new("delete", Delete, context),
@@ -47,10 +51,10 @@ pub fn key_bindings() -> Vec<gpui::KeyBinding> {
 		KeyBinding::new("right", Right, context),
 		KeyBinding::new("shift-left", SelectLeft, context),
 		KeyBinding::new("shift-right", SelectRight, context),
-		KeyBinding::new("cmd-a", SelectAll, context),
-		KeyBinding::new("cmd-v", Paste, context),
-		KeyBinding::new("cmd-c", Copy, context),
-		KeyBinding::new("cmd-x", Cut, context),
+		KeyBinding::new(&with("a"), SelectAll, context),
+		KeyBinding::new(&with("v"), Paste, context),
+		KeyBinding::new(&with("c"), Copy, context),
+		KeyBinding::new(&with("x"), Cut, context),
 		KeyBinding::new("home", Home, context),
 		KeyBinding::new("end", End, context),
 		KeyBinding::new("cmd-left", Home, context),
