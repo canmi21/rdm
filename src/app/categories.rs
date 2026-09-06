@@ -140,7 +140,7 @@ impl Rdm {
 	}
 
 	/// Written at once, not debounced: a category is added once, and the file is the user's.
-	fn save_config(&self) {
+	pub(super) fn save_config(&self) {
 		if let Some(paths) = &self.paths
 			&& let Err(error) =
 				config::save(&paths.config, &Config::from_parts(&self.categories, &self.preferences))

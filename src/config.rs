@@ -12,6 +12,7 @@ use crate::category::{Category, Overrides, extensions_of_pattern};
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
 use crate::ui::theme::{format_hex, parse_color};
+use crate::update::Channel;
 
 pub const VERSION: u64 = 1;
 
@@ -35,6 +36,9 @@ pub struct Preferences {
 	/// inactive grey overrides it either way.
 	#[serde(default = "yes")]
 	pub colorful_categories: bool,
+	/// Which channel's builds the update check follows. Nightly, the only one there is.
+	#[serde(default)]
+	pub update_channel: Channel,
 }
 
 fn yes() -> bool {
@@ -43,7 +47,7 @@ fn yes() -> bool {
 
 impl Default for Preferences {
 	fn default() -> Self {
-		Preferences { colorful_categories: true }
+		Preferences { colorful_categories: true, update_channel: Channel::default() }
 	}
 }
 

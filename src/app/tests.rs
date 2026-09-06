@@ -829,3 +829,38 @@ fn opening_a_download_adds_one_window_and_removing_it_closes_it(cx: &mut TestApp
 	cx.run_until_parked();
 	assert_eq!(cx.windows().len(), 1);
 }
+
+#[gpui::test]
+fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	let manifest = crate::update::Manifest::parse(
+		r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
+			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
+			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
+			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
+			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
+		] }"#,
+	)
+	.unwrap();
+	assert!(cx.debug_bounds("toast:update").is_none(), "nothing known, nothing shown");
+	// A hand build is shown a newer build only when it asked.
+	rdm.update(&mut cx, |rdm, cx| rdm.apply_manifest(manifest.clone(), false, cx));
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("toast:update").is_none(), "a hand build was not asked");
+	rdm.update(&mut cx, |rdm, cx| rdm.apply_manifest(manifest, true, cx));
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("toast:update").is_some(), "build 99 is newer than no number");
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.updates.available.as_ref().map(|a| a.build), Some(99));
+		assert!(rdm.update_status().starts_with("Build 99 is the latest"), "{}", rdm.update_status());
+	});
+	click(&mut cx, "button:Later");
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("toast:update").is_none(), "waved away for this build");
+	// The settings row names the check and its outcome.
+	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("setting:Update channel").is_some());
+	assert!(cx.debug_bounds("setting:Check for updates").is_some());
+	assert!(cx.debug_bounds("button:Check now").is_some());
+}

@@ -49,6 +49,9 @@ unicode-segmentation = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
 # The download folder under watch, FSEvents on macOS; see src/watch.rs.
 notify = "8"
+# A system notification when a newer build is published and the window is not in front; D-Bus
+# on Linux through zbus, so no library is needed there. See spec/release.md.
+notify-rust = "4"
 
 # See spec/engine.md.
 bytes = "1"

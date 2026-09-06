@@ -55,6 +55,8 @@ enum Control {
 	Value(String),
 	/// A switch, and what flipping it does.
 	Switch { on: bool, set: fn(&mut Rdm, bool, &mut Context<Rdm>) },
+	/// A word that does something when pressed, with a note on how it last went.
+	Action { word: &'static str, note: String, run: fn(&mut Rdm, &mut Context<Rdm>) },
 }
 
 struct Row {
@@ -115,6 +117,21 @@ impl Rdm {
 				section: Section::General,
 				label: "On completion",
 				control: Control::Value("Do nothing".to_owned()),
+			},
+			// TODO: a picker once there is a second channel to pick.
+			Row {
+				section: Section::General,
+				label: "Update channel",
+				control: Control::Value(self.preferences.update_channel.name().to_owned()),
+			},
+			Row {
+				section: Section::General,
+				label: "Check for updates",
+				control: Control::Action {
+					word: "Check now",
+					note: self.update_status(),
+					run: |this, cx| this.check_for_updates(true, cx),
+				},
 			},
 			Row {
 				section: Section::Transfers,
@@ -291,6 +308,33 @@ impl Rdm {
 					.when(on, |s| s.justify_end())
 					.on_click(cx.listener(move |this, _, _, cx| set(this, !on, cx)))
 					.child(div().size(px(14.0)).rounded_full().bg(p.text))
+					.into_any_element()
+			}
+			Control::Action { word, note, run } => {
+				let (word, run) = (*word, *run);
+				div()
+					.flex()
+					.items_center()
+					.gap_3()
+					.min_w_0()
+					.child(div().text_color(p.muted).truncate().child(note.clone()))
+					.child(
+						div()
+							.id(SharedString::from(format!("action:{label}")))
+							.role(Role::Button)
+							.aria_label(word)
+							.debug_selector(move || format!("button:{word}"))
+							.flex_none()
+							.px_2()
+							.py_0p5()
+							.rounded_sm()
+							.text_color(p.accent)
+							.cursor_pointer()
+							.leaves_focus()
+							.hover(move |s| s.bg(p.hover))
+							.on_click(cx.listener(move |this, _, _, cx| run(this, cx)))
+							.child(word),
+					)
 					.into_any_element()
 			}
 		};

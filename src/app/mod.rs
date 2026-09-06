@@ -27,6 +27,7 @@ mod categories;
 #[cfg(test)]
 mod tests;
 mod transfers;
+mod updates;
 
 /// How the list is drawn. Detailed is the default because it is the one that shows progress,
 /// speed and size at once; the others trade that for density or for a glance.
@@ -134,6 +135,9 @@ pub struct Rdm {
 	/// The pending write. Replacing it cancels the old one, which is the debounce.
 	save: Option<Task<()>>,
 	_tick: Task<()>,
+	/// The update check: what it found, and the card and notification that follow.
+	pub(crate) updates: updates::Updates,
+	_checks: Option<Task<()>>,
 }
 
 impl Rdm {
@@ -224,8 +228,15 @@ impl Rdm {
 			maximized: saved.maximized,
 			save: None,
 			_tick: tick,
+			updates: updates::Updates::default(),
+			_checks: None,
 		};
 		this.import_strays();
+		// The headless tests have no network to ask and no build number to compare; a test
+		// that wants a manifest hands one in.
+		if !cfg!(test) {
+			this._checks = Some(this.start_update_checks(window, cx));
+		}
 		this
 	}
 
@@ -484,6 +495,7 @@ impl Render for Rdm {
 			.text_size(px(13.0))
 			.bg(p.window)
 			.text_color(p.text)
+			.relative()
 			.track_focus(&self.root_focus)
 			.on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
 				this.resize_to(event.position.x, event.pressed_button == Some(gpui::MouseButton::Left), cx)
@@ -507,6 +519,7 @@ impl Render for Rdm {
 					.child(div().flex().flex_col().flex_1().min_w_0().child(self.render_list(cx))),
 			)
 			.child(self.render_status_bar(cx))
+			.when_some(self.update_toast(cx), |s, toast| s.child(toast))
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when(self.adding.is_some(), |s| s.child(self.add_dialog(cx)))
 			.when(self.settings_open(), |s| s.child(self.settings_sheet(cx)))
