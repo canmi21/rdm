@@ -18,6 +18,17 @@ strip to `button height + 2 * y` and hangs it from the top, so setting `y` to ha
 diameter, 14 points, was measured from a capture of the window; it is the one number in the
 formula that is an observation rather than a choice.
 
+**Windows draws nothing over a transparent titlebar, so the toolbar draws the controls.** Add
+Task starts at the strip's left edge, since there are no traffic lights to clear, and at the
+right end sit minimize, maximize or restore, and close, in the system's own arrangement and
+width, close hovering red. They are not buttons: each is marked as a window control area and
+the strip as the drag area, and the system does the hit-testing, the pressing and the snap
+layouts, the way gpui's Windows backend expects. A release build also tells Windows it is a
+windowed program, or a console opens beside it. Linux keeps the window manager's own bar
+above the toolbar, with its buttons; drawing them into the strip would mean client-side
+decorations, with the window's moving and resizing to handle in the application, and waits on
+a Linux desktop to look at.
+
 ## Three views, Detailed by default
 
 The list draws three ways and a segmented control at the toolbar's right end picks one:

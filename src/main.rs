@@ -1,3 +1,8 @@
+// A Windows executable is a console program unless told otherwise, and opens a console window
+// beside its own; a release build says it is a windowed one. A debug build keeps the console,
+// which is where its log goes. See spec/ui.md.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod assets;
 mod category;

@@ -5,6 +5,9 @@ use crate::download::{Filter, Status};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
 	Plus,
+	Minus,
+	Square,
+	Copy,
 	Pause,
 	Play,
 	Trash,
@@ -57,6 +60,9 @@ impl Icon {
 	fn path(self) -> &'static str {
 		match self {
 			Icon::Plus => "lucide/plus.svg",
+			Icon::Minus => "lucide/minus.svg",
+			Icon::Square => "lucide/square.svg",
+			Icon::Copy => "lucide/copy.svg",
 			Icon::ListRestart => "lucide/list-restart.svg",
 			Icon::Search => "lucide/search.svg",
 			Icon::SlidersHorizontal => "lucide/sliders-horizontal.svg",

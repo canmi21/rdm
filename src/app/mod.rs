@@ -509,7 +509,7 @@ impl Render for Rdm {
 			}))
 			// First, so its listener is the first of the frame; see first_mouse.rs.
 			.child(crate::ui::first_mouse::FirstMouseGuard)
-			.child(self.render_toolbar(cx))
+			.child(self.render_toolbar(window, cx))
 			.child(
 				div()
 					.flex()
