@@ -27,6 +27,26 @@ records the exact release. A major here means a Zed 2.0.
 `gpui_platform`, so the entry point is `gpui_platform::application()` and `Application::new()`
 no longer exists. The mirror's readme still says one dependency is enough; it is not.
 
+## The tray drags gtk3 in, and gtk3 pins glib to an advisory
+
+On Linux the tray is `tray-icon`, whose only backend there is `libappindicator`, which is gtk3;
+`src/tray.rs` runs a gtk loop of its own for it. That puts `gtk 0.18.2` in the tree, which
+requires `glib ^0.18`, and `glib` before 0.20 carries RUSTSEC's unsoundness in
+`VariantStrIter::impl_get` -- a `&p` passed where a C function writes through the pointer, which
+recent compilers optimise away into a null dereference.
+
+**No version bump reaches the fix, and trying is time spent twice.** `gtk 0.18.2` is the last
+of the gtk3 bindings -- gtk-rs ended that line and 0.20 onwards belongs to gtk4 -- so
+`cargo update -p glib --precise 0.20.0` is refused by the resolver, naming `gtk` as the reason.
+`tray-icon` is already at its newest and has no other Linux backend. The same tree reaches
+press through Tauri, which is gtk3 on Linux for the same reason, so this is the workspace's
+situation and not one project's mistake.
+
+What would actually end it is dropping gtk3: a StatusNotifierItem tray over D-Bus, which is
+what the desktops speak now and what libappindicator itself is a deprecated shim for. Until
+then the exposure is Linux only -- none of it compiles on macOS or Windows -- and the advisory
+stays open on purpose.
+
 ## Text needs a feature flag
 
 `gpui_platform` is depended on with `features = ["font-kit"]`. Without it the macOS backend
