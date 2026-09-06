@@ -222,7 +222,14 @@ case, since most of these are known by their whole name rather than their extens
 **The presets are the kinds a download folder actually fills with**, and three of them arrived
 after the first cut: `Torrents`, `3D Models` and `Firmware`. Firmware took `bin` and `hex` from
 `Disk Images`, which had been counting a chip's contents as a filesystem; a disk image is an
-optical image, an installer's image or a machine's disk, and a firmware image is neither. A
+optical image, an installer's image or a machine's disk, and a firmware image is neither. Its
+list is five families rather than a handful: the toolchain's output (`elf`, `axf`, `out`), the
+record formats an assembler emits (`hex`, `ihex`, `srec`, `s19`, `mot`, `sre`), the containers a
+flasher takes (`uf2`, `dfu`, `gbl`, `cyacd`, `apj`, `px4`, `swu`, `ota`), the bitstreams an FPGA
+or CPLD is programmed with (`rbf`, `sof`, `pof`, `jed`, `svf`, `jam`, `mcs`, `bit`), and the
+whole-device images a vendor ships (`rom`, `trx`, `chk`, `ipsw`, `kdz`, `capsule`). Two
+extensions were argued over and left out on purpose: `img` is a filesystem far more often than a
+chip, and `cap` is a packet capture far more often than a UEFI capsule. A
 preset the application learns after a `config.json` was written reaches that file on the next
 load, since a category that only exists for somebody starting fresh is not a category the user
 has. What they take away stays away: the file records every preset it has been offered, and only

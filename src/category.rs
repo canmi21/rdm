@@ -216,9 +216,16 @@ impl Category {
 				name: "Firmware",
 				icon: Icon::Cpu,
 				tint: Tint::Teal,
-				// A chip's contents, not a disk's: the formats a flasher takes, and the record
-				// formats an assembler emits.
-				extensions: "bin hex uf2 dfu srec s19 s28 s37 fw rom rbf bit bitstream elf axf",
+				// A chip's contents rather than a disk's, in five families. `img` is deliberately
+				// not here: it is a filesystem image far more often than a firmware one, and
+				// Disk Images has the better claim on it. `cap` is not here either -- a packet
+				// capture answers to it more often than a UEFI capsule does.
+				extensions: "\
+					bin hex ihex ihx srec s19 s28 s37 mot sre exo eep \
+					elf axf out lss \
+					uf2 dfu fwu fw swu ota gbl cyacd cyacd2 apj px4 \
+					rbf sof pof jed jedec svf xsvf jam jbc mcs rpd jic bit bitstream \
+					rom bios fd capsule wph bio trx chk ipsw kdz ftf",
 			},
 			Preset {
 				name: "3D Models",
@@ -474,6 +481,27 @@ pub fn categories_with_contents<'a>(
 
 #[cfg(test)]
 mod tests {
+	/// Firmware is five families of extension and none of them is a disk's. The two that had to
+	/// be argued over are checked by name: `img` is a filesystem far more often than a chip, and
+	/// `cap` is a packet capture far more often than a UEFI capsule.
+	#[test]
+	fn firmware_covers_its_families_and_leaves_the_disks_alone() {
+		let firmware = Category::find_preset("Firmware").expect("a preset");
+		let has = |ext: &str| firmware.base().iter().any(|e| e == ext);
+		// The toolchain's output, the record formats, the flashing containers, the bitstreams,
+		// and the vendors' whole-device images.
+		for ext in ["bin", "hex", "elf", "srec", "uf2", "dfu", "rbf", "jed", "trx", "ipsw"] {
+			assert!(has(ext), "firmware takes {ext}");
+		}
+		for ext in ["img", "cap", "iso", "dmg"] {
+			assert!(!has(ext), "firmware leaves {ext} alone");
+		}
+		let disks = Category::find_preset("Disk Images").expect("a preset");
+		let disk_has = |ext: &str| disks.base().iter().any(|e| e == ext);
+		assert!(disk_has("img") && disk_has("iso"), "which is where img and iso belong");
+		assert!(!disk_has("bin") && !disk_has("hex"), "and where bin and hex no longer do");
+	}
+
 	use super::*;
 	use crate::download::{Download, sample};
 
