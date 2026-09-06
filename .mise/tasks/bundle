@@ -4,7 +4,7 @@
 Contents/Resources, and an Info.plist naming both. The plist is pkgs/macos/Info.plist with
 its placeholders filled: the version out of Cargo.toml, the build number out of the CI run
 that ordered the build (0 by hand), the bundle identifier and the two names out of src/identity.rs, so each
-has one home. The .app is named in full; the binary inside it is Downloads, as Cargo built it. See spec/packaging.md.
+has one home. The .app is Downloads.app, like the binary inside it, as Cargo built it. See spec/packaging.md.
 """
 
 import os
@@ -37,7 +37,7 @@ def main() -> int:
 		raise SystemExit("error: no icon; `mise run icon` first")
 	if not binary.is_file():
 		raise SystemExit("error: no release binary; `cargo build --release` first")
-	app = ROOT / "target" / "bundle" / f"{name}.app"
+	app = ROOT / "target" / "bundle" / f"{display_name}.app"
 	shutil.rmtree(app, ignore_errors=True)
 	contents = app / "Contents"
 	(contents / "MacOS").mkdir(parents=True)

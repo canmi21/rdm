@@ -43,23 +43,23 @@ where a user's desktop looks, without root. `pkgs/macos/background.svg`, `render
 
 The code, the crate and the bundle identifier say `rdm`, and never change. What a person sees
 is named twice in `src/identity.rs`, and every file that names the application reads it from
-there: `NAME`, `Refined Download Manager`, is what the `.app` and the `.exe` are
-called, what the menu bar and the About window show, the Linux launcher's name and the
-Windows executable's product; `DISPLAY_NAME`, `Downloads`, is what the Dock, Spotlight and the
-window title show and the Windows Task Manager's description, one word like the system's own
-applications. The two are separate on purpose: a person installing
-should read what they are installing, and a person using should read what it is for. The
-cost is that Spotlight answers `Downloads` with the folder and the application both, told
-apart by their icons; the file is not named `Downloads.app` so that Finder, at least, keeps
-them apart.
+there: `NAME`, `Refined Download Manager`, is what the `.exe` is called, what
+the menu bar and the About window show, the Linux launcher's name and the Windows
+executable's product; `DISPLAY_NAME`, `Downloads`, is what the `.app` is called and what the
+Dock, Spotlight and the window title show, and the Windows Task Manager's description, one
+word like the system's own applications. On macOS the application is `Downloads` wherever it
+is seen, the way the system's own are; the name in full is kept for the menu bar, the About
+window and the installer's title, where there is room to say what it is. The cost is that
+Spotlight and Finder answer `Downloads` with the folder and the application both, told apart
+by their icons.
 
 **The executable is named `Downloads` by Cargo, for every system, and packaging renames it.**
 A process is named by its file, and a build run from the tree should be the same process as
 an installed one -- the menu bar and the Dock say `Downloads` for both -- so `[[bin]]` in
 `Cargo.toml` is `Downloads` and a test holds it equal to `DISPLAY_NAME`. Cargo names a binary
 once and cannot name it by system, so the three names the systems want are given after the
-build, by `pkgs/package.sh`: macOS keeps `Downloads` as `CFBundleExecutable`, Linux gets `rdm`
-back, Windows gets `Refined Download Manager.exe`.
+build, by `pkgs/package.sh`: macOS keeps `Downloads` as `CFBundleExecutable` inside
+`Downloads.app`, Linux gets `rdm` back, Windows gets `Refined Download Manager.exe`.
 
 On macOS the Dock reads `CFBundleDisplayName`, the menu bar `CFBundleName`, and Finder the
 file's name, so the three can differ without localisation. On Linux the files keep the
@@ -96,8 +96,7 @@ does not have the face installed and does not need to.
 
 ## The .app is assembled by a task, not a tool
 
-`mise run bundle` builds the release binary and lays out the `.app` under `target/bundle`, named
-in full: the binary under
+`mise run bundle` builds the release binary and lays out `Downloads.app` under `target/bundle`: the binary under
 `Contents/MacOS`, the icon under `Contents/Resources`, the `Info.plist` template filled, and an
 ad hoc signature, without which recent macOS refuses to launch even a local binary. A packaging crate was considered and is not worth its dependencies for a
 folder with four files in it; the task is forty lines and says exactly what the bundle contains.

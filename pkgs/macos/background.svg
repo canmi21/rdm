@@ -28,5 +28,5 @@
     <path d="M280 160 H360"/>
     <path d="M320 120 L360 160 L320 200"/>
   </g>
-  <text x="320" y="325" text-anchor="middle" font-family="Kalam" font-size="17" fill="#6b7380">Drag Refined Download Manager into Applications to install it.</text>
+  <text x="320" y="325" text-anchor="middle" font-family="Kalam" font-size="17" fill="#6b7380">Drag Downloads into Applications to install it.</text>
 </svg>

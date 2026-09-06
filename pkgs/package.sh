@@ -1,11 +1,16 @@
 	# The installer: its background drawn from the SVG with the help line's face fetched from
 	# Google Fonts, then dmgbuild lays the window out. dmgbuild lives in a venv of its own under
 	# target/, made here, so a runner and a machine take the same path and neither has its
-	# python written to. See spec/packaging.md.
+	# python written to. The venv is asked whether it still is one, not whether its files are
+	# there: the runner's cache of target/ once handed back a venv whose python no longer knew
+	# it was in one, and pip then ran as the system's and was refused. See spec/packaging.md.
 	venv=target/installer/venv
 	font=target/installer/Kalam-Regular.ttf
 	mkdir -p target/installer
-	[ -x "$venv/bin/python3" ] || python3 -m venv "$venv"
+	"$venv/bin/python3" -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null || {
+		rm -rf "$venv"
+		python3 -m venv "$venv"
+	}
 	"$venv/bin/python3" -c "import dmgbuild" 2>/dev/null || "$venv/bin/python3" -m pip install --quiet dmgbuild
 #!/usr/bin/env bash
 # Wraps the release binary for one target into dist/: a dmg with an Applications shortcut for
@@ -30,16 +35,21 @@ macos-arm64)
 	# The installer: its background drawn from the SVG with the help line's face fetched from
 	# Google Fonts, then dmgbuild lays the window out. dmgbuild lives in a venv of its own under
 	# target/, made here, so a runner and a machine take the same path and neither has its
-	# python written to. See spec/packaging.md.
+	# python written to. The venv is asked whether it still is one, not whether its files are
+	# there: the runner's cache of target/ once handed back a venv whose python no longer knew
+	# it was in one, and pip then ran as the system's and was refused. See spec/packaging.md.
 	venv=target/installer/venv
 	font=target/installer/Kalam-Regular.ttf
 	mkdir -p target/installer
-	[ -x "$venv/bin/python3" ] || python3 -m venv "$venv"
+	"$venv/bin/python3" -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null || {
+		rm -rf "$venv"
+		python3 -m venv "$venv"
+	}
 	"$venv/bin/python3" -c "import dmgbuild" 2>/dev/null || "$venv/bin/python3" -m pip install --quiet dmgbuild
 	[ -f "$font" ] || curl -fsSL -o "$font" "https://raw.githubusercontent.com/google/fonts/main/ofl/kalam/Kalam-Regular.ttf"
 	swift pkgs/macos/render.swift pkgs/macos/background.svg target/installer/background.png 2 "$font"
 	"$venv/bin/python3" -m dmgbuild -s pkgs/macos/installer.py \
-		-D "app=$root/target/bundle/Refined Download Manager.app" \
+		-D "app=$root/target/bundle/Downloads.app" \
 		-D "background=$root/target/installer/background.png" \
 		"Refined Installer" "dist/$name.dmg"
 	;;
