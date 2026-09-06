@@ -13,6 +13,7 @@ mod store;
 #[cfg(test)]
 mod testing;
 mod ui;
+mod update;
 mod watch;
 
 use gpui::{

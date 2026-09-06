@@ -27,6 +27,25 @@ pub const BUILD: Option<&str> = option_env!("GITHUB_RUN_NUMBER");
 pub const COMMIT: Option<&str> = option_env!("GITHUB_SHA");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Where the builds are published, `user/repo` on GitHub, and which of them this binary is: the
+/// system and the architecture as the release names its files. See spec/release.md.
+pub const REPOSITORY: &str = "canmi21/rdm";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const TARGET: &str = "macos-arm64";
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub const TARGET: &str = "windows-x64";
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub const TARGET: &str = "linux-x64";
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub const TARGET: &str = "linux-arm64";
+#[cfg(not(any(
+	all(target_os = "macos", target_arch = "aarch64"),
+	all(target_os = "windows", target_arch = "x86_64"),
+	all(target_os = "linux", target_arch = "x86_64"),
+	all(target_os = "linux", target_arch = "aarch64"),
+)))]
+pub const TARGET: &str = "unpublished";
+
 #[cfg(test)]
 mod tests {
 	use super::*;

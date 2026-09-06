@@ -240,6 +240,19 @@ impl Engine {
 		receiver
 	}
 
+	/// Runs one future on the runtime for whoever has none: the answer arrives on the returned
+	/// channel, polled the way events are. The window's update check is the one caller.
+	pub fn run<T: Send + 'static>(
+		&self,
+		future: impl std::future::Future<Output = T> + Send + 'static,
+	) -> mpsc::Receiver<T> {
+		let (sender, receiver) = mpsc::channel();
+		self.runtime.spawn(async move {
+			let _ = sender.send(future.await);
+		});
+		receiver
+	}
+
 	pub fn snapshot(&self, id: TaskId) -> Option<Snapshot> {
 		let inner = self.inner.lock().unwrap();
 		inner.entries.get(&id).map(|entry| snapshot_of(id, entry))
