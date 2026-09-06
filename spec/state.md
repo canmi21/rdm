@@ -115,7 +115,7 @@ because a filter left on from last time reads as downloads having vanished.
 
 ## The version is an integer and means one thing
 
-`state.json` carries `"version": 1`, and the rule for moving it is the rule of a database
+`state.json` carries `"version": 2`, and the rule for moving it is the rule of a database
 migration: **the number changes only when a file written before the change can no longer be read
 as it is.** Adding a field, dropping one, renaming nothing -- none of that moves the version,
 because a reader fills a missing field with its default and ignores one it does not know, and
@@ -128,6 +128,11 @@ is refused and left alone, not guessed at: the build that wrote it reads it corr
 overwriting it here with an older shape would lose what that build knew. A file with no integer
 version is refused the same way, since a version that could be missing or fractional is a version
 nobody can rely on.
+
+Version 2 is the first such change, and it is the shape of one: the Compact view was dropped, and
+an enum with a variant taken out of it can no longer read the name of that variant. One field it
+cannot read fails the whole object, so a file naming Compact would have cost its reader the
+window's frame and the column widths too. The arm rewrites the name to Detailed and moves on.
 
 ## A frame is restored only onto a display that is there
 

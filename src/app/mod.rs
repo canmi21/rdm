@@ -34,24 +34,23 @@ mod transfers;
 pub(crate) use transfers::Asked;
 mod updates;
 
-/// How the list is drawn. Detailed is the default because it is the one that shows progress,
-/// speed and size at once; the others trade that for density or for a glance.
+/// How the list is drawn. Detailed is the default and the first offered because it is the one
+/// that shows progress, speed and size at once; the other two trade that for the file's own
+/// picture, at one row each and then at a card each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub enum View {
-	/// One line a row: what a long queue is read in.
-	Compact,
-	/// The system's own icon for the file, and its name. What a file manager shows.
-	Thumbnails,
 	/// The table: type, name, size, progress, speed, status, added.
 	Detailed,
+	/// The system's own icon for the file, and its name. What a file manager shows.
+	Thumbnails,
 	/// A card with a large icon, or a picture of the file where one can be made.
 	Grid,
 }
 
 impl View {
-	/// In the order the switcher offers them, densest first: a line, a row with a picture in it,
-	/// the whole table, and cards.
-	pub const ALL: [View; 4] = [View::Compact, View::Thumbnails, View::Detailed, View::Grid];
+	/// In the order the switcher offers them, by how much of a row is words and how much is
+	/// picture: the whole table, a row with a picture on it, then cards.
+	pub const ALL: [View; 3] = [View::Detailed, View::Thumbnails, View::Grid];
 }
 
 /// A column the table can be ordered by. `Added` is the default: the order downloads arrived in.

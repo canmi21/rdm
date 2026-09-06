@@ -38,19 +38,27 @@ no controls. Add Task starts at the strip's left edge wherever there are no traf
 clear, which on macOS includes full screen, where the system hides them. A release build on
 Windows also says it is a windowed program, or a console opens beside it.
 
-## Four views, Detailed by default
+## Three views, Detailed by default
 
 The list draws three ways and a segmented control at the toolbar's right end picks one:
 
-| View       | A row is                                                        | For                       |
-| ---------- | --------------------------------------------------------------- | ------------------------- |
-| Compact    | one 22px line: type, name, a short bar, size, a status mark     | a long queue              |
-| Thumbnails | one 36px line: the system's own icon for the file, name, size   | finding a file by eye     |
+| View       | A row is                                                            | For                       |
+| ---------- | ------------------------------------------------------------------- | ------------------------- |
 | Detailed   | a table row: type, name, size, progress with percent, speed, status | the default; shows it all |
-| Grid       | a card with a large type icon, or a picture of the file         | scanning by type          |
+| Thumbnails | one 36px line: the system's own icon for the file, name, size       | finding a file by eye     |
+| Grid       | a card with a large type icon, or a picture of the file             | scanning by type          |
 
-They are offered densest first, and the glyph on each button says what a row looks like: bare
-lines, lines with a picture on them, a table, cards.
+They are offered in the order a row turns from words into a picture -- the whole table, a row
+with a picture on it, then cards -- and the glyph on each button says which: a table, lines with
+a picture on them, cards.
+
+**There were four.** A Compact view drew one 22px line a row -- type, name, a short bar, size, a
+status mark -- and it was the table with most of the table taken out. Two views that differ by
+four points of row height and a column of dates are one view and a preference, and the table is
+the one worth keeping: it is where the widths are dragged and where everything a download knows
+is on screen at once. A `state.json` that remembers Compact is migrated to Detailed rather than
+refused, since refusing it would throw away the window's frame and the column widths beside it.
+See src/state.rs.
 
 **The picture is the system's own.** Every desktop keeps an icon per kind of file, and it is the
 picture somebody already knows the file by, so the thumbnails view asks for it rather than

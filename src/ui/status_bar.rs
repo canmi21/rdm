@@ -263,20 +263,17 @@ impl Rdm {
 
 fn view_id(view: View) -> &'static str {
 	match view {
-		View::Compact => "view-compact",
-		View::Thumbnails => "view-thumbnails",
 		View::Detailed => "view-detailed",
+		View::Thumbnails => "view-thumbnails",
 		View::Grid => "view-grid",
 	}
 }
 
 fn view_icon(view: View) -> Icon {
 	match view {
-		// The glyph says what a row looks like: bare lines, lines with a picture on them, a
-		// table, cards.
-		View::Compact => Icon::Rows,
-		View::Thumbnails => Icon::LayoutList,
+		// The glyph says what a row looks like: a table, lines with a picture on them, cards.
 		View::Detailed => Icon::Table,
+		View::Thumbnails => Icon::LayoutList,
 		View::Grid => Icon::LayoutGrid,
 	}
 }

@@ -35,7 +35,6 @@ impl Rdm {
 			.iter()
 			.map(|d| match self.view {
 				View::Detailed => self.table_row(d, cx).into_any_element(),
-				View::Compact => self.compact(d, cx).into_any_element(),
 				View::Thumbnails => self.thumbnail_row(d, cx).into_any_element(),
 				View::Grid => self.card(d, cx).into_any_element(),
 			})
@@ -60,7 +59,7 @@ impl Rdm {
 					.overflow_y_scroll()
 					.map(|s| match self.view {
 						View::Grid => s.flex_row().flex_wrap().gap_1p5().content_start().p_2(),
-						View::Detailed | View::Compact | View::Thumbnails => s.flex_col().px_1p5().py_1(),
+						View::Detailed | View::Thumbnails => s.flex_col().px_1p5().py_1(),
 					})
 					.children(items)
 					.when(empty, |s| {
@@ -398,35 +397,6 @@ impl Rdm {
 			Some(picture) => gpui::img(picture).size(px(size)).into_any_element(),
 			None => tinted_icon(self.category_icon(download)).size(px(size)).into_any_element(),
 		}
-	}
-
-	fn compact(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
-		let tint = p.status(download.status);
-		self
-			.item(download, cx)
-			.flex()
-			.items_center()
-			.gap_2()
-			.h(px(22.0))
-			.px_2()
-			.text_xs()
-			.child(tinted_icon(self.category_icon(download)).size_3())
-			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
-			.child(div().w(px(96.0)).flex_none().child(progress_bar(p, download, tint)))
-			// The size is one line in a fixed slot wide enough for "649.0 MB / 4.0 GB", the two
-			// numbers a download shows under way: a slot that grew with its text pushed the bar
-			// beside it out of line with the other rows'.
-			.child(
-				div()
-					.w(px(130.0))
-					.flex_none()
-					.whitespace_nowrap()
-					.text_right()
-					.text_color(p.muted)
-					.child(size_cell(download)),
-			)
-			.child(icon(Icon::for_status(download.status), tint).size_3())
 	}
 
 	/// What fills a card's picture: the file itself where one can be made of it, the first lines

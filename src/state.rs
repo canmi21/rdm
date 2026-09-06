@@ -13,7 +13,7 @@ use crate::identity::{ORGANIZATION, QUALIFIER};
 
 /// The shape of `state.json`. Bumped only when an older file can no longer be read as-is; fields
 /// added or dropped without breaking that stay at the same version.
-pub const VERSION: u64 = 1;
+pub const VERSION: u64 = 2;
 
 /// Where the application keeps what it owns.
 pub struct Paths {
@@ -151,9 +151,22 @@ pub fn parse(text: &str) -> Result<State> {
 
 /// One step, from `from` to `from + 1`. Each breaking change adds an arm and bumps VERSION; the
 /// arms are the history of the file's shape and are never removed.
-fn migrate(from: u64, _value: Value) -> Result<Value> {
-	// No breaking change has happened yet, so no arm exists; the first one replaces this line.
-	bail!("no migration from state.json version {from}")
+fn migrate(from: u64, mut value: Value) -> Result<Value> {
+	match from {
+		// 1 -> 2: the Compact view was dropped, since the table beside it said everything Compact
+		// said and more. A file remembering it names a view this build has no variant for, and
+		// serde fails the whole object over one field it cannot read -- which would take the
+		// window's frame and the column widths down with a view nobody would miss. So it is
+		// rewritten to the table rather than left to fail.
+		1 => {
+			if value.get("view").and_then(Value::as_str) == Some("Compact") {
+				value["view"] = Value::from("Detailed");
+			}
+			value["version"] = Value::from(2u64);
+			Ok(value)
+		}
+		_ => bail!("no migration from state.json version {from}"),
+	}
 }
 
 pub fn load(path: &Path) -> State {
@@ -207,6 +220,19 @@ mod tests {
 		assert_eq!(on.folder_shown, Some(true));
 		let never = parse(r#"{ "version": 1 }"#).unwrap();
 		assert_eq!(never.folder_shown, None, "and a file from before the field says nothing");
+	}
+
+	/// The Compact view is gone, and a file that remembers it must not take the rest of the file
+	/// down with it: the frame and the widths are what the file is for, and serde fails a whole
+	/// object over one field it cannot read.
+	#[test]
+	fn a_file_remembering_the_compact_view_comes_back_as_the_table() {
+		let state = parse(r#"{ "version": 1, "widths": [1, 2, 3, 4, 5], "view": "Compact" }"#).unwrap();
+		assert_eq!(state.view, Some(View::Detailed), "the view it named is now the table");
+		assert_eq!(state.widths, Some([1.0, 2.0, 3.0, 4.0, 5.0]), "and everything beside it survived");
+		assert_eq!(state.version, VERSION, "read as the shape this build writes");
+		let kept = parse(r#"{ "version": 1, "view": "Grid" }"#).unwrap();
+		assert_eq!(kept.view, Some(View::Grid), "a view this build still has is left where it was");
 	}
 
 	#[test]
