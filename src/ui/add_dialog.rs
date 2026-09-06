@@ -10,6 +10,7 @@ use reqwest::Url;
 
 use crate::app::Rdm;
 use crate::engine::{Inspection, Link};
+use crate::ui::LeavesFocus;
 use crate::ui::backdrop;
 use crate::ui::button;
 use crate::ui::icon::{Icon, icon};
@@ -26,13 +27,32 @@ pub struct AddSheet {
 	pub checking: Option<(Url, Receiver<Result<Inspection, String>>)>,
 	/// The address turned out to be a page; what it links to, and which of those were added.
 	pub page: Option<Page>,
+	/// The address is a file, looked at: what the server said of it, and how many connections
+	/// to open, the engine's judgement or the number in the field.
+	pub found: Option<Found>,
+	pub auto: bool,
+	pub count: Entity<TextInput>,
 	pub error: Option<String>,
+}
+
+pub struct Found {
+	pub url: Url,
+	pub probe: crate::engine::Probe,
 }
 
 pub struct Page {
 	pub url: Url,
 	pub links: Vec<Link>,
 	pub added: Vec<usize>,
+}
+
+/// The number in the connections field: one to `Connections::MAX`, or why not.
+pub fn parse_count(text: &str) -> Result<u16, String> {
+	let max = crate::engine::Connections::MAX;
+	match text.trim().parse::<u32>() {
+		Ok(n) if (1..=max as u32).contains(&n) => Ok(n as u16),
+		_ => Err(format!("Connections must be a number from 1 to {max}.")),
+	}
 }
 
 /// Whatever was typed or pasted, as an address if it can be one. With a scheme, it must be
@@ -79,8 +99,25 @@ impl Rdm {
 					input
 				});
 				cx.observe(&input, |_, _, cx| cx.notify()).detach();
-				self.adding =
-					Some(AddSheet { input: input.clone(), checking: None, page: None, error: None });
+				let confirm = cx.entity();
+				let count = cx.new(|cx| {
+					let mut count = TextInput::new("16", cx)
+						.on_confirm(move |_, _, cx| confirm.update(cx, |this, cx| this.submit_add(cx)));
+					if let Some(n) = self.preferences.connections {
+						count.set_content(&n.to_string(), cx);
+					}
+					count
+				});
+				cx.observe(&count, |_, _, cx| cx.notify()).detach();
+				self.adding = Some(AddSheet {
+					input: input.clone(),
+					checking: None,
+					page: None,
+					found: None,
+					auto: self.preferences.connections.is_none(),
+					count,
+					error: None,
+				});
 				input
 			}
 		};
@@ -98,6 +135,7 @@ impl Rdm {
 			sheet.input.read(cx).content.trim().is_empty()
 				&& sheet.checking.is_none()
 				&& sheet.page.is_none()
+				&& sheet.found.is_none()
 		});
 		if clean {
 			self.close_add(cx);
@@ -110,9 +148,31 @@ impl Rdm {
 	}
 
 	/// Enter, or Add: the address is handed to the engine to look at; what happens next depends
-	/// on its answer, which the pump collects.
+	/// on its answer, which the pump collects. Once the address has been looked at and found to
+	/// be a file, Enter or Add is the second step: the download, with the connections chosen.
 	pub(crate) fn submit_add(&mut self, cx: &mut Context<Self>) {
 		let Some(sheet) = &mut self.adding else { return };
+		if let Some(found) = &sheet.found
+			&& found.url.as_str()
+				== parse_address(&sheet.input.read(cx).content).map(|u| u.to_string()).unwrap_or_default()
+		{
+			let connections = if sheet.auto {
+				None
+			} else {
+				match parse_count(&sheet.count.read(cx).content) {
+					Ok(count) => Some(count),
+					Err(message) => {
+						sheet.error = Some(message);
+						cx.notify();
+						return;
+					}
+				}
+			};
+			let (url, name) = (found.url.clone(), found.probe.file_name.clone());
+			self.add_request(url, Some(name), None, connections, cx);
+			self.close_add(cx);
+			return;
+		}
 		let text = sheet.input.read(cx).content.trim().to_owned();
 		if text.is_empty() {
 			return;
@@ -124,8 +184,18 @@ impl Rdm {
 		};
 		sheet.error = None;
 		sheet.page = None;
+		sheet.found = None;
 		sheet.checking = Some((url.clone(), self.engine.inspect(url)));
 		cx.notify();
+	}
+
+	/// The engine's judgement, or the number in the field.
+	pub(crate) fn set_add_auto(&mut self, auto: bool, cx: &mut Context<Self>) {
+		if let Some(sheet) = &mut self.adding {
+			sheet.auto = auto;
+			sheet.error = None;
+			cx.notify();
+		}
 	}
 
 	/// The engine's answer about the address, if it has arrived. Called by the event pump.
@@ -140,9 +210,8 @@ impl Rdm {
 				sheet.page = Some(Page { url, links: inspection.links, added: Vec::new() });
 			}
 			Ok(inspection) => {
-				let name = inspection.probe.file_name.clone();
-				self.add_request(url, Some(name), None, cx);
-				self.close_add(cx);
+				// A file: say what it is and what can be done with it, and wait for the second step.
+				sheet.found = Some(Found { url, probe: inspection.probe });
 			}
 			Err(message) => sheet.error = Some(message),
 		}
@@ -153,7 +222,8 @@ impl Rdm {
 	fn add_page_anyway(&mut self, cx: &mut Context<Self>) {
 		let Some(page) = self.adding.as_ref().and_then(|s| s.page.as_ref()) else { return };
 		let url = page.url.clone();
-		self.add_request(url, None, None, cx);
+		let connections = self.preferences.connections;
+		self.add_request(url, None, None, connections, cx);
 		self.close_add(cx);
 	}
 
@@ -166,7 +236,8 @@ impl Rdm {
 		}
 		let source = page.url.to_string();
 		page.added.push(index);
-		self.add_request(link.url, Some(link.name), Some(source), cx);
+		let connections = self.preferences.connections;
+		self.add_request(link.url, Some(link.name), Some(source), connections, cx);
 	}
 
 	/// Drawn over everything from the window root; a click outside the sheet closes it.
@@ -219,6 +290,7 @@ impl Rdm {
 						)
 					})
 					.when_some(sheet.page.as_ref(), |s, page| s.child(self.page_notice(page, cx)))
+					.when_some(sheet.found.as_ref(), |s, found| s.child(self.found_notice(found, sheet, cx)))
 					.child(
 						div()
 							.flex()
@@ -242,6 +314,81 @@ impl Rdm {
 			),
 		)
 		.priority(2)
+	}
+
+	/// The address is a file: its name and size, whether the server lets it be split and
+	/// resumed, and how many connections to open, the engine's judgement or a number. Without
+	/// ranges there is nothing to choose, and the notice says so.
+	fn found_notice(
+		&self,
+		found: &Found,
+		sheet: &AddSheet,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let probe = &found.probe;
+		let size =
+			probe.size.map(crate::download::format_bytes).unwrap_or_else(|| "size unknown".to_owned());
+		let capability = if probe.ranges {
+			"Resumable, can be split across connections"
+		} else {
+			"Single connection: the server does not serve ranges"
+		};
+		let chip = |label: &'static str, on: bool, auto: bool| {
+			div()
+				.id(("add-connections", auto as usize))
+				.role(gpui::Role::RadioButton)
+				.aria_label(label)
+				.aria_selected(on)
+				.debug_selector(move || format!("connections:{label}"))
+				.px_2()
+				.py_0p5()
+				.rounded_sm()
+				.cursor_pointer()
+				.leaves_focus()
+				.text_color(if on { p.text } else { p.muted })
+				.when(on, |s| s.bg(p.selection))
+				.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
+				.on_click(cx.listener(move |this, _, _, cx| this.set_add_auto(auto, cx)))
+				.child(label)
+		};
+		div()
+			.debug_selector(|| "add-found".to_owned())
+			.flex()
+			.flex_col()
+			.gap_2()
+			.p_3()
+			.rounded_md()
+			.bg(p.hover)
+			.child(
+				div()
+					.flex()
+					.justify_between()
+					.gap_3()
+					.child(div().min_w_0().truncate().child(probe.file_name.clone()))
+					.child(div().flex_none().text_color(p.muted).child(size)),
+			)
+			.child(div().text_xs().text_color(p.muted).child(capability))
+			.when(probe.ranges, |s| {
+				s.child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.text_xs()
+						.child(div().text_color(p.muted).child("Connections"))
+						.child(chip("Auto", sheet.auto, true))
+						.child(chip("Fixed", !sheet.auto, false))
+						.when(!sheet.auto, |s| s.child(div().w(px(64.0)).child(sheet.count.clone())))
+						.when(!sheet.auto, |s| {
+							s.child(
+								div()
+									.text_color(p.muted)
+									.child(format!("1 to {}", crate::engine::Connections::MAX)),
+							)
+						}),
+				)
+			})
 	}
 
 	/// The address is a page: say so, offer the files it links to, and let the page itself be
