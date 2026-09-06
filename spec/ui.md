@@ -141,16 +141,16 @@ across the pointer, and each fresh press took half of what was left. A drag is t
 window root, not on the handle, because the pointer leaves the handle the moment it moves; a move
 with the button up ends it, since a release outside the window is never seen and would otherwise
 leave the next pointer movement resizing on its own. The
-corner over the type icons holds a funnel that stays: lit, the lists also hold what else the
-download folder holds -- every plain file that is not hidden, not one of a download's two
-files meanwhile, and not named by a row -- each as a completed row with the file's size and
-time and no address; pressed again, the downloads alone. Such a file is treated as a download
-that finished: it is under All Tasks, under Completed, and under whichever category its name
-fits, and the sidebar's counts include it. The rows are read when the funnel is lit and again
-whenever the folder changes while it is. Whether the funnel is lit is remembered in state.json,
-and **lit to begin with**: what the download folder holds is what somebody opening a download
-manager came to see, and a first launch that showed only rows this application happens to have
-written would look emptier than the folder is. It began the other way, off, on the argument that
+corner over the type icons holds a funnel that stays. Filtering nothing, the lists also hold what
+else the download folder holds -- every plain file that is not hidden, not one of a download's
+two files meanwhile, and not named by a row -- each as a completed row with the file's size and
+time and no address; pressed, it filters those out and leaves the downloads alone. Such a file is
+treated as a download that finished: it is under All Tasks, under Completed, and under whichever
+category its name fits, and the sidebar's counts include it. The rows are read when the folder's
+files are let in and again whenever the folder changes while they are. Which way the funnel
+stands is remembered in state.json, and **it lets them in to begin with**: what the download
+folder holds is what somebody opening a download manager came to see, and a first launch that
+showed only rows this application happens to have written would look emptier than the folder is. It began the other way, off, on the argument that
 a folder of a thousand files is not a first impression; the answer is that the funnel is right
 there to press. **The default moves only for somebody who has never chosen.** A save writes the
 field whether the funnel was touched or not, so a state.json that names it has been chosen for,
@@ -162,7 +162,17 @@ list for the session and leaves the file where it is, since a file that was neve
 here is not this application's to delete. The corner held the column widths' reset before,
 shown only while the pointer rested on it; that moved to `Reset` under `Column widths` in
 Settings' Appearance, so a table dragged out of shape still has one way home rather than five
-drags, and the corner could hold something consulted more often. **The status bar's left is the count, and what runs behind the window.** At rest it says how
+drags, and the corner could hold something consulted more often.
+
+**A funnel is lit only while it is filtering.** This one filters by leaving the folder's other
+files out, so the whole list is the funnel doing nothing and downloads alone is the funnel at
+work -- and it lights for the second, not the first. It was the other way round, which read as a
+switch for the folder's files rather than as a filter, and made the window's plainest state the
+one with a control lit in it. It lights in the white All Tasks carries at the top of the sidebar
+rather than in the accent, because both of them mean the list as this window keeps it rather than
+a colour of their own.
+
+**The status bar's left is the count, and what runs behind the window.** At rest it says how
 many downloads there are, or how many are moving; while something runs that the list does not
 show -- the update check, a build on its way in or being installed, a read of the folder --
 a spinner turns after the count with the first such thing named beside it, and every one of

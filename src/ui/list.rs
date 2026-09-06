@@ -6,7 +6,7 @@ use gpui::{
 use crate::app::{Column, Rdm, SortKey, View};
 use crate::download::{Download, Status, format_added, format_bytes, format_speed};
 use crate::ui::icon::{Icon, icon};
-use crate::ui::theme::Palette;
+use crate::ui::theme::{Palette, Tint};
 use crate::ui::tooltip::tooltip;
 
 /// The name column's floor, the same kind of floor the fixed columns keep: a word and an
@@ -116,7 +116,14 @@ impl Rdm {
 	/// alone. The slot keeps the width the cells match.
 	fn folder_control(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let lit = self.folder_shown;
+		let everything = self.folder_shown;
+		// A funnel is lit when it is filtering, and this one filters by leaving the folder's other
+		// files out: the whole list is the funnel doing nothing, and downloads alone is the funnel
+		// at work. It was lit the other way round, which read as "the folder's files are on" -- a
+		// switch rather than a filter, and the one arrangement where the window's plainest state
+		// carried a lit control. White, the same white All Tasks carries at the top of the sidebar,
+		// because both mean the list as this window keeps it rather than a hue of its own.
+		let filtering = !everything;
 		div()
 			.id("folder-files")
 			.role(Role::Button)
@@ -129,9 +136,11 @@ impl Rdm {
 			.items_center()
 			.justify_center()
 			.cursor_pointer()
-			.tooltip(tooltip(if lit { "Downloads only" } else { "Include folder files" }))
+			.tooltip(tooltip(if everything { "Downloads only" } else { "Include folder files" }))
 			.on_click(cx.listener(|this, _, _, cx| this.toggle_folder_files(cx)))
-			.child(icon(Icon::Funnel, if lit { p.accent } else { p.muted }).size_3())
+			.child(
+				icon(Icon::Funnel, if filtering { p.hue(Tint::Snow.rgb()) } else { p.muted }).size_3(),
+			)
 	}
 
 	/// A title sits over its cells' edge -- the name left, the numbers right -- and the chevron's
