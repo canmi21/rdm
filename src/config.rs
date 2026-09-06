@@ -132,6 +132,15 @@ pub struct Preferences {
 	/// Who resolves names, how they are asked, and what does the asking. Each its own answer,
 	/// because the reasons for changing one are not the reasons for changing the others. All
 	/// three are the system's to start with. See src/dns.rs.
+	/// Starts with the machine. Off to begin with: an application that put itself in the login
+	/// items without being asked would be one of those applications. The switch is what the user
+	/// last chose; whether the entry is really there is asked of the system. See src/startup.rs.
+	#[serde(default)]
+	pub start_at_login: bool,
+	/// What this application calls itself to a server: itself, one of the two disguises offered,
+	/// or whatever is written in the field. See src/agent.rs.
+	#[serde(default)]
+	pub agent: crate::agent::Agent,
 	#[serde(default)]
 	pub dns_servers: crate::dns::Servers,
 	#[serde(default)]
@@ -211,9 +220,11 @@ impl Preferences {
 		}
 		settings.max_size = self.max_size;
 		settings.http = self.http;
-		if let Some(agent) = &self.user_agent {
-			settings.user_agent = agent.clone();
-		}
+		// The field is what `Something else` sends and nothing else does; the rest is a table.
+		settings.user_agent = self.agent.string(
+			&settings.user_agent,
+			self.user_agent.as_deref().unwrap_or_default(),
+		);
 		settings.headers = self.headers.clone();
 		// What the engine is given: the address typed, whatever was found, or nothing. `found` is
 		// what the last look came to and is None until it has looked. See src/app/network.rs.
@@ -278,6 +289,8 @@ impl Default for Preferences {
 			headers: Vec::new(),
 			proxy: None,
 			proxy_source: crate::proxy::Source::default(),
+			start_at_login: false,
+			agent: crate::agent::Agent::default(),
 			dns_servers: crate::dns::Servers::default(),
 			dns_transport: crate::dns::Transport::default(),
 			dns_stack: crate::dns::Stack::default(),

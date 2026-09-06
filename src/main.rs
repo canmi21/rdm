@@ -3,6 +3,7 @@
 // which is where its log goes. See spec/ui.md.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod agent;
 mod app;
 mod assets;
 mod category;
@@ -18,6 +19,7 @@ mod index;
 mod notify;
 mod proxy;
 mod reveal;
+mod startup;
 mod state;
 mod thumbnail;
 mod store;

@@ -283,3 +283,14 @@ same as having named nothing, and the system answers.
 A DoH server is named by its URL and its address is found the ordinary way, which is not a
 circle: the URL's host is resolved once, through whatever is already working, and every question
 after it goes over HTTPS.
+
+## What this application calls itself, and the two disguises it offers
+
+The honest answer is `rdm/<version>`, and it is what is sent unless somebody says otherwise. Some
+servers hand a download manager a different file, a slower one or none at all, so three disguises
+exist -- Chrome on Windows, on macOS and on Linux -- and Settings offers **two** of them: never
+the one this system would be telling the truth with, since a macOS machine claiming to be a macOS
+machine is not a disguise. Choosing one fills the field beside it, so what is being sent is on
+screen rather than implied; a disguise nobody can read is one nobody can check. The Chrome major
+version lives in one place in `src/agent.rs` and is worth refreshing, a disguise three years out
+of date being a disguise and not a good one.

@@ -352,7 +352,17 @@ impl Rdm {
 		let mut rows = vec![
 			Row {
 				section: Section::General,
-				group: "",
+				group: "Starting",
+				label: "Start at login",
+				note: "Opens with the machine, where the system keeps its login items.",
+				control: Control::Switch {
+					on: self.preferences.start_at_login,
+					set: Rdm::set_start_at_login,
+				},
+			},
+			Row {
+				section: Section::General,
+				group: "Where things go",
 				label: "Download folder",
 				note: "The folder this system calls Downloads.",
 				control: Control::Value(folder),
@@ -462,6 +472,24 @@ impl Rdm {
 					set: |this, index, cx| this.set_proxy_source(crate::proxy::Source::ALL[index], cx),
 				},
 			},
+			Row {
+				section: Section::Network,
+				group: "What we call ourselves",
+				label: "User agent",
+				note: "Some servers hand a download manager a different file, or none.",
+				control: Control::Choice {
+					options: crate::agent::Agent::offered().iter().map(|a| a.name()).collect(),
+					chosen: crate::agent::Agent::offered()
+						.iter()
+						.position(|a| *a == self.preferences.agent)
+						.unwrap_or(0),
+					set: |this, index, cx| {
+						let chosen = crate::agent::Agent::offered()[index];
+						this.set_agent(chosen, cx);
+					},
+				},
+			},
+			self.field_row(Section::Network, "User agent").under("What we call ourselves"),
 			self.field_row(Section::Network, "Proxy").under("Proxy"),
 			Row {
 				section: Section::Network,
@@ -546,7 +574,6 @@ impl Rdm {
 					},
 				},
 			},
-			self.field_row(Section::Transfers, "User agent"),
 			self.field_row(Section::Transfers, "Headers"),
 			self.field_row(Section::Transfers, "Redirects"),
 			Row {

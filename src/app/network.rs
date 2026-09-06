@@ -67,6 +67,30 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// Settings' row: whether this build starts with the machine. What the system says after the
+	/// attempt is what the switch shows, so a write that failed reads as off rather than as on.
+	pub(crate) fn set_start_at_login(&mut self, on: bool, cx: &mut Context<Self>) {
+		if let Err(error) = crate::startup::set(on) {
+			eprintln!("could not change the login item: {error:#}");
+		}
+		self.preferences.start_at_login = crate::startup::enabled();
+		self.save_config();
+		cx.notify();
+	}
+
+	/// Settings' row: what this application calls itself to a server. Choosing one of the
+	/// disguises fills the field beside it, so what is being sent is on screen rather than
+	/// implied -- a disguise nobody can read is a disguise nobody can check.
+	pub(crate) fn set_agent(&mut self, agent: crate::agent::Agent, cx: &mut Context<Self>) {
+		self.preferences.agent = agent;
+		if agent != crate::agent::Agent::Custom {
+			let own = crate::engine::Settings::default().user_agent;
+			self.preferences.user_agent = Some(agent.string(&own, ""));
+		}
+		self.save_config();
+		cx.notify();
+	}
+
 	/// Settings' rows: who is asked, how, and by what. Each is written as it is chosen, and the
 	/// engine reads them when it builds the next client.
 	pub(crate) fn set_dns_servers(&mut self, servers: crate::dns::Servers, cx: &mut Context<Self>) {

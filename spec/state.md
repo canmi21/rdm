@@ -143,3 +143,16 @@ machine uses. It is written in one place, `src/identity.rs`, and the bundle task
 into `Info.plist` (see [packaging.md](packaging.md)); during development the application runs as
 a bare binary and the identifier is not in play. The same three words name the state directory, so
 the identifier and the directory agree by construction rather than by remembering to keep them so.
+
+## Starting with the machine
+
+Off to begin with: an application that put itself in the login items without being asked would be
+one of those applications. Each system keeps them somewhere different and none of them is a
+library call worth a dependency -- macOS reads a launch agent out of `~/Library/LaunchAgents`,
+Windows a value out of the current user's `Run` key written with the `reg` that ships with it,
+Linux a desktop entry out of `~/.config/autostart`. All three are the user's own, need no
+privileges, and are undone by taking them away. The entry is named after this build's identifier,
+so a development build and an installed one keep separate entries and neither turns the other on.
+What is written points at the binary as it is running: a build moved afterwards starts nothing,
+which is better than starting whatever is now at the old path. The switch shows what the system
+says after the attempt, so a write that failed reads as off rather than as on.

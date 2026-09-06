@@ -273,10 +273,12 @@ back to the category's colour is written as an empty string, which is the only w
 "inherit, deliberately" from "never said".
 
 **A download folder's own folders are ignored, flattened, or kept as folders**, under Folder in
-Settings. Flattening is what it does to start with: what somebody wants from a download folder is
-usually the files, and a folder of folders hides them, so every file inside is listed at the top
-level beside the loose ones. Nothing moves on disk -- this is how the folder reads, not how it
-is. `Ignore them` leaves a directory and its contents out entirely. `Keep them as folders` gives
+Settings. `Ignore them` is what it does to start with, and the reason is a measurement: the
+folder this was written in has a checked-out repository in it, and flattening turned eighty-six
+rows into fifteen hundred, of which none was downloaded. A directory and its contents are left
+out entirely. `Show what is inside` lists every file inside at the top level beside the loose
+ones, for a folder somebody really does keep downloads in; nothing moves on disk, this being how
+the folder reads and not how it is. `Keep them as folders` gives
 the directory a row of its own that opens onto what it holds: one press opens, a second closes,
 and a row inside is drawn only while every folder between it and the download folder is open. A
 folder row is a door and nothing else, having no window of its own and nothing to act on.

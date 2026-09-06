@@ -140,11 +140,12 @@ impl Download {
 #[serde(rename_all = "kebab-case")]
 pub enum Folders {
 	/// Nothing at all: a directory is not a download, and what is inside it is somebody else's
-	/// business.
-	Ignore,
-	/// Every file inside, listed at the top level beside the loose ones. What somebody wants from
-	/// a download folder is usually the files, and a folder of folders hides them.
+	/// business. This is what it does to start with -- a download folder with a checked-out
+	/// repository in it has a hundred thousand files in it, and none of them was downloaded.
 	#[default]
+	Ignore,
+	/// Every file inside, listed at the top level beside the loose ones, for a folder somebody
+	/// really does keep downloads in.
 	Flatten,
 	/// The directory itself, as a row that opens onto what it holds.
 	Tree,
