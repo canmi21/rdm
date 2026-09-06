@@ -14,7 +14,7 @@ use crate::download::{Download, Status};
 
 /// The schema's version, in SQLite's `user_version`. Bumped only when a database written before
 /// can no longer be read as it is; the same rule as state.json's.
-pub const VERSION: i64 = 1;
+pub const VERSION: i64 = 2;
 
 pub struct Store {
 	connection: Connection,
@@ -45,19 +45,25 @@ impl Store {
 					status TEXT NOT NULL,
 					added TEXT NOT NULL,
 					path TEXT,
-					error TEXT
+					error TEXT,
+					connections INTEGER
 				);",
 			)?;
 			connection.pragma_update(None, "user_version", VERSION)?;
 		}
 		// Each later version adds an arm here, from n to n + 1; the arms are never removed.
+		if version == 1 {
+			// How many connections a row was asked for at Add Task; NULL is the engine's own.
+			connection.execute_batch("ALTER TABLE downloads ADD COLUMN connections INTEGER;")?;
+			connection.pragma_update(None, "user_version", 2)?;
+		}
 		Ok(Store { connection })
 	}
 
 	/// Every row, oldest first.
 	pub fn load(&self) -> Result<Vec<Download>> {
 		let mut statement = self.connection.prepare(
-			"SELECT id, name, url, source, size, received, status, added, path, error
+			"SELECT id, name, url, source, size, received, status, added, path, error, connections
 			 FROM downloads ORDER BY id",
 		)?;
 		let rows = statement.query_map([], |row| {
@@ -77,6 +83,7 @@ impl Store {
 					.unwrap_or_else(|_| Local::now()),
 				path: row.get(8)?,
 				error: row.get(9)?,
+				connections: row.get::<_, Option<i64>>(10)?.map(|n| n as u16),
 			})
 		})?;
 		rows.map(|r| r.context("read a download")).collect()
@@ -85,12 +92,13 @@ impl Store {
 	/// Writes the row, new or changed. Speed is not kept: it is a number about now.
 	pub fn save(&self, download: &Download) -> Result<()> {
 		self.connection.execute(
-			"INSERT INTO downloads (id, name, url, source, size, received, status, added, path, error)
-			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+			"INSERT INTO downloads (id, name, url, source, size, received, status, added, path, error, connections)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
 			 ON CONFLICT(id) DO UPDATE SET
 				name = excluded.name, url = excluded.url, source = excluded.source,
 				size = excluded.size, received = excluded.received, status = excluded.status,
-				added = excluded.added, path = excluded.path, error = excluded.error",
+				added = excluded.added, path = excluded.path, error = excluded.error,
+				connections = excluded.connections",
 			params![
 				download.id as i64,
 				download.name,
@@ -102,6 +110,7 @@ impl Store {
 				download.added.to_rfc3339(),
 				download.path,
 				download.error,
+				download.connections.map(|n| n as i64),
 			],
 		)?;
 		Ok(())
@@ -142,6 +151,7 @@ mod tests {
 			added: Local::now(),
 			path: None,
 			error: None,
+			connections: Some(8),
 		}
 	}
 
@@ -170,6 +180,31 @@ mod tests {
 		again.remove(2).unwrap();
 		assert_eq!(again.load().unwrap().len(), 1);
 		assert_eq!(again.next_id().unwrap(), 2, "the highest id in the table plus one");
+	}
+
+	#[test]
+	fn a_version_one_database_gains_the_connections_column_and_reads_none_for_old_rows() {
+		let path = scratch("migrate");
+		{
+			let connection = Connection::open(&path).unwrap();
+			connection
+				.execute_batch(
+					"CREATE TABLE downloads (id INTEGER PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL,
+					 source TEXT, size INTEGER NOT NULL, received INTEGER NOT NULL, status TEXT NOT NULL,
+					 added TEXT NOT NULL, path TEXT, error TEXT);
+					 INSERT INTO downloads VALUES (1, 'a', 'https://h/a', NULL, 1, 0, 'Queued', '2026-01-01T00:00:00+00:00', NULL, NULL);",
+				)
+				.unwrap();
+			connection.pragma_update(None, "user_version", 1).unwrap();
+		}
+		let store = Store::open(&path).unwrap();
+		let rows = store.load().unwrap();
+		assert_eq!((rows.len(), rows[0].connections), (1, None));
+		store.save(&row(2, Status::Queued)).unwrap();
+		assert_eq!(store.load().unwrap()[1].connections, Some(8));
+		let version: i64 =
+			store.connection.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+		assert_eq!(version, VERSION);
 	}
 
 	#[test]

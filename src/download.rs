@@ -78,6 +78,8 @@ pub struct Download {
 	pub path: Option<String>,
 	/// Why it failed, in the engine's words, while it is failed.
 	pub error: Option<String>,
+	/// How many connections were asked for at Add Task; None is the engine's own judgement.
+	pub connections: Option<u16>,
 }
 
 impl Download {
@@ -157,6 +159,40 @@ pub fn format_bytes(bytes: u64) -> String {
 	if unit == 0 { format!("{bytes} B") } else { format!("{value:.1} {}", UNITS[unit]) }
 }
 
+/// A limit as a person writes it: empty, `off` or `unlimited` is none; a bare number is
+/// kilobytes a second, since that is the unit a limit is thought in; `k`, `m` or `g`, with or
+/// without `B/s` after, says otherwise.
+pub fn parse_rate(text: &str) -> Result<Option<u64>, String> {
+	let text = text.trim().to_ascii_lowercase();
+	if text.is_empty() || text == "off" || text == "unlimited" || text == "none" {
+		return Ok(None);
+	}
+	let digits: String = text.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+	let unit = text[digits.len()..].trim().trim_end_matches("/s").trim_end_matches('b').trim();
+	let number: f64 =
+		digits.parse().map_err(|_| "A limit is a number, like 500k or 2m.".to_owned())?;
+	let scale = match unit {
+		"" | "k" | "kb" => 1024.0,
+		"m" | "mb" => 1024.0 * 1024.0,
+		"g" | "gb" => 1024.0 * 1024.0 * 1024.0,
+		_ => return Err("A limit is a number with k, m or g after it.".to_owned()),
+	};
+	let bytes = (number * scale) as u64;
+	if bytes == 0 {
+		Err("A limit is more than nothing; leave it empty for none.".to_owned())
+	} else {
+		Ok(Some(bytes))
+	}
+}
+
+/// A limit as the settings show it: `Off`, or the rate.
+pub fn format_rate(limit: Option<u64>) -> String {
+	match limit {
+		None => "Off".to_owned(),
+		Some(bytes) => format_speed(bytes),
+	}
+}
+
 pub fn format_speed(bytes_per_second: u64) -> String {
 	format!("{}/s", format_bytes(bytes_per_second))
 }
@@ -192,6 +228,7 @@ pub fn sample() -> Vec<Download> {
 		source: None,
 		path: None,
 		error: None,
+		connections: None,
 	};
 	vec![
 		entry(
@@ -276,4 +313,21 @@ pub fn sample() -> Vec<Download> {
 			Status::Downloading,
 		),
 	]
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_rate_is_read_in_kilobytes_by_default_and_off_when_empty() {
+		assert_eq!(parse_rate(""), Ok(None));
+		assert_eq!(parse_rate("off"), Ok(None));
+		assert_eq!(parse_rate("500"), Ok(Some(500 * 1024)));
+		assert_eq!(parse_rate("2m"), Ok(Some(2 * 1024 * 1024)));
+		assert_eq!(parse_rate("1.5 MB/s"), Ok(Some(1536 * 1024)));
+		assert!(parse_rate("fast").is_err());
+		assert!(parse_rate("0").is_err());
+		assert_eq!(format_rate(None), "Off");
+	}
 }

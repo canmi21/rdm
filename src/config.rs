@@ -47,6 +47,12 @@ pub struct Preferences {
 	pub auto_update: bool,
 	#[serde(default)]
 	pub update_policy: Policy,
+	/// Bytes per second across every download; None is unlimited, the default.
+	#[serde(default)]
+	pub speed_limit: Option<u64>,
+	/// What Add Task offers first: None is the engine's own judgement, Some a fixed count.
+	#[serde(default)]
+	pub connections: Option<u16>,
 }
 
 fn yes() -> bool {
@@ -61,6 +67,8 @@ impl Default for Preferences {
 			check_updates: true,
 			auto_update: true,
 			update_policy: Policy::default(),
+			speed_limit: None,
+			connections: None,
 		}
 	}
 }

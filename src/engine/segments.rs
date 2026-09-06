@@ -72,7 +72,7 @@ impl Plan {
 	/// The span cut into `parts` equal pieces, each at least `min_segment` long; fewer pieces
 	/// when the span is too short for that many. What a download starts with when it is allowed
 	/// several connections from the outset.
-	pub fn split(span: Span, parts: u8, min_segment: u64) -> Plan {
+	pub fn split(span: Span, parts: u16, min_segment: u64) -> Plan {
 		let min_segment = min_segment.max(1);
 		let parts = (u64::from(parts.max(1))).min(span.len() / min_segment).max(1);
 		let each = span.len() / parts;

@@ -8,25 +8,42 @@ use serde::{Deserialize, Serialize};
 
 /// How many connections a download may open at once. `auto` lets the engine start with one
 /// and grow towards `max` as the server proves it can take more; off, it opens `max` at once
-/// when the file is large enough to split and one otherwise.
+/// when the file is large enough to split and one otherwise. Never more than `MAX`, which is
+/// what the window lets a person ask for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Connections {
-	pub min: u8,
-	pub max: u8,
+	pub min: u16,
+	pub max: u16,
 	pub auto: bool,
 }
 
 impl Default for Connections {
 	fn default() -> Self {
-		// aria2's defaults: one connection until there is a reason for more, sixteen at most.
-		Connections { min: 1, max: 16, auto: true }
+		Connections::auto()
 	}
 }
 
 impl Connections {
-	/// What was asked for, made sane: at least one, and `min` never above `max`.
+	/// The most a download may open, whatever is asked.
+	pub const MAX: u16 = 256;
+
+	/// The engine's own judgement: one connection until the server has answered it, then one
+	/// more each time a connection delivers its first byte, up to sixteen, and never a
+	/// segment shorter than `min_segment`, so a small file stays on one connection and a
+	/// large one grows as far as the server and the file allow. aria2's defaults.
+	pub fn auto() -> Connections {
+		Connections { min: 1, max: 16, auto: true }
+	}
+
+	/// Exactly this many, opened at once when the file can be split.
+	pub fn fixed(count: u16) -> Connections {
+		let count = count.clamp(1, Connections::MAX);
+		Connections { min: count, max: count, auto: false }
+	}
+
+	/// What was asked for, made sane: at least one, at most `MAX`, and `min` never above `max`.
 	pub fn clamped(self) -> Connections {
-		let max = self.max.max(1);
+		let max = self.max.clamp(1, Connections::MAX);
 		Connections { min: self.min.clamp(1, max), max, auto: self.auto }
 	}
 }

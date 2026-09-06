@@ -140,7 +140,9 @@ the first byte is a server ignoring ranges, and harmless for that segment alone.
 
 ## Connections grow one at a time, and each failure is retried on its own
 
-In automatic mode a download starts with `min` connections and is allowed one more each time a
+A download asks for connections in one of two shapes, `Connections::auto` or
+`Connections::fixed(n)`, and never more than `Connections::MAX`, 256, whatever it asks. In
+automatic mode a download starts with `min` connections and is allowed one more each time a
 connection delivers its first byte, up to `max`: a server that accepts the first is asked for a
 second, and one that is slow to answer is not flooded. A new connection takes an idle segment if
 there is one and otherwise cuts the largest remainder, as the planner describes, and it is

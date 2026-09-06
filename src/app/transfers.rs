@@ -7,6 +7,14 @@ use crate::app::Rdm;
 use crate::download::{Download, Status};
 use crate::engine::{self, Event, TaskId};
 
+/// The engine's shape for what a row asked: its own judgement, or exactly this many.
+pub(crate) fn connections_for(asked: Option<u16>) -> engine::Connections {
+	match asked {
+		None => engine::Connections::auto(),
+		Some(count) => engine::Connections::fixed(count),
+	}
+}
+
 impl Rdm {
 	/// Downloads the folder holds that the list does not: a plan and a partial file left by a
 	/// run whose rows were lost, or copied in from elsewhere. Each that can be continued comes
@@ -55,6 +63,7 @@ impl Rdm {
 				source: None,
 				path: None,
 				error: None,
+				connections: None,
 			});
 			self.persist(id);
 			added = true;
@@ -161,7 +170,7 @@ impl Rdm {
 	/// for the control socket. What is not an address is dropped.
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
 		if let Some(parsed) = crate::ui::add_dialog::parse_address(url) {
-			self.add_request(parsed, None, None, cx);
+			self.add_request(parsed, None, None, self.preferences.connections, cx);
 		}
 	}
 
@@ -174,6 +183,7 @@ impl Rdm {
 		url: reqwest::Url,
 		name: Option<String>,
 		source: Option<String>,
+		connections: Option<u16>,
 		cx: &mut Context<Self>,
 	) {
 		let directory = self
@@ -187,7 +197,9 @@ impl Rdm {
 			.and_then(|s| s.next_id().ok())
 			.unwrap_or(0)
 			.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
-		self.engine.add_with_id(TaskId(id), engine::Request::new(url.clone(), directory), None);
+		let mut request = engine::Request::new(url.clone(), directory);
+		request.settings.connections = connections_for(connections);
+		self.engine.add_with_id(TaskId(id), request, None);
 		let name = name.unwrap_or_else(|| {
 			url
 				.path_segments()
@@ -208,6 +220,7 @@ impl Rdm {
 			source,
 			path: None,
 			error: None,
+			connections,
 		});
 		self.persist(id);
 		self.selected = Some(id);
@@ -260,6 +273,7 @@ impl Rdm {
 			} else if let Ok(url) = reqwest::Url::parse(&download.url) {
 				let mut request = engine::Request::new(url, directory);
 				request.file_name = Some(download.name.clone());
+				request.settings.connections = connections_for(download.connections);
 				self.engine.add_with_id(TaskId(id), request, None);
 			}
 			self.persist(id);

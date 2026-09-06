@@ -236,6 +236,7 @@ impl Rdm {
 			updates: updates::Updates::default(),
 			_checks: None,
 		};
+		this.engine.set_speed_limit(this.preferences.speed_limit);
 		this.import_strays();
 		// The headless tests have no network to ask and no build number to compare; a test
 		// that wants a manifest hands one in.
