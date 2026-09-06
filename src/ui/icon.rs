@@ -19,20 +19,14 @@ pub enum Icon {
 	Archive,
 	Package,
 	File,
-	/// The five rings, one a status, worn as a mark in the list's Status column.
+	/// A status, ringed: the shape every one of them shares, wherever a status is drawn.
 	CircleCheck,
 	CircleX,
 	CirclePause,
 	CircleArrowDown,
+	/// Queued, and a circle too: a clock face is the ring drawn with hands in it.
 	Clock,
-	/// And their bare cousins, worn where a status is something to filter by rather than
-	/// something a row is in. The bare pause is `Pause` above, which the toolbar already had,
-	/// and the bare cross is `X` below, with the other closes.
-	Check,
-	ArrowDown,
-	Hourglass,
-	/// Unfinished in the sidebar, and the exception to the rule below it: the ring is dashed, so
-	/// it reads as an outline not yet closed rather than as a mark in a ring.
+	/// Unfinished in the sidebar, which is a ring left open rather than one closed around a mark.
 	CircleDashed,
 	LayoutList,
 	LayoutGrid,
@@ -112,9 +106,6 @@ impl Icon {
 			Icon::CirclePause => "lucide/circle-pause.svg",
 			Icon::CircleArrowDown => "lucide/circle-arrow-down.svg",
 			Icon::Clock => "lucide/clock.svg",
-			Icon::Check => "lucide/check.svg",
-			Icon::ArrowDown => "lucide/arrow-down.svg",
-			Icon::Hourglass => "lucide/hourglass.svg",
 			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::LayoutList => "lucide/layout-list.svg",
 			Icon::LayoutGrid => "lucide/layout-grid.svg",
@@ -195,26 +186,29 @@ impl Icon {
 		Icon::CATEGORY_CHOICES.into_iter().find(|i| i.name() == name)
 	}
 
-	/// The state filters' icons, bare; a category carries its own, which is bare too. See
-	/// `for_status_filter` for why the legends go without the ring. Two of the four are not
-	/// statuses and so have no ringed cousin: All Tasks is a pyramid, and Unfinished is a dashed
-	/// circle, which is an outline left open rather than a ring closed around a mark.
+	/// The state filters' icons: the same rings the Status column wears, since the sidebar is a
+	/// legend to that column and a legend drawn in another shape is a second legend. A category
+	/// carries its own icon, which is whatever it was given.
 	pub fn for_filter(filter: Filter) -> Icon {
 		match filter {
 			// A shape rather than a mark: a pyramid holds everything under it.
 			Filter::All => Icon::Pyramid,
-			Filter::Downloading => Icon::ArrowDown,
+			Filter::Downloading => Icon::for_status(Status::Downloading),
+			// The one ring that is not a status: an outline not yet closed, which is what
+			// unfinished looks like and what no single status means.
 			Filter::Unfinished => Icon::CircleDashed,
-			Filter::Completed => Icon::Check,
+			Filter::Completed => Icon::for_status(Status::Completed),
 			Filter::Category(_) => Icon::File,
 		}
 	}
 
-	/// The mark a row wears in the Status column to say where it got to: the glyph in a ring.
-	/// The ring is what makes it a mark. It is read down a column, beside a word, at three
-	/// points across, and at that size a bare tick and a bare cross are two strokes each; the
-	/// ring gives every one of them the same outline, so the column reads as a column of marks
-	/// rather than as scratches of different sizes. See spec/icons.md.
+	/// A status, wherever it is drawn: as the mark down the list's Status column, as a row in the
+	/// funnel's menu, and behind the two state filters that name one. Every one of them is a
+	/// ring -- a tick, a cross, two bars, an arrow, and the clock, which is a ring with hands in
+	/// it. The ring is what makes it a mark: read down a column at three points across, a bare
+	/// tick and a bare cross are two strokes each, and the ring gives them all one outline, so
+	/// the eye finds the column before it reads any of it. Drawn the same in the menu because the
+	/// menu is the legend to that column. See spec/icons.md.
 	pub fn for_status(status: Status) -> Icon {
 		match status {
 			Status::Queued => Icon::Clock,
@@ -222,21 +216,6 @@ impl Icon {
 			Status::Paused => Icon::CirclePause,
 			Status::Completed => Icon::CircleCheck,
 			Status::Failed => Icon::CircleX,
-		}
-	}
-
-	/// The same five where a status is something to filter by rather than something a row is in:
-	/// bare, and each the bare cousin of the ring above it. The sidebar and the funnel's menu are
-	/// a legend -- a glyph beside the word it stands for, one to a line, with room around it --
-	/// and there a ring is a box drawn around a picture that did not need one. It also keeps the
-	/// two apart at a glance: a ring in this window means a row's own state, never a filter.
-	pub fn for_status_filter(status: Status) -> Icon {
-		match status {
-			Status::Queued => Icon::Hourglass,
-			Status::Downloading => Icon::ArrowDown,
-			Status::Paused => Icon::Pause,
-			Status::Completed => Icon::Check,
-			Status::Failed => Icon::X,
 		}
 	}
 }
@@ -262,36 +241,31 @@ pub fn hover_icon(icon: Icon, group: &'static str, color: Hsla, hover: Option<Hs
 mod tests {
 	use super::*;
 
-	/// A status is drawn twice in this window and never the same way: ringed where a row states
-	/// what it is, bare where it is a line in a legend. The ring is what tells the two apart at a
-	/// glance, so nothing may wear one on the legend side.
+	/// Every status is a ring, and the two state filters that name one wear the same ring, since
+	/// the sidebar and the funnel's menu are the legend to the column the marks are read down.
 	#[test]
-	fn a_status_is_ringed_as_a_mark_and_bare_as_a_legend() {
+	fn a_status_is_a_ring_wherever_it_is_drawn() {
 		for status in Status::ALL {
-			let mark = Icon::for_status(status);
-			let legend = Icon::for_status_filter(status);
-			assert_ne!(mark, legend, "{status:?} is drawn twice, differently, on purpose");
-			assert!(!legend.path().contains("circle"), "a legend goes bare: {}", legend.path());
+			let path = Icon::for_status(status).path();
+			assert!(path.contains("circle-") || path.contains("clock"), "{status:?} is a ring: {path}");
 		}
-		// Four rings and a clock face, which is the fifth: a circle either way.
-		for status in [Status::Downloading, Status::Paused, Status::Completed, Status::Failed] {
-			assert!(Icon::for_status(status).path().contains("circle-"), "{status:?}");
-		}
-		assert_eq!(Icon::for_status(Status::Queued), Icon::Clock);
+		assert_eq!(Icon::for_status(Status::Downloading), Icon::CircleArrowDown);
+		assert_eq!(Icon::for_filter(Filter::Downloading), Icon::for_status(Status::Downloading));
+		assert_eq!(Icon::for_filter(Filter::Completed), Icon::for_status(Status::Completed));
 	}
 
-	/// The sidebar and the funnel's menu are one legend drawn in two places, so where they name
-	/// the same thing they draw the same glyph. Two of the sidebar's four name something no
-	/// status does, and those are the two that are neither.
+	/// Two of the sidebar's four name what no status does, and those are the two drawn otherwise.
 	#[test]
-	fn the_sidebar_and_the_menu_draw_a_shared_name_the_same_way() {
-		assert_eq!(Icon::for_filter(Filter::Downloading), Icon::for_status_filter(Status::Downloading));
-		assert_eq!(Icon::for_filter(Filter::Completed), Icon::for_status_filter(Status::Completed));
+	fn the_states_that_are_not_statuses_keep_their_own_glyph() {
 		assert_eq!(Icon::for_filter(Filter::All), Icon::Pyramid, "a shape, not a mark");
 		assert_eq!(
 			Icon::for_filter(Filter::Unfinished),
 			Icon::CircleDashed,
-			"an outline left open, which is why it keeps its circle"
+			"a ring left open, which is what unfinished looks like"
 		);
+		let statuses: Vec<Icon> = Status::ALL.into_iter().map(Icon::for_status).collect();
+		for filter in [Filter::All, Filter::Unfinished] {
+			assert!(!statuses.contains(&Icon::for_filter(filter)), "{filter:?} is nobody's status");
+		}
 	}
 }

@@ -200,7 +200,7 @@ impl Rdm {
 				menu_row(
 					p,
 					SharedString::from(format!("chip:{label}")),
-					status.map_or(all, |s| (Icon::for_status_filter(s), p.status(s))),
+					status.map_or(all, |s| (Icon::for_status(s), p.status(s))),
 					label,
 					count,
 					self.status == status,

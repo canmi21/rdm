@@ -194,8 +194,8 @@ drifted: the sidebar's All Tasks became a pyramid and the menu's All stayed a li
 nothing tied them together. Counts follow the same rule and are counted over the same rows the
 sidebar counts, so the number beside Completed in the menu is the number beside Completed in the
 sidebar. A status chosen in the menu is let go when the sidebar moves to a state that cannot hold
-it, since the second cut is only meaningful inside the first. Both legends draw their glyphs
-bare; the ringed ones belong to the list's Status column alone. See
+it, since the second cut is only meaningful inside the first. Both legends draw a status as the
+same ring the list's Status column marks it with, since they are the legend to that column. See
 [icons.md](icons.md).
 
 The view, sort and chip are not yet remembered across launches; that waits on there being any
