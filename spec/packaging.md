@@ -33,7 +33,7 @@ from `Cargo.toml`, `{{BUILD}}` from the CI run number that ordered the build and
 `{{BUNDLE_ID}}` from `src/identity.rs` -- which the bundle task fills; a placeholder left
 unfilled is an error, not a plist with braces in it. `CFBundleShortVersionString` is the version
 and `CFBundleVersion` the build, so two builds of one version are told apart.
-`pkgs/linux/rdm.desktop` is the desktop entry, whose `StartupWMClass` is the window's app
+`pkgs/linux/Downloads.desktop` is the desktop entry, whose `StartupWMClass` is the window's app
 id -- the bundle identifier again, which `main.rs` hands to GPUI so the desktop can match the
 running window to its entry -- and `pkgs/linux/install.sh` puts the tarball's three files
 where a user's desktop looks, without root. `pkgs/macos/background.svg`, `render.swift` and
@@ -43,30 +43,31 @@ where a user's desktop looks, without root. `pkgs/macos/background.svg`, `render
 
 The code, the crate and the bundle identifier say `rdm`, and never change. What a person sees
 is named twice in `src/identity.rs`, and every file that names the application reads it from
-there: `NAME`, `Refined Download Manager`, is what the `.exe` is called, what
-the menu bar and the About window show, the Linux launcher's name and the Windows
-executable's product; `DISPLAY_NAME`, `Downloads`, is what the `.app` is called and what the
-Dock, Spotlight and the window title show, and the Windows Task Manager's description, one
-word like the system's own applications. On macOS the application is `Downloads` wherever it
+there: `NAME`, `Refined Download Manager`, is what the menu bar, the About
+window and the About section of Settings show, the Linux launcher's name and the Windows
+executable's product; `DISPLAY_NAME`, `Downloads`, is what every file of the product is
+called and what the Dock, Spotlight and the window title show, and the Windows Task Manager's
+description, one word like the system's own applications. On macOS the application is `Downloads` wherever it
 is seen, the way the system's own are; the name in full is kept for the menu bar, the About
 window and the installer's title, where there is room to say what it is. The cost is that
 Spotlight and Finder answer `Downloads` with the folder and the application both, told apart
 by their icons.
 
-**The executable is named `Downloads` by Cargo, for every system, and packaging renames it.**
-A process is named by its file, and a build run from the tree should be the same process as
-an installed one -- the menu bar and the Dock say `Downloads` for both -- so `[[bin]]` in
-`Cargo.toml` is `Downloads` and a test holds it equal to `DISPLAY_NAME`. Cargo names a binary
-once and cannot name it by system, so the three names the systems want are given after the
-build, by `pkgs/package.sh`: macOS keeps `Downloads` as `CFBundleExecutable` inside
-`Downloads.app`, Linux gets `rdm` back, Windows gets `Refined Download Manager.exe`.
+**The executable is `Downloads` on every system, and so is every file of the product.** A
+process is named by its file, and a build run from the tree should be the same process as an
+installed one -- the menu bar and the Dock say `Downloads` for both -- so `[[bin]]` in
+`Cargo.toml` is `Downloads`, a test holds it equal to `DISPLAY_NAME`, and packaging keeps
+it: `Downloads.app` with `Downloads` as `CFBundleExecutable`, `Downloads.exe` in the zip,
+`Downloads` in the tarball and the AppImage beside `Downloads.desktop` and `Downloads.png`.
+The name in full lives where there is room to read it: the menu bar and About on macOS, the
+About section of Settings everywhere, the desktop entry's `Name` on Linux, the product name
+inside the Windows executable.
 
 On macOS the Dock reads `CFBundleDisplayName`, the menu bar `CFBundleName`, and Finder the
 file's name, so the three can differ without localisation. On Linux the files keep the
-short name -- the binary, the entry and the icon are `rdm`, which is what `Exec` and `Icon`
-resolve -- and the entry's `Name` is the full one, the only name a launcher shows. On Windows
-the names are resources winresource writes into the executable beside the icon, and the
-executable itself is named in full inside the zip.
+display name -- the binary, the entry and the icon are `Downloads`, which is what `Exec` and
+`Icon` resolve -- and the entry's `Name` is the full one, the only name a launcher shows. On
+Windows the names are resources winresource writes into the executable beside the icon.
 
 ## The installer is a Finder window, laid out without Finder
 

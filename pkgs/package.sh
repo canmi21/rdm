@@ -54,28 +54,27 @@ macos-arm64)
 		"Refined Installer" "dist/$name.dmg"
 	;;
 windows-x64)
-	# The executable under its name in full, in a zip so the download is one file with that
-	# name inside it. Python's zipfile, since the runner's shell has no zip.
+	# The executable alone, in a zip so the download is one file. Python's zipfile, since the
+	# runner's shell has no zip.
 	rm -rf target/pkg && mkdir -p target/pkg
-	cp target/release/Downloads.exe "target/pkg/Refined Download Manager.exe"
-	(cd target/pkg && python3 -m zipfile -c "$root/dist/$name.zip" "Refined Download Manager.exe")
+	cp target/release/Downloads.exe target/pkg/
+	(cd target/pkg && python3 -m zipfile -c "$root/dist/$name.zip" Downloads.exe)
 	;;
 linux-x64 | linux-arm64)
 	case "$target" in linux-x64) arch=x86_64 ;; *) arch=aarch64 ;; esac
 	# The tarball: the binary, the desktop entry, the icon and a script that installs the three.
-	rm -rf target/pkg && mkdir -p target/pkg/rdm
-	cp pkgs/linux/rdm.desktop pkgs/linux/install.sh target/pkg/rdm/
-	cp target/release/Downloads target/pkg/rdm/rdm
-	cp assets/icon-512.png target/pkg/rdm/rdm.png
-	tar -czf "dist/$name.tar.gz" -C target/pkg rdm
+	rm -rf target/pkg && mkdir -p target/pkg/Downloads
+	cp pkgs/linux/Downloads.desktop pkgs/linux/install.sh target/release/Downloads target/pkg/Downloads/
+	cp assets/icon-512.png target/pkg/Downloads/Downloads.png
+	tar -czf "dist/$name.tar.gz" -C target/pkg Downloads
 	# The AppImage: the same files in the shape appimagetool expects, system libraries left to
 	# the system. The tool is itself an AppImage and is run extracted, since the runner has no FUSE.
 	rm -rf target/appdir && mkdir -p target/appdir/usr/bin
-	cp target/release/Downloads target/appdir/usr/bin/rdm
-	cp pkgs/linux/rdm.desktop target/appdir/rdm.desktop
-	cp assets/icon-512.png target/appdir/rdm.png
-	ln -s rdm.png target/appdir/.DirIcon
-	ln -s usr/bin/rdm target/appdir/AppRun
+	cp target/release/Downloads target/appdir/usr/bin/Downloads
+	cp pkgs/linux/Downloads.desktop target/appdir/Downloads.desktop
+	cp assets/icon-512.png target/appdir/Downloads.png
+	ln -s Downloads.png target/appdir/.DirIcon
+	ln -s usr/bin/Downloads target/appdir/AppRun
 	tool="target/appimagetool-$arch.AppImage"
 	[ -x "$tool" ] || {
 		curl -fsSL -o "$tool" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$arch.AppImage"

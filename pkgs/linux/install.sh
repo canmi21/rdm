@@ -7,9 +7,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 bin="$HOME/.local/bin"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
 mkdir -p "$bin" "$data/applications" "$data/icons/hicolor/512x512/apps"
-install -m 755 "$here/rdm" "$bin/rdm"
-install -m 644 "$here/rdm.desktop" "$data/applications/rdm.desktop"
-install -m 644 "$here/rdm.png" "$data/icons/hicolor/512x512/apps/rdm.png"
+install -m 755 "$here/Downloads" "$bin/Downloads"
+install -m 644 "$here/Downloads.desktop" "$data/applications/Downloads.desktop"
+install -m 644 "$here/Downloads.png" "$data/icons/hicolor/512x512/apps/Downloads.png"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$data/applications" || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q "$data/icons/hicolor" || true
-echo "installed rdm to $bin; make sure $bin is on your PATH"
+echo "installed Downloads to $bin; make sure $bin is on your PATH"
