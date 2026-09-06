@@ -42,6 +42,14 @@ pub struct Updates {
 	/// back whenever it is told again. It lived only in memory before, so every restart, and
 	/// every check five minutes apart, said the same thing again. See `update::worth_telling`.
 	pub notified: std::collections::HashMap<String, (String, u64)>,
+	/// Whether a newer build is announced at all: the card in the corner, the notification, and
+	/// the automatic install. Off in a development build, where the check itself still runs -- a
+	/// manifest that will not parse, a route that will not answer, a region probe that goes wrong
+	/// all still show up in Settings, which is where somebody looking for them would look -- but
+	/// a build made from the working tree has no business offering to replace itself with a
+	/// published one, nor interrupting the person working on it. A test sets it, the tests being
+	/// a development build too. See spec/release.md.
+	pub announces: bool,
 	/// Whether the window is the one in front, kept by the activation observer.
 	pub active: bool,
 	/// How far the install of the available build has come.
@@ -86,6 +94,7 @@ impl Default for Updates {
 			outcome: None,
 			dismissed: None,
 			notified: std::collections::HashMap::new(),
+			announces: !cfg!(debug_assertions),
 			active: false,
 			stage: Stage::Offered,
 			_poll: None,
@@ -210,12 +219,15 @@ impl Rdm {
 			cx.notify();
 			return;
 		};
-		let step =
-			match (this.is_some() && self.preferences.auto_update, self.preferences.update_policy) {
-				(true, Policy::Install) => Some(Step::Install),
-				(true, Policy::Download) => Some(Step::Download),
-				_ => None,
-			};
+		let announcing = self.updates.announces;
+		let step = match (
+			announcing && this.is_some() && self.preferences.auto_update,
+			self.preferences.update_policy,
+		) {
+			(true, Policy::Install) => Some(Step::Install),
+			(true, Policy::Download) => Some(Step::Download),
+			_ => None,
+		};
 		match step {
 			Some(step) if fresh => self.take_step(step, cx),
 			_ => self.tell("ready", &format!("{} is ready to install.", available.version), cx),
@@ -230,7 +242,7 @@ impl Rdm {
 	fn tell(&mut self, stage: &'static str, body: &str, cx: &mut Context<Self>) {
 		let Some(available) = self.updates.available.as_ref() else { return };
 		let (version, build) = (available.version.clone(), available.build);
-		if self.updates.active {
+		if self.updates.active || !self.updates.announces {
 			return;
 		}
 		// The map answers within a run; the database answers the first time in a run, which is
@@ -429,6 +441,9 @@ impl Rdm {
 	/// and the one thing to press next.
 	pub(crate) fn update_toast(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
 		let p = self.palette;
+		if !self.updates.announces {
+			return None;
+		}
 		let available = self.updates.available.as_ref()?;
 		if self.updates.dismissed == Some(available.build) {
 			return None;

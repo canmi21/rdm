@@ -1032,6 +1032,40 @@ fn opening_a_download_adds_one_window_and_removing_it_closes_it(cx: &mut TestApp
 	assert_eq!(cx.windows().len(), 1);
 }
 
+/// A development build runs the check and keeps its answer -- which is what makes a broken
+/// manifest or an unreachable route visible in Settings -- and offers nothing: no card, no
+/// notification, no install started on its own.
+#[gpui::test]
+fn a_development_build_checks_and_says_nothing(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	let manifest: crate::update::Manifest = serde_json::from_str(
+		r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
+			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
+			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
+			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
+			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
+		] }"#,
+	)
+	.unwrap();
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(!rdm.updates.announces, "which is what a build from the working tree is");
+	});
+	rdm.update(&mut cx, |rdm, _| rdm.updates.this = None);
+	rdm.update(&mut cx, |rdm, cx| rdm.apply_manifest(manifest, true, cx));
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("toast:update").is_none(), "no card, though it was asked for by hand");
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(
+			rdm.updates.available.as_ref().map(|a| a.build),
+			Some(99),
+			"the check ran and its answer is kept, so Settings can show what it came to"
+		);
+		assert_eq!(rdm.updates.outcome, Some(Ok(99)));
+		assert!(rdm.updates.notified.is_empty(), "and the system was told nothing");
+		assert_eq!(rdm.updates.stage, crate::app::updates::Stage::Offered, "nothing was started");
+	});
+}
+
 #[gpui::test]
 fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
@@ -1046,8 +1080,12 @@ fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppCont
 	.unwrap();
 	assert!(cx.debug_bounds("toast:update").is_none(), "nothing known, nothing shown");
 	// A hand build is shown a newer build only when it asked. The test binary made in CI
-	// carries the run's number, so the test says which build it is.
-	rdm.update(&mut cx, |rdm, _| rdm.updates.this = None);
+	// carries the run's number, so the test says which build it is; and the tests are a
+	// development build, which announces nothing unless asked to, so the test says that too.
+	rdm.update(&mut cx, |rdm, _| {
+		rdm.updates.this = None;
+		rdm.updates.announces = true;
+	});
 	rdm.update(&mut cx, |rdm, cx| rdm.apply_manifest(manifest.clone(), false, cx));
 	cx.run_until_parked();
 	assert!(cx.debug_bounds("toast:update").is_none(), "a hand build was not asked");

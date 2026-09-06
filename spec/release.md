@@ -87,6 +87,18 @@ and a CDN its gaps. The region is asked once per run. The manifest is not read t
 jsDelivr, which was considered: its `gh` endpoint serves a repository's tree at a tag, not the
 files uploaded to a release, and `latest.json` is only the latter.
 
+**A development build checks and says nothing.** The check itself runs as it always does --
+the region probe, the routes, the manifest -- and its answer is kept, so a manifest that will
+not parse, a route that will not answer or a comparison that goes wrong is visible in Settings,
+which is where somebody looking for it would look. What a development build does not do is
+announce: no card in the corner, no notification, and nothing installed on its own. A build made
+from the working tree has no business replacing itself with a published one, and less business
+interrupting the person working on it every five minutes. It is a field on the update state
+rather than a `cfg!` at each site, because the headless tests are a development build too and
+would otherwise be unable to exercise the card or the notification at all; the field defaults to
+`!cfg!(debug_assertions)` and a test sets it. Asking by hand still checks, still shows the
+outcome, and still announces nothing.
+
 **A newer build is a card in the corner, and a notification when the window is not in
 front.** The card sits over the list above the status bar, one line at the density of the bars
 around it -- `Nightly 2026.9.6 is ready` -- and offers `Install` and `Later`; the version is
