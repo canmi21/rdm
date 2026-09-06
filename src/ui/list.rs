@@ -266,11 +266,12 @@ impl Rdm {
 			.child(tinted_icon(self.category_icon(download)).size_3())
 			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
 			.child(div().w(px(96.0)).flex_none().child(progress_bar(p, download, tint)))
-			// The size takes what it needs on one line -- "649.0 MB / 4.0 GB" while a download is
-			// under way is wider than a finished size -- with a floor so the finished ones line up.
+			// The size is one line in a fixed slot wide enough for "649.0 MB / 4.0 GB", the two
+			// numbers a download shows under way: a slot that grew with its text pushed the bar
+			// beside it out of line with the other rows'.
 			.child(
 				div()
-					.min_w(px(90.0))
+					.w(px(130.0))
 					.flex_none()
 					.whitespace_nowrap()
 					.text_right()
