@@ -216,7 +216,14 @@ inside Programs; a bitstream draws apart from a chip image inside Firmware. What
 is still the category's own colour, since that is the whole of it rather than one of its parts.
 
 An extension with no shade of its own draws in the category's, which is what most of them do and
-what leaving a shade empty means. `config.json` writes only what differs from the preset, so a
+what leaving a shade empty means. **The list of extensions is where they are set, and it is one
+list rather than two.** A chip wears the colour a file of that extension would, so the feature
+says what it is by being what it does; `Colors`, at the right of the heading, turns the chips
+from switches into doors, the same turn the presets face makes under `Edit`. While one is open
+the heading names it, the swatches paint that extension rather than the category, and `Inherit`
+gives it back the category's colour; pressing the open chip again, or `Colors` a second time,
+puts the swatches back to the category. Nothing is painted while the chips are doors and none is
+open: the swatches wait rather than colouring the category by accident. `config.json` writes only what differs from the preset, so a
 shade the application adds later reaches a file that never touched one; an extension the user set
 back to the category's colour is written as an empty string, which is the only way to tell
 "inherit, deliberately" from "never said".

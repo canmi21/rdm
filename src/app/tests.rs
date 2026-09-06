@@ -401,6 +401,55 @@ fn a_drag_past_the_stop_holds_there_and_a_second_takes_no_more(cx: &mut TestAppC
 	);
 }
 
+/// One list of chips, two things to do with it: switches while nothing is being coloured, doors
+/// while something is. The same turn the presets face makes under Edit.
+#[gpui::test]
+fn an_extensions_colour_is_set_from_the_chips_and_given_back_by_inherit(cx: &mut TestAppContext) {
+	use crate::ui::category_sheet::{CategorySheet, Shading};
+	let (rdm, mut cx) = open(cx);
+	click(&mut cx, "button:New category");
+	// Edit turns the preset chips into doors; without it a press is the switch it looks like.
+	click(&mut cx, "button:Edit");
+	click(&mut cx, "preset:Documents");
+	let id = rdm.read_with(&cx, |rdm, _| {
+		let Some(CategorySheet::Preset(form)) = &rdm.category_sheet else { panic!("the list is up") };
+		assert_eq!(form.shading, Shading::Off, "the chips are switches to start with");
+		form.id
+	});
+	// Pressing a chip switches an extension off while nothing is being coloured.
+	click(&mut cx, "extension:rtf");
+	rdm.read_with(&cx, |rdm, _| {
+		let category = crate::category::Category::find(&rdm.categories, id).unwrap();
+		assert!(!category.extensions().contains(&"rtf".to_owned()), "the chip was a switch");
+	});
+	// Colors turns them into doors; the same chip now opens rather than switches.
+	click(&mut cx, "button:Colors");
+	click(&mut cx, "extension:docx");
+	rdm.read_with(&cx, |rdm, _| {
+		let Some(CategorySheet::Preset(form)) = &rdm.category_sheet else { panic!("the list is up") };
+		assert_eq!(form.shading, Shading::One("docx".to_owned()), "the chip was a door");
+		let category = crate::category::Category::find(&rdm.categories, id).unwrap();
+		assert!(category.extensions().contains(&"docx".to_owned()), "and switched nothing");
+	});
+	// A swatch now paints that extension and leaves the category alone.
+	let before = rdm.read_with(&cx, |rdm, _| {
+		crate::category::Category::find(&rdm.categories, id).unwrap().color
+	});
+	rdm.update(&mut cx, |rdm, cx| rdm.choose_color(0x00ff00, cx));
+	rdm.read_with(&cx, |rdm, _| {
+		let category = crate::category::Category::find(&rdm.categories, id).unwrap();
+		assert_eq!(category.shade("notes.docx"), 0x00ff00, "the extension took the colour");
+		assert_eq!(category.color, before, "and the category kept its own");
+		assert_eq!(category.shade("notes.rtf"), before, "as did every extension without one");
+	});
+	// Inherit gives it back.
+	click(&mut cx, "button:Inherit");
+	rdm.read_with(&cx, |rdm, _| {
+		let category = crate::category::Category::find(&rdm.categories, id).unwrap();
+		assert_eq!(category.shade("notes.docx"), before, "back to the category's own");
+	});
+}
+
 #[gpui::test]
 fn the_custom_form_adds_a_rule_and_advanced_exposes_the_pattern(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);

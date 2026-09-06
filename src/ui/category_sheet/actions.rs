@@ -4,7 +4,7 @@ use gpui::{Context, Window, prelude::*};
 
 use crate::app::Rdm;
 use crate::category::{Category, Combine, pattern_for_rule};
-use crate::ui::category_sheet::{CategoryForm, CategorySheet, PresetForm};
+use crate::ui::category_sheet::{CategoryForm, CategorySheet, PresetForm, Shading};
 use crate::ui::icon::Icon;
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{Tint, parse_color};
@@ -158,7 +158,8 @@ impl Rdm {
 		if let Some(window) = window {
 			window.focus(&add.read(cx).focus(), cx);
 		}
-		self.category_sheet = Some(CategorySheet::Preset(PresetForm { id, add, custom }));
+		self.category_sheet =
+			Some(CategorySheet::Preset(PresetForm { id, add, custom, shading: Shading::Off }));
 		cx.notify();
 	}
 
@@ -185,12 +186,49 @@ impl Rdm {
 	/// A swatch pressed: the face's color. On the preset face the color is the category's and
 	/// is written at once. The field is left as the user wrote it; a named hue does not erase
 	/// their own.
+	/// Which extension the swatches are colouring: pressing a chip while shading picks it,
+	/// pressing the same one again puts the swatches back to the category's own colour. One list
+	/// serves both, since the alternative is a second list of the same words.
+	pub(crate) fn shade_extension(&mut self, shading: Shading, cx: &mut Context<Self>) {
+		if let Some(CategorySheet::Preset(form)) = &mut self.category_sheet {
+			// Pressing what is already open closes it: the same chip, and the word that opened
+			// the mode, both put the swatches back to the category's own colour.
+			form.shading = if form.shading == shading { Shading::Off } else { shading };
+			cx.notify();
+		}
+	}
+
+	/// The colour one extension draws in, or the category's own where it is None. Written as it
+	/// is chosen, like everything else on this face.
+	pub(crate) fn set_extension_shade(
+		&mut self,
+		id: u64,
+		extension: &str,
+		color: Option<u32>,
+		cx: &mut Context<Self>,
+	) {
+		let extension = extension.to_ascii_lowercase();
+		if let Some(category) = self.categories.iter_mut().find(|c| c.id == id) {
+			match color {
+				Some(color) => category.shades.insert(extension, color),
+				None => category.shades.remove(&extension),
+			};
+		}
+		self.save_config();
+		cx.notify();
+	}
+
 	pub(crate) fn choose_color(&mut self, color: u32, cx: &mut Context<Self>) {
 		match &mut self.category_sheet {
 			Some(CategorySheet::Custom(form)) => form.color = color,
 			Some(CategorySheet::Preset(form)) => {
 				let id = form.id;
-				self.set_category_color(id, color, cx);
+				match form.shading.clone() {
+					Shading::One(extension) => self.set_extension_shade(id, &extension, Some(color), cx),
+					// Picking paints nothing: the swatches wait until a chip says what to paint.
+					Shading::Picking => return,
+					Shading::Off => self.set_category_color(id, color, cx),
+				}
 			}
 			_ => return,
 		}

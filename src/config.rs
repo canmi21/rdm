@@ -288,8 +288,14 @@ impl Config {
 			return false;
 		}
 		// Before the catch-all, which is last by rule: a category that matches everything after
-		// one that matches something is never reached.
-		let at = self.categories.iter().position(|c| c.pattern.is_empty()).unwrap_or(self.categories.len());
+		// one that matches something is never reached. The catch-all is the one with no preset
+		// and no pattern -- a preset writes no pattern either, so an empty pattern alone finds
+		// the first preset in the file and puts every new category at the very top.
+		let at = self
+			.categories
+			.iter()
+			.position(|c| c.preset.is_none() && c.pattern.is_empty())
+			.unwrap_or(self.categories.len());
 		for (offset, preset) in new.iter().enumerate() {
 			let category = Category::from_preset(0, preset.name, Overrides::default())
 				.expect("a preset compiles");
@@ -508,6 +514,11 @@ mod tests {
 		let names: Vec<&str> = config.categories.iter().map(|c| c.name.as_str()).collect();
 		assert!(names.contains(&"Torrents") && names.contains(&"Firmware"));
 		assert_eq!(names.last(), Some(&"Other"), "and the catch-all is still last");
+		// Just before the catch-all, not at the top: a preset writes no pattern either, so
+		// looking for an empty one finds the first preset in the file.
+		// In the order the application lists them, which is Firmware before Torrents.
+		assert_eq!(&names[names.len() - 3..], ["Firmware", "Torrents", "Other"], "{names:?}");
+		assert_eq!(names[0], "Videos", "and what was there stays where it was");
 	}
 	use crate::testing::scratch;
 

@@ -52,6 +52,23 @@ pub struct PresetForm {
 	pub id: u64,
 	pub add: Entity<TextInput>,
 	pub custom: Entity<TextInput>,
+	/// What the swatches are colouring. The chips are switches while this is `Off` and doors
+	/// while it is not, the same turn the presets face makes under Edit: one list, two things to
+	/// do with it, and never both at once.
+	pub shading: Shading,
+}
+
+/// What the swatches on a preset's face are setting.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Shading {
+	/// The category's own colour; the chips are switches.
+	#[default]
+	Off,
+	/// The chips have become doors and none has been opened: the swatches wait rather than
+	/// painting the category by accident.
+	Picking,
+	/// One extension's colour.
+	One(String),
 }
 
 /// The category sheet's faces: the presets with Edit, Reorder and Add under them; the one-line
@@ -136,8 +153,8 @@ impl Rdm {
 	}
 }
 
-fn section(color: gpui::Hsla, title: &'static str) -> impl IntoElement {
-	div().text_xs().text_color(color).child(title)
+fn section(color: gpui::Hsla, title: impl Into<gpui::SharedString>) -> impl IntoElement {
+	div().text_xs().text_color(color).child(title.into())
 }
 
 /// A word that acts: Edit, Reorder, Reset. It brightens on hover and stays bright while it names
