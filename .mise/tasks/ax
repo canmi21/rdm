@@ -53,8 +53,8 @@ func find(_ element: AXUIElement, labelled label: String) -> AXUIElement? {
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard let process = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == "rdm" }) else {
-	FileHandle.standardError.write("no rdm process; `mise run dev` first\n".data(using: .utf8)!)
+guard let process = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == "Downloads" }) else {
+	FileHandle.standardError.write("no Downloads process; `mise run dev` first\n".data(using: .utf8)!)
 	exit(1)
 }
 let application = AXUIElementCreateApplication(process.processIdentifier)

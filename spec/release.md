@@ -89,8 +89,7 @@ files uploaded to a release, and `latest.json` is only the latter.
 
 **A newer build is a card in the corner, and a notification when the window is not in
 front.** The card sits over the list above the status bar, names the build and the version,
-and offers `Get`, which opens the file's first address in the browser -- the install itself is
-not written yet, see below -- and `Later`, which closes the card for that build; the next build
+and offers `Install` and `Later`; `Later` closes the card for that build, and the next build
 brings it back. When the manifest arrives while the window is not the active one, the system
 is told once per build through `notify-rust`: D-Bus on Linux, the notification centre on
 macOS, WinRT on Windows. On macOS a notification is delivered only for an installed bundle, so
@@ -101,20 +100,35 @@ the build found and whether this is it, or why it could not be read. `Update cha
 Nightly, the only channel, and gets a picker when there is a second; the choice is kept in
 `config.json` as `update_channel`.
 
+## The application replaces itself, by a rename
+
+`Install` fetches the build's file for where this binary runs from -- `update::install::place`
+reads that off the executable's path: the `.app` around it on macOS, the executable itself on
+Windows, the AppImage the runtime names in `APPIMAGE` or else the bare binary on Linux -- by
+the same two addresses in the same order, into `updates/` under the state directory, and
+checks it against the manifest's `sha256` as it lands. A file that does not match is dropped
+and the next address tried, since a mirror can be stale. The card shows the bytes as they
+come, then `Installing`, then `Restart`, which launches the new build and quits this one; the
+downloads in flight pause the way any quit pauses them and continue from their plans. Nothing
+is fetched for a build that cannot be replaced -- one running from its build tree, which is
+the developer's and Cargo's to overwrite, or an application still on its disk image -- and
+the card says why.
+
+The install itself is a rename, on every system, because a running program keeps its old file
+under whatever name it has meanwhile. On macOS the dmg is mounted, its bundle copied beside
+the installed one with `ditto`, and the two swapped by rename, the old one removed after. On
+Windows a running executable cannot be deleted or overwritten but can be renamed, so the
+`self-replace` crate moves the running one aside, puts the one from the zip under its name,
+and has the moved one go when it closes. On Linux the AppImage, or the binary from the
+tarball, is written beside the old one, marked executable and renamed over it; the desktop
+entry and the icon are where `install.sh` put them and did not change. The new file is written
+whole beside the old before anything is renamed, so a failure leaves the old build in place.
+
 ## What is decided elsewhere
 
 The daily release -- a dated tag cut from the nightly by a scheduled workflow, with a
 changelog -- is not written yet; the application will read its manifest at
 `releases/latest/download/latest.json` through the same two addresses.
-
-Replacing the binary is not written yet. Its shape is settled this far: the file is fetched by
-the same two addresses in the same order, verified against the manifest's `sha256` before
-anything is touched, and then swapped in. On macOS and Linux a running executable can be
-replaced with a rename over it. On Windows a running executable cannot be deleted or
-overwritten but can be renamed, so the running one is moved aside, the new one is put under
-its name, and the old one is removed on the next start; the `self-replace` crate does exactly
-this, opening the moved copy with `FILE_FLAG_DELETE_ON_CLOSE`, and is the way to take when the
-step is written.
 
 Signing and notarization are skipped: builds are signed ad hoc, and macOS asks the user to
 open the first one by hand. Certificates would go into the repository's secrets and a step
