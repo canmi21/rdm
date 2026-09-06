@@ -17,6 +17,12 @@ pub struct Preset {
 	pub icon: Icon,
 	pub tint: crate::ui::theme::Tint,
 	pub extensions: &'static str,
+	/// Extensions within this preset that read as a different thing and are drawn in a different
+	/// hue, keeping the preset's icon. The category's own colour is what the sidebar shows and
+	/// what an extension without an entry here draws in; these are the exceptions that a person
+	/// looking at a list would want told apart at a glance -- a PDF among the documents, a
+	/// machine's disk among the disk images. See spec/ui.md.
+	pub shades: &'static [(&'static str, crate::ui::theme::Tint)],
 }
 
 impl Preset {
@@ -72,6 +78,10 @@ pub struct Category {
 	/// The color its icon shows when lit, as `0xrrggbb`: a preset's own or the next in the
 	/// cycle to start with, and whatever the user picked or typed after that.
 	pub color: u32,
+	/// A colour for one extension within this category, as `0xrrggbb`, seeded from the preset and
+	/// then the user's. An extension with no entry draws in the category's own colour, which is
+	/// what leaving a shade empty means.
+	pub shades: std::collections::BTreeMap<String, u32>,
 	/// A color the user wrote for this category, as they wrote it, kept beside the named ones so
 	/// it can be chosen again after a named one was.
 	pub custom_color: Option<String>,
@@ -95,6 +105,7 @@ impl Category {
 			pattern: pattern.to_owned(),
 			regex,
 			color,
+			shades: std::collections::BTreeMap::new(),
 			custom_color: None,
 			preset: None,
 		})
@@ -132,6 +143,7 @@ impl Category {
 				tint: Tint::Purple,
 				extensions: "mp4 m4v mkv mov webm avi wmv flv f4v ts m2ts mts mpg mpeg mpe m2v vob \
 					3gp 3g2 ogv ogm rm rmvb asf divx mxf hevc h264 h265 av1",
+				shades: &[],
 			},
 			Preset {
 				name: "Audio",
@@ -139,6 +151,7 @@ impl Category {
 				tint: Tint::Teal,
 				extensions: "mp3 flac aac m4a m4b m4p wav aiff aif aifc ogg oga opus wma alac ape wv \
 					dsf dff mka mid midi amr ac3 dts caf tta mpc spx au ra",
+				shades: &[],
 			},
 			Preset {
 				name: "Images",
@@ -147,6 +160,15 @@ impl Category {
 				extensions: "jpg jpeg jpe jfif png apng gif webp avif heic heif heics heifs jxl svg svgz \
 					tif tiff bmp dib ico icns psd psb xcf raw dng cr2 cr3 nef nrw arw orf rw2 raf pef \
 					srw exr hdr tga pcx ppm pgm pbm pnm",
+				shades: &[
+					// A vector is a drawing rather than a photograph, and an editor's file is
+					// neither: work in progress rather than a picture to look at.
+					("svg", Tint::Green),
+					("svgz", Tint::Green),
+					("psd", Tint::Purple),
+					("psb", Tint::Purple),
+					("xcf", Tint::Purple),
+				],
 			},
 			Preset {
 				name: "Documents",
@@ -154,24 +176,34 @@ impl Category {
 				tint: Tint::Frost,
 				extensions: "pdf rtf doc docx docm dot dotx dotm odt ott fodt pages wpd wps abw tex xps \
 					oxps",
+				shades: &[
+					// A PDF is a document, and the one everybody can tell from a Word file at a
+					// glance; drawing it apart is the difference between a list and a wall.
+					("pdf", Tint::Red),
+					("xps", Tint::Red),
+					("oxps", Tint::Red),
+				],
 			},
 			Preset {
 				name: "Plain Text",
 				icon: Icon::Text,
 				tint: Tint::Teal,
 				extensions: "txt text md markdown mdx rst adoc asciidoc org log nfo",
+				shades: &[],
 			},
 			Preset {
 				name: "Presentations",
 				icon: Icon::Presentation,
 				tint: Tint::Orange,
 				extensions: "ppt pptx pptm pps ppsx ppsm pot potx potm odp otp fodp key",
+				shades: &[],
 			},
 			Preset {
 				name: "Spreadsheets",
 				icon: Icon::FileSpreadsheet,
 				tint: Tint::Green,
 				extensions: "xls xlsx xlsm xlsb xlt xltx xltm ods ots fods numbers csv tsv",
+				shades: &[],
 			},
 			Preset {
 				name: "eBooks",
@@ -179,6 +211,7 @@ impl Category {
 				tint: Tint::Green,
 				extensions: "epub mobi azw azw3 azw4 kfx kpf prc fb2 fb3 lit lrf pdb djvu djv cbz cbr cb7 \
 					cbt ibooks",
+				shades: &[],
 			},
 			Preset {
 				name: "Code",
@@ -187,6 +220,7 @@ impl Category {
 				extensions: "rs py ts tsx js jsx mjs cjs go c h cpp hpp cc cxx hh java kt kts swift m mm \
 					cs fs rb php pl lua dart scala hs ex exs erl clj zig sh bash zsh fish ps1 sql json \
 					toml yaml yml xml html htm css scss less vue svelte ipynb",
+				shades: &[],
 			},
 			Preset {
 				name: "Archives",
@@ -194,6 +228,7 @@ impl Category {
 				tint: Tint::Orange,
 				extensions: "zip zipx 7z rar tar gz tgz bz2 tbz2 xz txz zst tzst lz lz4 lzma tlz z cab \
 					arj lha lzh sit sitx ace",
+				shades: &[],
 			},
 			Preset {
 				name: "Programs",
@@ -201,6 +236,25 @@ impl Category {
 				tint: Tint::Red,
 				extensions: "dmg pkg mpkg app exe msi msix msixbundle appx appxbundle deb rpm appimage \
 					flatpak snap apk aab xapk ipa jar run",
+				shades: &[
+					// Which system it installs on, which is the first thing anybody wants to know
+					// about an installer they have just downloaded.
+					("exe", Tint::Blue),
+					("msi", Tint::Blue),
+					("msix", Tint::Blue),
+					("msixbundle", Tint::Blue),
+					("appx", Tint::Blue),
+					("appxbundle", Tint::Blue),
+					("deb", Tint::Orange),
+					("rpm", Tint::Orange),
+					("appimage", Tint::Orange),
+					("flatpak", Tint::Orange),
+					("snap", Tint::Orange),
+					("apk", Tint::Green),
+					("aab", Tint::Green),
+					("xapk", Tint::Green),
+					("ipa", Tint::Green),
+				],
 			},
 			Preset {
 				name: "Disk Images",
@@ -211,6 +265,19 @@ impl Category {
 				// contents and not a filesystem, and the two were being counted as one thing.
 				extensions: "iso img dmg cue nrg mdf mds toast cdr vhd vhdx vmdk vdi qcow qcow2 wim \
 					esd hdd sparseimage sparsebundle",
+				shades: &[
+					// A machine's disk is not an installer's image, though both are disk images:
+					// one is a virtual filesystem somebody runs, the other is something to write.
+					("vhd", Tint::Frost),
+					("vhdx", Tint::Frost),
+					("vmdk", Tint::Frost),
+					("vdi", Tint::Frost),
+					("qcow", Tint::Frost),
+					("qcow2", Tint::Frost),
+					("hdd", Tint::Frost),
+					("sparseimage", Tint::Frost),
+					("sparsebundle", Tint::Frost),
+				],
 			},
 			Preset {
 				name: "Firmware",
@@ -226,6 +293,28 @@ impl Category {
 					uf2 dfu fwu fw swu ota gbl cyacd cyacd2 apj px4 \
 					rbf sof pof jed jedec svf xsvf jam jbc mcs rpd jic bit bitstream \
 					rom bios fd capsule wph bio trx chk ipsw kdz ftf",
+				shades: &[
+					// A bitstream programs logic rather than a processor, and the toolchain's own
+					// output is a build artefact rather than something to flash.
+					("rbf", Tint::Purple),
+					("sof", Tint::Purple),
+					("pof", Tint::Purple),
+					("jed", Tint::Purple),
+					("jedec", Tint::Purple),
+					("svf", Tint::Purple),
+					("xsvf", Tint::Purple),
+					("jam", Tint::Purple),
+					("jbc", Tint::Purple),
+					("mcs", Tint::Purple),
+					("rpd", Tint::Purple),
+					("jic", Tint::Purple),
+					("bit", Tint::Purple),
+					("bitstream", Tint::Purple),
+					("elf", Tint::Frost),
+					("axf", Tint::Frost),
+					("out", Tint::Frost),
+					("lss", Tint::Frost),
+				],
 			},
 			Preset {
 				name: "3D Models",
@@ -233,15 +322,26 @@ impl Category {
 				tint: Tint::Purple,
 				extensions: "stl obj 3mf step stp iges igs fbx dae ply gltf glb usd usda usdc usdz blend \
 					3ds max c4d skp scad amf wrl x3d off",
+				shades: &[],
 			},
 			Preset {
 				name: "Torrents",
 				icon: Icon::Magnet,
 				tint: Tint::Orange,
 				extensions: "torrent",
+				shades: &[],
 			},
 		]
 	};
+
+	/// The colour a file of this name draws in: the shade set for its extension, or the
+	/// category's own where there is none. An extension without a shade is not a mistake -- it is
+	/// what inheriting the category's colour looks like, and most extensions do.
+	pub fn shade(&self, name: &str) -> u32 {
+		extension_of(name)
+			.and_then(|extension| self.shades.get(&extension).copied())
+			.unwrap_or(self.color)
+	}
 
 	/// The category with this id, if it is still there.
 	pub fn find(categories: &[Category], id: u64) -> Option<&Category> {
@@ -266,6 +366,8 @@ impl Category {
 		let preset = Category::find_preset(name)?;
 		let pattern = pattern_for_extensions(&merged_extensions(&preset.base(), &overrides).join(" "));
 		let mut category = Category::new(id, preset.name, preset.icon, &pattern).ok()?;
+		category.shades =
+			preset.shades.iter().map(|(ext, tint)| ((*ext).to_owned(), tint.rgb())).collect();
 		category.color = preset.tint.rgb();
 		category.preset = Some((preset, overrides));
 		Some(category)
@@ -362,6 +464,17 @@ pub fn extensions_of_pattern(pattern: &str) -> Option<Vec<String>> {
 }
 
 /// `rs, py` or `rs py` as a list: trimmed, a leading dot dropped, lowercase, empties gone.
+/// A file's extension, lowercased, or None where it has none. What comes after the last dot,
+/// which is what every extension list here is written in terms of; a name that begins with a dot
+/// and has no other is all extension and no name, and has none.
+pub fn extension_of(name: &str) -> Option<String> {
+	let (stem, extension) = name.rsplit_once('.')?;
+	if stem.is_empty() || extension.is_empty() {
+		return None;
+	}
+	Some(extension.to_ascii_lowercase())
+}
+
 pub fn split_extensions(extensions: &str) -> Vec<String> {
 	extensions
 		.split(|c: char| c == ',' || c.is_whitespace())
@@ -481,6 +594,39 @@ pub fn categories_with_contents<'a>(
 
 #[cfg(test)]
 mod tests {
+	/// A category's colour is what the sidebar shows and what most of its files draw in; a shade
+	/// is the exception that lets one extension read apart from the rest without changing icon.
+	#[test]
+	fn an_extension_can_draw_in_its_own_shade_and_the_rest_inherit() {
+		use crate::ui::theme::Tint;
+		let documents = Category::from_preset(1, "Documents", Overrides::default()).unwrap();
+		assert_eq!(documents.shade("Report.docx"), documents.color, "most inherit");
+		assert_eq!(documents.shade("Report.pdf"), Tint::Red.rgb(), "a PDF reads apart");
+		assert_eq!(documents.shade("REPORT.PDF"), Tint::Red.rgb(), "whatever its case");
+		assert_eq!(documents.shade("noextension"), documents.color);
+		let disks = Category::from_preset(2, "Disk Images", Overrides::default()).unwrap();
+		assert_eq!(disks.shade("ubuntu.iso"), disks.color, "an installer's image is the category");
+		assert_eq!(disks.shade("vm.vmdk"), Tint::Frost.rgb(), "a machine's disk is not");
+	}
+
+    /// The file records only what differs from the preset, so a shade the application adds later
+	/// reaches a file that never touched shades, and one the user cleared stays cleared.
+	#[test]
+	fn only_a_shade_that_differs_from_the_preset_is_written() {
+		use crate::config::{CategoryConfig, Config};
+		let seeded = Config::seed();
+		let documents =
+			seeded.categories.iter().find(|c| c.name == "Documents").expect("a seeded preset");
+		assert!(documents.shades.is_empty(), "a seeded category matches its preset and writes none");
+		let mut category = Category::from_preset(1, "Documents", Overrides::default()).unwrap();
+		category.shades.remove("pdf");
+		let written = CategoryConfig::from(&category);
+		assert_eq!(written.shades.get("pdf").map(String::as_str), Some(""), "cleared, deliberately");
+		category.shades.insert("pdf".to_owned(), 0x00ff00);
+		let written = CategoryConfig::from(&category);
+		assert_eq!(written.shades.get("pdf").map(String::as_str), Some("#00ff00"));
+	}
+
 	/// Firmware is five families of extension and none of them is a disk's. The two that had to
 	/// be argued over are checked by name: `img` is a filesystem far more often than a chip, and
 	/// `cap` is a packet capture far more often than a UEFI capsule.

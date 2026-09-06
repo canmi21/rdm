@@ -432,7 +432,9 @@ impl Rdm {
 	/// way the sidebar does. A plain file, muted, when no category claims it.
 	pub(crate) fn category_icon(&self, download: &Download) -> (Icon, gpui::Hsla) {
 		match self.category_shown(download) {
-			Some(c) => (c.icon, self.palette.hue(c.color)),
+			// The icon is the category's; the colour may be the extension's, where the category
+			// draws one of its own apart. See `Category::shade` and spec/ui.md.
+			Some(c) => (c.icon, self.palette.hue(c.shade(&download.name))),
 			None => (Icon::File, self.palette.muted),
 		}
 	}

@@ -207,6 +207,20 @@ takes when the window is not active; off, the window keeps its colors in front o
 someone who keeps it beside another window and reads it there. See the palette in
 [framework.md](framework.md).
 
+**A category's colour is the outer one; an extension inside it can draw in its own.** The icon
+is the category's and never changes -- a document is a document -- but the hue can differ within
+it, because a category is often two or three things a person tells apart at a glance. A PDF among
+the documents draws red; a machine's disk among the disk images draws frost against the navy an
+installer's image keeps; an installer for Windows, for Linux and for a phone each draw apart
+inside Programs; a bitstream draws apart from a chip image inside Firmware. What the sidebar shows
+is still the category's own colour, since that is the whole of it rather than one of its parts.
+
+An extension with no shade of its own draws in the category's, which is what most of them do and
+what leaving a shade empty means. `config.json` writes only what differs from the preset, so a
+shade the application adds later reaches a file that never touched one; an extension the user set
+back to the category's colour is written as an empty string, which is the only way to tell
+"inherit, deliberately" from "never said".
+
 **The folder's junk is kept out of the lists, and a torrent is filed rather than dropped.** A
 download folder collects a great deal nobody downloaded: what the operating system leaves behind
 (`.DS_Store`, `Thumbs.db`, `desktop.ini`), what an editor writes beside a file it has open

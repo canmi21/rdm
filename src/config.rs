@@ -2,6 +2,7 @@
 //! configuration directory, versioned like state.json, seeded once and then the user's to edit.
 //! See spec/state.md.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Result, bail};
@@ -245,6 +246,12 @@ pub struct CategoryConfig {
 	/// the one in use.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub custom_color: Option<String>,
+	/// A colour for one extension within this category, `#rrggbb` by extension. Only what differs
+	/// from the preset is written, so a preset's own shades can change under a file that never
+	/// touched them; an extension the user set back to the category's colour is written as an
+	/// empty string, which is how "inherit" is told from "never said".
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub shades: BTreeMap<String, String>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub preset: Option<String>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -327,6 +334,7 @@ impl Config {
 						category.color = color;
 					}
 					category.custom_color = custom;
+					apply_shades(&mut category.shades, &c.shades);
 					return Some(category);
 				}
 				let icon = Icon::by_name(&c.icon).unwrap_or(Icon::File);
@@ -336,6 +344,7 @@ impl Config {
 							category.color = color;
 						}
 						category.custom_color = custom;
+						apply_shades(&mut category.shades, &c.shades);
 						Some(category)
 					}
 					Err(error) => {
@@ -362,6 +371,45 @@ impl Config {
 	}
 }
 
+/// The file's shades over whatever the preset seeded: a colour replaces one, an empty string
+/// takes one away, and an extension the file does not mention keeps what the preset gave it.
+fn apply_shades(shades: &mut BTreeMap<String, u32>, written: &BTreeMap<String, String>) {
+	for (extension, text) in written {
+		let extension = extension.to_ascii_lowercase();
+		match parse_color(text) {
+			Some(color) => {
+				shades.insert(extension, color);
+			}
+			None => {
+				shades.remove(&extension);
+			}
+		}
+	}
+}
+
+/// What to write for a category's shades: only where they differ from the preset's, so the
+/// built-in list can change under a file that never touched it. An extension the preset shades
+/// and the user set back to the category's colour is written as an empty string, which is the
+/// only way to tell "inherit, deliberately" from "never said".
+fn shades_against(
+	shades: &BTreeMap<String, u32>,
+	preset: &[(&'static str, crate::ui::theme::Tint)],
+) -> BTreeMap<String, String> {
+	let mut written = BTreeMap::new();
+	for (extension, color) in shades {
+		let built_in = preset.iter().find(|(e, _)| e == extension).map(|(_, t)| t.rgb());
+		if built_in != Some(*color) {
+			written.insert(extension.clone(), format_hex(*color));
+		}
+	}
+	for (extension, _) in preset {
+		if !shades.contains_key(*extension) {
+			written.insert((*extension).to_owned(), String::new());
+		}
+	}
+	written
+}
+
 impl From<&Category> for CategoryConfig {
 	fn from(c: &Category) -> Self {
 		match &c.preset {
@@ -371,6 +419,7 @@ impl From<&Category> for CategoryConfig {
 				pattern: String::new(),
 				color: (c.color != preset.tint.rgb()).then(|| format_hex(c.color)),
 				custom_color: c.custom_color.clone(),
+				shades: shades_against(&c.shades, preset.shades),
 				preset: Some(preset.name.to_owned()),
 				added: overrides.added.clone(),
 				removed: overrides.removed.clone(),
@@ -382,6 +431,7 @@ impl From<&Category> for CategoryConfig {
 				// Always written: the cycle it started in is by position, which reordering moves.
 				color: Some(format_hex(c.color)),
 				custom_color: c.custom_color.clone(),
+				shades: shades_against(&c.shades, &[]),
 				preset: None,
 				added: Vec::new(),
 				removed: Vec::new(),
