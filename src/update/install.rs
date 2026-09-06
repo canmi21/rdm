@@ -133,6 +133,13 @@ fn run(command: &mut Command, what: &str) -> Result<(), String> {
 /// The dmg is mounted, its bundle copied beside the installed one with `ditto`, which keeps
 /// what a plain copy loses, then the two are swapped by rename and the old one removed. The
 /// old bundle keeps running from its inode, whatever it is called meanwhile.
+///
+/// The copy is cleared of the quarantine mark before the swap. A file this application wrote
+/// carries none -- the mark is a browser's, put on what it downloads -- and so neither does
+/// what is copied out of it, so the clearing is a precaution that costs nothing and needs no
+/// leave; the builds are signed ad hoc and Gatekeeper judges only marked files. A swap the
+/// user may not make -- an application another user installed, owned by root -- is made
+/// again as the administrator, through the system's own password dialog, and only then.
 fn install_bundle(dmg: &Path, bundle: &Path) -> Result<PathBuf, String> {
 	let mount = beside(dmg, "mount");
 	let _ = std::fs::create_dir_all(&mount);
@@ -152,19 +159,54 @@ fn install_bundle(dmg: &Path, bundle: &Path) -> Result<PathBuf, String> {
 		let staged = beside(bundle, "update");
 		let _ = std::fs::remove_dir_all(&staged);
 		run(Command::new("ditto").arg(&fresh).arg(&staged), "copy the application")?;
-		let old = beside(bundle, "old");
-		let _ = std::fs::remove_dir_all(&old);
-		std::fs::rename(bundle, &old).map_err(|e| format!("move the old application aside: {e}"))?;
-		if let Err(e) = std::fs::rename(&staged, bundle) {
-			let _ = std::fs::rename(&old, bundle);
-			return Err(format!("put the new application in place: {e}"));
+		let _ = Command::new("xattr").args(["-dr", "com.apple.quarantine"]).arg(&staged).output();
+		match swap(&staged, bundle) {
+			Ok(()) => Ok(bundle.to_path_buf()),
+			Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+				swap_as_administrator(&staged, bundle)?;
+				Ok(bundle.to_path_buf())
+			}
+			Err(e) => Err(format!("put the new application in place: {e}")),
 		}
-		let _ = std::fs::remove_dir_all(&old);
-		Ok(bundle.to_path_buf())
 	})();
 	let _ = Command::new("hdiutil").args(["detach", "-quiet"]).arg(&mount).output();
 	let _ = std::fs::remove_dir(&mount);
 	result
+}
+
+/// The old bundle aside, the staged one in its place, the old one gone; the old one back if
+/// the second rename fails.
+fn swap(staged: &Path, bundle: &Path) -> std::io::Result<()> {
+	let old = beside(bundle, "old");
+	let _ = std::fs::remove_dir_all(&old);
+	std::fs::rename(bundle, &old)?;
+	if let Err(e) = std::fs::rename(staged, bundle) {
+		let _ = std::fs::rename(&old, bundle);
+		return Err(e);
+	}
+	let _ = std::fs::remove_dir_all(&old);
+	Ok(())
+}
+
+/// The same swap as root, after the system's administrator dialog: the one shell script
+/// `osascript` runs with administrator privileges, its paths quoted for the shell. The staged
+/// copy becomes root's, which is what an application installed by an administrator is.
+fn swap_as_administrator(staged: &Path, bundle: &Path) -> Result<(), String> {
+	let quote = |p: &Path| format!("'{}'", p.display().to_string().replace('\'', "'\\''"));
+	let script = format!(
+		"rm -rf {old} && mv {bundle} {old} && mv {staged} {bundle} && chown -R root:admin {bundle} && xattr -dr com.apple.quarantine {bundle}; rm -rf {old}",
+		old = quote(&beside(bundle, "old")),
+		bundle = quote(bundle),
+		staged = quote(staged),
+	);
+	let prompt = "Downloads needs an administrator to replace the installed application.";
+	let escaped = script.replace('\\', "\\\\").replace('"', "\\\"");
+	run(
+		Command::new("osascript").arg("-e").arg(format!(
+			"do shell script \"{escaped}\" with prompt \"{prompt}\" with administrator privileges"
+		)),
+		"replace the application as an administrator",
+	)
 }
 
 /// The zip holds the executable alone. Windows keeps a running executable's file locked
