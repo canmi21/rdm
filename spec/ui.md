@@ -18,16 +18,23 @@ strip to `button height + 2 * y` and hangs it from the top, so setting `y` to ha
 diameter, 14 points, was measured from a capture of the window; it is the one number in the
 formula that is an observation rather than a choice.
 
-**Windows draws nothing over a transparent titlebar, so the toolbar draws the controls.** Add
-Task starts at the strip's left edge, since there are no traffic lights to clear, and at the
-right end sit minimize, maximize or restore, and close, in the system's own arrangement and
-width, close hovering red. They are not buttons: each is marked as a window control area and
-the strip as the drag area, and the system does the hit-testing, the pressing and the snap
-layouts, the way gpui's Windows backend expects. A release build also tells Windows it is a
-windowed program, or a console opens beside it. Linux keeps the window manager's own bar
-above the toolbar, with its buttons; drawing them into the strip would mean client-side
-decorations, with the window's moving and resizing to handle in the application, and waits on
-a Linux desktop to look at.
+**Where the system draws no frame, the toolbar is the frame.** On Windows the transparent
+titlebar leaves the whole strip to the application; on Linux the window asks for client-side
+decorations, and a compositor that grants them draws no bar and no buttons at all. In both,
+`src/ui/frame.rs` puts minimize, maximize or restore, and close at the strip's right in the
+system's arrangement and width, drawn with the application's own glyphs on a ten point grid
+at one point of stroke -- Lucide's minus, square and cross read as three weights side by
+side -- and each answers its own press through the window: minimize, zoom, close. They are
+the application's buttons, not the system's control areas: marking the strip as the system's
+caption was tried and the system then took every press on it, buttons included, and read two
+of them as a maximize. Only the empty middle is the system's on Windows, so it drags and
+double-clicks as a caption does; on Linux a press there starts a move through the compositor,
+a double press zooms, the right button opens the window's menu, and a press within six points
+of the window's edge starts a resize, since with client-side decorations nobody else would.
+A compositor that cannot give client-side decorations keeps its own bar, and the strip shows
+no controls. Add Task starts at the strip's left edge wherever there are no traffic lights to
+clear, which on macOS includes full screen, where the system hides them. A release build on
+Windows also says it is a windowed program, or a console opens beside it.
 
 ## Three views, Detailed by default
 

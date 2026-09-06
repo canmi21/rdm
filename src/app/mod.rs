@@ -150,6 +150,11 @@ impl Rdm {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
+		// Linux is asked for client-side decorations, so the toolbar is the frame there as it is
+		// on Windows; a compositor that cannot give them says so and keeps its own bar. See
+		// src/ui/frame.rs.
+		#[cfg(target_os = "linux")]
+		window.request_decorations(gpui::WindowDecorations::Client);
 		// Every move or resize is remembered a moment later; there is no hook for a forced quit.
 		cx.observe_window_bounds(window, |this, window, cx| {
 			this.remember_frame(window);
@@ -501,6 +506,10 @@ impl Render for Rdm {
 				this.resize_to(event.position.x, event.pressed_button == Some(gpui::MouseButton::Left), cx)
 			}))
 			.on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| this.end_resize(cx)))
+			// A press on the window's own edge, where the system draws no frame to take it.
+			.on_mouse_down(gpui::MouseButton::Left, |event, window, _| {
+				crate::ui::frame::on_root_mouse_down(event, window)
+			})
 			// Escape reaches here when no field took it: the topmost sheet is asked to go.
 			.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
 				if event.keystroke.key == "escape" {
