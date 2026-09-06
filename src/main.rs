@@ -17,6 +17,7 @@ mod index;
 mod notify;
 mod reveal;
 mod state;
+mod thumbnail;
 mod store;
 #[cfg(test)]
 mod testing;

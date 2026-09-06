@@ -306,6 +306,10 @@ pub struct Rdm {
 	/// The folder rows that have been opened, by path. Kept across a rescan, since a scan that
 	/// closed everything somebody had opened would be a scan nobody wanted.
 	pub(crate) opened: std::collections::HashSet<std::path::PathBuf>,
+	/// The system's picture for each file it has been asked about. Interior mutability because
+	/// drawing is the only thing that asks and drawing has the window by shared reference; the
+	/// alternative is asking the window server once a row a frame. See src/thumbnail.rs.
+	pub(crate) thumbnails: std::cell::RefCell<crate::thumbnail::Thumbnails>,
 	pub(crate) notices: Vec<notices::Shown>,
 	/// The notices that are windows of their own, while they are up. A handle stays here after
 	/// its window closes and is found dead on the next one, as the download windows' do.
@@ -417,6 +421,7 @@ impl Rdm {
 			_tick: tick,
 			folder_shape: HashMap::new(),
 			opened: std::collections::HashSet::new(),
+			thumbnails: std::cell::RefCell::default(),
 			notices: Vec::new(),
 			notice_windows: Vec::new(),
 			updates: updates::Updates::default(),
@@ -951,6 +956,8 @@ impl Render for Rdm {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.palette = theme::palette(window.is_window_active() || !self.preferences.dim_inactive);
 		self.viewport = window.viewport_size();
+		// This frame's allowance of system pictures. See src/thumbnail.rs.
+		self.thumbnails.borrow_mut().begin_frame();
 		// A field that closed took the focus with it; the root takes it back so keys still land.
 		if window.focused(cx).is_none() {
 			window.focus(&self.root_focus, cx);

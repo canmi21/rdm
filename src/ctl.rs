@@ -18,7 +18,7 @@ use crate::ui::icon::Icon;
 /// Under the build directory, so it is per checkout and gone with `cargo clean`.
 pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
 
-const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings [section] | fullscreen | update | \
+const USAGE: &str = "state | view <compact|thumbnails|detailed|grid> | select <id> | open <id> | settings [section] | fullscreen | update | \
 	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
@@ -160,10 +160,11 @@ impl Rdm {
 		match verb {
 			"state" => {}
 			"view" => match label.as_str() {
-				"detailed" => self.set_view(View::Detailed, cx),
 				"compact" => self.set_view(View::Compact, cx),
+				"thumbnails" => self.set_view(View::Thumbnails, cx),
+				"detailed" => self.set_view(View::Detailed, cx),
 				"grid" => self.set_view(View::Grid, cx),
-				_ => return failure("view takes detailed, compact or grid"),
+				_ => return failure("view takes compact, thumbnails, detailed or grid"),
 			},
 			"select" | "open" | "pause" | "resume" | "remove" => {
 				let Some(id) = id else { return failure(&format!("{verb} takes a download id")) };

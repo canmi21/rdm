@@ -199,6 +199,11 @@ impl Rdm {
 		});
 		match failure {
 			None => {
+				// The file on disk is not what it was a moment ago -- a partial file became a
+				// whole one -- so whatever picture the system gave for it is stale.
+				if let Some(file) = &file {
+					self.thumbnails.borrow_mut().forget(&file.path);
+				}
 				let mut notice = Notice::new("Download finish", name);
 				if let Some(file) = file {
 					notice = notice.about(file);

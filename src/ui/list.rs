@@ -40,6 +40,11 @@ impl Rdm {
 				View::Grid => self.card(d, cx).into_any_element(),
 			})
 			.collect();
+		// A frame that ran out of its allowance of system pictures is owed another: the rest of
+		// them are waiting in it.
+		if self.thumbnails.borrow().starved() {
+			cx.notify();
+		}
 		div()
 			.flex()
 			.flex_col()
@@ -329,7 +334,15 @@ impl Rdm {
 	/// The picture for a row: the system's own where there is one, the category's glyph where
 	/// there is not. See src/thumbnail.rs.
 	fn thumbnail(&self, download: &Download, size: f32) -> gpui::AnyElement {
-		tinted_icon(self.category_icon(download)).size(px(size)).into_any_element()
+		let picture = download
+			.path
+			.as_deref()
+			.map(std::path::Path::new)
+			.and_then(|path| self.thumbnails.borrow_mut().of(path));
+		match picture {
+			Some(picture) => gpui::img(picture).size(px(size)).into_any_element(),
+			None => tinted_icon(self.category_icon(download)).size(px(size)).into_any_element(),
+		}
 	}
 
 	fn compact(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {

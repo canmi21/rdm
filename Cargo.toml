@@ -71,6 +71,10 @@ url = "2"
 
 # Decodes the tray's PNG, rendered from the artwork by `mise run icon`.
 png = "0.18"
+# The system's own icon for a file, which arrives as TIFF and is drawn as a gpui RenderImage.
+# The version is gpui's own: a RenderImage is built from this crate's Frame, so the two have to
+# agree on what a Frame is. See src/thumbnail.rs.
+image = { version = "0.25", default-features = false, features = ["tiff"] }
 # What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
 # zip is also what the Windows build comes in, and tar with flate2 the Linux one; see
 # src/update/install.rs.
@@ -83,6 +87,13 @@ flate2 = "1"
 # renamed, which self-replace knows; the Linux binary comes in a tarball. See spec/release.md.
 [target.'cfg(windows)'.dependencies]
 self-replace = "1"
+
+# What asks macOS for the system's icon for a file. objc2-app-kit's version follows gpui's, which
+# is what draws the result; two versions of one binding in a process is two NSImage types. See
+# src/thumbnail.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSImage"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSData"] }
 
 # The tray on macOS and Windows, where the menu is the system's own. Without libxdo, which only
 # the predefined edit items need. Not on Linux: it reaches gtk3 there through muda, which is not

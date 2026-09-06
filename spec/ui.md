@@ -52,6 +52,21 @@ The list draws three ways and a segmented control at the toolbar's right end pic
 They are offered densest first, and the glyph on each button says what a row looks like: bare
 lines, lines with a picture on them, a table, cards.
 
+**The picture is the system's own.** Every desktop keeps an icon per kind of file, and it is the
+picture somebody already knows the file by, so the thumbnails view asks for it rather than
+inventing one -- Word's icon on a `.docx`, Excel's on an `.xlsx`, whatever has claimed the kind.
+Where there is none to be had, and on the systems this is not written for yet, the category's own
+glyph stands in; that is not a failure, since the glyph is what this application draws when it is
+drawing for itself. The pictures are cached by path for the run and asked for again when a
+download finishes, the file on disk no longer being what it was.
+
+**A frame asks for two dozen of them and no more.** Asking is a trip to the window server and a
+decode, and the list draws every row it has rather than only the ones on screen; a folder of a
+thousand files spent a minute in one frame and the window answered nothing until it was over.
+With the limit the pictures arrive over the next second or two, a frame at a time, and the window
+stays a window meanwhile. A frame that runs out asks for another, which is what keeps them
+coming.
+
 Detailed is the default because it is the only one that shows everything at once, which is what
 a download manager is open for. It is a table rather than a card list because a card list spends
 three lines on what a row says in one, and the density asked for here is an editor's, not a
