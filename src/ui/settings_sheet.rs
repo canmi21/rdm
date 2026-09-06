@@ -358,6 +358,17 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Folder,
+				label: "Show a file with",
+				control: Control::Value(if cfg!(any(target_os = "macos", windows)) {
+					crate::reveal::manager_name().to_owned()
+				} else if self.preferences.file_manager.trim().is_empty() {
+					"xdg-open".to_owned()
+				} else {
+					self.preferences.file_manager.clone()
+				}),
+			},
+			Row {
+				section: Section::Folder,
 				label: "Hide the folder's junk",
 				control: Control::Switch {
 					on: self.preferences.hide_junk,

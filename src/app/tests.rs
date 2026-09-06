@@ -1155,7 +1155,11 @@ fn notifications_are_one_row_an_occasion_and_the_choice_is_kept(cx: &mut TestApp
 		assert!(cx.debug_bounds(selector).is_some(), "a row for {}", occasion.label());
 	}
 	rdm.read_with(&cx, |rdm, _| {
-		assert_eq!(rdm.preferences.notice(Occasion::Finished), Style::System, "the default");
+		assert_eq!(
+			rdm.preferences.notice(Occasion::Finished),
+			Style::Window,
+			"a finished download opens the dialog, which is the notice with something to do next"
+		);
 		assert_eq!(rdm.preferences.notice(Occasion::Queue), Style::Silent, "or the last would say it twice");
 	});
 	// The choice is the user's and is kept, one occasion at a time.
@@ -1176,7 +1180,7 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	assert!(cx.debug_bounds("notice:0").is_none(), "nothing said yet");
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.set_notice(Occasion::Finished, Style::InApp, cx);
-		rdm.tell_of(Occasion::Finished, "Download finished".to_owned(), "debian.iso".to_owned(), cx);
+		rdm.tell_of(Occasion::Finished, crate::notify::Notice::new("Download finish", "debian.iso"), cx);
 	});
 	cx.run_until_parked();
 	assert!(cx.debug_bounds("notice:0").is_some(), "the corner says so");
@@ -1185,7 +1189,7 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	// Told to say nothing, it says nothing anywhere.
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.set_notice(Occasion::Finished, Style::Silent, cx);
-		rdm.tell_of(Occasion::Finished, "Download finished".to_owned(), "debian.iso".to_owned(), cx);
+		rdm.tell_of(Occasion::Finished, crate::notify::Notice::new("Download finish", "debian.iso"), cx);
 	});
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.notices.is_empty(), "silent is silent"));
@@ -1193,7 +1197,7 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	// are places, not degrees, so a notice goes to exactly one of them.
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.set_notice(Occasion::Finished, Style::Window, cx);
-		rdm.tell_of(Occasion::Finished, "Download finished".to_owned(), "debian.iso".to_owned(), cx);
+		rdm.tell_of(Occasion::Finished, crate::notify::Notice::new("Download finish", "debian.iso"), cx);
 	});
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {

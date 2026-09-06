@@ -262,7 +262,7 @@ impl Rdm {
 			eprintln!("could not record the update notice: {error:#}");
 		}
 		self.updates.notified.insert(stage.to_owned(), (version, build));
-		self.tell_of(Occasion::Update, body.to_owned(), String::new(), cx);
+		self.tell_of(Occasion::Update, crate::notify::Notice::new(body, ""), cx);
 	}
 
 	pub(crate) fn dismiss_update(&mut self, cx: &mut Context<Self>) {

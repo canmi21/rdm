@@ -335,15 +335,31 @@ impl Rdm {
 				};
 				// The same words the real call sites use, so what this shows is what ships.
 				let text = rest[1..].join(" ");
-				let (title, body) = match occasion {
-					crate::notify::Occasion::Finished => ("Download finished".to_owned(), text),
-					crate::notify::Occasion::Failed => (format!("{text} failed"), String::new()),
-					crate::notify::Occasion::Queue => {
-						("Every download finished".to_owned(), String::new())
+				let notice = match occasion {
+					crate::notify::Occasion::Finished => {
+						let mut notice = crate::notify::Notice::new("Download finish", text);
+						// A real file where there is one, so the dialog's size and time are the
+						// dialog's own rather than a shape drawn around nothing.
+						if let Some(finished) = self.downloads.iter().find_map(|d| {
+							Some(crate::notify::Finished {
+								path: std::path::PathBuf::from(d.path.as_ref()?),
+								size: d.size,
+								took: (chrono::Local::now() - d.added).to_std().unwrap_or_default(),
+							})
+						}) {
+							notice = notice.about(finished);
+						}
+						notice
 					}
-					crate::notify::Occasion::Update => (text, String::new()),
+					crate::notify::Occasion::Failed => {
+						crate::notify::Notice::new(format!("{text} failed"), "")
+					}
+					crate::notify::Occasion::Queue => {
+						crate::notify::Notice::new("Every download finished", "")
+					}
+					crate::notify::Occasion::Update => crate::notify::Notice::new(text, ""),
 				};
-				self.tell_of(occasion, title, body, cx);
+				self.tell_of(occasion, notice, cx);
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
 			"add" => return failure("add takes a url"),

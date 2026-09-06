@@ -12,7 +12,7 @@ use gpui::{
 
 use crate::app::Rdm;
 use crate::identity;
-use crate::notify::{Occasion, Style};
+use crate::notify::{Notice, Occasion, Style};
 use crate::ui::notice_window::{self, NoticeWindow};
 use crate::ui::status_bar;
 
@@ -35,27 +35,21 @@ impl Rdm {
 	/// Says something, in the place this occasion's setting names. Nothing is said anywhere else
 	/// if that place cannot take it: a notice arriving somewhere it was not asked for is worse
 	/// than one that does not arrive.
-	pub(crate) fn tell_of(
-		&mut self,
-		occasion: Occasion,
-		title: String,
-		body: String,
-		cx: &mut Context<Self>,
-	) {
+	pub(crate) fn tell_of(&mut self, occasion: Occasion, notice: Notice, cx: &mut Context<Self>) {
 		match self.preferences.notice(occasion) {
 			Style::Silent => {}
-			Style::System => system(&title, &body, cx),
+			Style::System => system(&notice.title, &notice.body, cx),
 			// A newer build has a card of its own, with a button on it, which the corner is already
 			// drawing; a second card saying the same thing would be one too many.
 			Style::InApp if occasion == Occasion::Update => {}
 			Style::InApp => {
-				self.notices.push(Shown { title, body, at: Instant::now() });
+				self.notices.push(Shown { title: notice.title, body: notice.body, at: Instant::now() });
 				if self.notices.len() > AT_ONCE {
 					self.notices.remove(0);
 				}
 				cx.notify();
 			}
-			Style::Window => self.in_a_window_of_its_own(title, body, cx),
+			Style::Window => self.in_a_window_of_its_own(notice, cx),
 		}
 	}
 
@@ -88,15 +82,17 @@ impl Rdm {
 	/// A notice in a window of its own, at the screen's top right, under whatever is already
 	/// there. The panels are counted rather than reflowed: one going does not slide the others
 	/// up, since a notice moving under the pointer about to press it is worse than a gap.
-	fn in_a_window_of_its_own(&mut self, title: String, body: String, cx: &mut Context<Self>) {
+	fn in_a_window_of_its_own(&mut self, notice: Notice, cx: &mut Context<Self>) {
 		self.notice_windows.retain(|handle| handle.update(cx, |_, _, _| ()).is_ok());
 		let slot = self.notice_windows.len().min(AT_ONCE - 1) as f32;
 		let Some(screen) = cx.primary_display().map(|display| display.bounds()) else { return };
 		let extent = size(px(notice_window::WIDTH), px(notice_window::HEIGHT));
+		// The middle of the screen, where a dialog goes: this is a thing to answer rather than a
+		// thing to glance at. A second while the first is up steps down and right from it, far
+		// enough to see there are two and near enough to read as a stack.
 		let origin = point(
-			screen.origin.x + screen.size.width - px(notice_window::WIDTH + notice_window::MARGIN),
-			screen.origin.y
-				+ px(notice_window::MARGIN + slot * (notice_window::HEIGHT + notice_window::GAP)),
+			screen.origin.x + (screen.size.width - px(notice_window::WIDTH)) / 2.0 + px(slot * 24.0),
+			screen.origin.y + (screen.size.height - px(notice_window::HEIGHT)) / 2.0 + px(slot * 24.0),
 		);
 		let options = WindowOptions {
 			window_bounds: Some(WindowBounds::Windowed(Bounds::new(origin, extent))),
@@ -114,9 +110,10 @@ impl Rdm {
 		// Deferred for the reason a download's window is: the first frame is drawn inside
 		// `open_window` and would read this entity while the update that got here still has it.
 		let rdm = cx.entity();
+		let manager = self.preferences.file_manager.clone();
 		cx.defer(move |cx| {
 			let Ok(handle) =
-				cx.open_window(options, |_, cx| cx.new(|_| NoticeWindow::new(title, body)))
+				cx.open_window(options, |_, cx| cx.new(|_| NoticeWindow::new(notice, manager)))
 			else {
 				return;
 			};

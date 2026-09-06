@@ -178,26 +178,36 @@ looking at the window, `In the window` is a card in the corner that reaches some
 does not quietly hand it to one that can, since a notice arriving somewhere it was not asked for
 is worse than one that does not arrive.
 
-The defaults are what the four moments are worth: a finished or failed download speaks to the
-system, since the point of them is to reach somebody who has looked away; every download
-finishing says nothing, or the last download of a batch would say it twice; and a newer build
-shows the card in the corner. That last row is the one asymmetry, and it is deliberate: the
+The defaults are what the four moments are worth: a finished download opens the dialog, which is
+the one notice with something to do next and the reason the dialog exists; a failed one speaks to
+the system, since the point of it is to reach somebody who has looked away and there is nothing
+to do but look; every download finishing says nothing, or the last download of a batch would say
+it twice; and a newer build shows the card in the corner. That last row is the one asymmetry, and it is deliberate: the
 update's card is the only place a build can be installed from, so it stands for every choice but
 `Nothing` -- `In the window` is the card alone and `System notification` is the card and the
 centre as well. Silencing it silences both. A card in the corner goes on its own after six
 seconds or at a press, four at a time at most, oldest first, and the update's card sits under
 them in the same column so neither lands on top of the other.
 
-**A window of its own is a panel at the screen's top right, and it asks the system for nothing.**
-It is `WindowKind::PopUp`, which puts it above the ordinary windows, with no titlebar and no
-frame -- the panel is the window -- and it takes no focus, so a notice arriving while somebody is
-typing does not take the next keystroke. It is the one place that reaches somebody whose main
+**A window of its own is a dialog in the middle of the screen, and it asks the system for
+nothing.** It is `WindowKind::PopUp`, which puts it above the ordinary windows, with no titlebar
+and no frame of the system's -- a rounded rectangle, a cross at its top right, and the whole of
+it ours -- and it takes no focus, so a notice arriving while somebody is typing does not take the
+next keystroke. The middle rather than a corner because this is a thing to answer rather than to
+glance at: `Download finish`, the file's name, what it came to and how long it took, and three
+things to do about it. `Open` hands the file to whatever the system opens it with; `Show in
+Finder` -- `File Explorer` on Windows, whatever the user named under Folder in Settings on
+Linux -- shows it where it lives; `Downloads` brings the window forward. Each does its thing and
+closes, since a dialog that stayed open after being acted on would be one to close twice. The
+cross closes and does nothing else, which is the whole of what a cross promises. It is the one place that reaches somebody whose main
 window is closed or buried without going through the system's notification centre, which on macOS
 delivers only on behalf of an installed bundle and so says nothing at all from a development
 build. Panels stack downward from the corner and are counted rather than reflowed: one going does
 not slide the others up, since a notice moving out from under a pointer about to press it is
 worse than a gap. A press closes it and brings the application forward, which is what a press on
-the system's own notification does. Being on a layer above the ordinary windows, it is invisible
+the system's own notification does. A second dialog while the first is up steps down and right
+from it, far enough to see there are two and near enough to read as a stack. Being on a layer
+above the ordinary windows, it is invisible
 to `mise run shot`, which takes the application's window; `shot --floating` takes this one. See
 [workflow.md](workflow.md).
 

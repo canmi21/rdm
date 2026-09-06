@@ -63,6 +63,12 @@ pub struct Preferences {
 	pub auto_update: bool,
 	#[serde(default)]
 	pub update_policy: Policy,
+	/// What shows a file where it lives, on the system that has no one answer: a command given
+	/// the file's path. Empty is `xdg-open` on the folder, which every desktop answers even
+	/// though none of them selects the file. macOS and Windows ignore it -- the Finder and File
+	/// Explorer are what those systems mean by this, and there is nothing to choose.
+	#[serde(default)]
+	pub file_manager: String,
 	/// What the download folder's own directories become in the list. See `Folders`.
 	#[serde(default)]
 	pub folders: Folders,
@@ -73,11 +79,13 @@ pub struct Preferences {
 	#[serde(default = "yes")]
 	pub hide_junk: bool,
 	/// Where each kind of notice is said, one field an occasion so one can be turned down without
-	/// touching the others. Finished and failed downloads speak to the system, since the point of
-	/// them is to reach somebody who has looked away; the queue emptying says nothing to start
-	/// with, or the last download of a batch would say it twice; a newer build shows the card in
-	/// the corner, which is the only one of the four that has a button on it. See src/notify.rs.
-	#[serde(default = "to_the_system")]
+	/// touching the others. A finished download opens the dialog, which is the one notice with
+	/// something to do next -- open the file, show it where it lives, come back to the window --
+	/// and the reason the dialog exists. A failed one speaks to the system, since the point of it
+	/// is to reach somebody who has looked away and there is nothing to do but look. The queue
+	/// emptying says nothing to start with, or the last download of a batch would say it twice;
+	/// a newer build shows the card in the corner. See src/notify.rs.
+	#[serde(default = "in_a_window")]
 	pub notice_finished: Style,
 	#[serde(default = "to_the_system")]
 	pub notice_failed: Style,
@@ -128,6 +136,10 @@ fn to_the_system() -> Style {
 
 fn in_the_window() -> Style {
 	Style::InApp
+}
+
+fn in_a_window() -> Style {
+	Style::Window
 }
 
 fn three() -> usize {
@@ -202,9 +214,10 @@ impl Default for Preferences {
 		Preferences {
 			colorful_categories: true,
 			dim_inactive: true,
+			file_manager: String::new(),
 			folders: Folders::default(),
 			hide_junk: true,
-			notice_finished: Style::System,
+			notice_finished: Style::Window,
 			notice_failed: Style::System,
 			notice_queue: Style::Silent,
 			notice_update: Style::InApp,

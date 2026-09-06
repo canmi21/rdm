@@ -44,6 +44,35 @@ impl Style {
 	}
 }
 
+/// What a notice says, and what it is about. The file is there when the notice is about one:
+/// it is what the dialog's buttons act on and what its size and its time are read from.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Notice {
+	pub title: String,
+	pub body: String,
+	pub file: Option<Finished>,
+}
+
+/// The download a notice is about: where it landed, how big it turned out, and how long it took
+/// from being added to being done.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Finished {
+	pub path: std::path::PathBuf,
+	pub size: u64,
+	pub took: std::time::Duration,
+}
+
+impl Notice {
+	pub fn new(title: impl Into<String>, body: impl Into<String>) -> Notice {
+		Notice { title: title.into(), body: body.into(), file: None }
+	}
+
+	pub fn about(mut self, file: Finished) -> Notice {
+		self.file = Some(file);
+		self
+	}
+}
+
 /// A moment worth telling about. Each has its own row in Settings and its own field in the
 /// preferences, so one can be turned down without touching the others.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

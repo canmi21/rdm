@@ -6,7 +6,7 @@ use gpui::Context;
 use crate::app::Rdm;
 use crate::download::{Download, Status};
 use crate::engine::{self, Event, TaskId};
-use crate::notify::Occasion;
+use crate::notify::{Finished, Notice, Occasion};
 
 /// What Add Task asks for beyond the address, each empty when it did not.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -186,15 +186,31 @@ impl Rdm {
 		self.apply_event(event);
 		self.persist(touched);
 		let Some(failure) = ended else { return };
-		let name = self.download(touched).map(|d| d.name.clone()).unwrap_or_default();
+		let row = self.download(touched);
+		let name = row.map(|d| d.name.clone()).unwrap_or_default();
+		// What the dialog acts on and reports: where it landed, how big it came out, and how long
+		// it was between being added and being done.
+		let file = row.and_then(|d| {
+			Some(Finished {
+				path: std::path::PathBuf::from(d.path.as_ref()?),
+				size: d.size,
+				took: (chrono::Local::now() - d.added).to_std().unwrap_or_default(),
+			})
+		});
 		match failure {
-			None => self.tell_of(Occasion::Finished, "Download finished".to_owned(), name, cx),
+			None => {
+				let mut notice = Notice::new("Download finish", name);
+				if let Some(file) = file {
+					notice = notice.about(file);
+				}
+				self.tell_of(Occasion::Finished, notice, cx);
+			}
 			Some(message) => {
-				self.tell_of(Occasion::Failed, format!("{name} failed"), message, cx)
+				self.tell_of(Occasion::Failed, Notice::new(format!("{name} failed"), message), cx)
 			}
 		}
 		if was_working && !self.working() {
-			self.tell_of(Occasion::Queue, "Every download finished".to_owned(), String::new(), cx);
+			self.tell_of(Occasion::Queue, Notice::new("Every download finished", ""), cx);
 		}
 	}
 
