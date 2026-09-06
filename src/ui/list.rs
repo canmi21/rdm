@@ -144,6 +144,9 @@ impl Rdm {
 		let active = self.sort == key && !self.default_order();
 		let chevron = if self.ascending { Icon::ChevronUp } else { Icon::ChevronDown };
 		let slot = div().size_3().flex_none().when(active, |s| s.child(icon(chevron, p.text).size_3()));
+		// The title truncates rather than running over its neighbour, for the same reason the cells
+		// under it do: at a column's floor the word is wider than the column.
+		let label = div().min_w_0().truncate().child(title);
 		div()
 			.id(SharedString::from(format!("sort:{title}")))
 			.role(Role::ColumnHeader)
@@ -153,11 +156,12 @@ impl Rdm {
 			.flex_none()
 			.items_center()
 			.gap_0p5()
+			.overflow_hidden()
 			.cursor_pointer()
 			.when(active, |s| s.text_color(p.text))
 			.hover(move |s| s.text_color(p.text))
 			.on_click(cx.listener(move |this, _, _, cx| this.sort_by(key, cx)))
-			.map(|s| if end { s.child(slot).child(title) } else { s.child(title).child(slot) })
+			.map(|s| if end { s.child(slot).child(label) } else { s.child(label).child(slot) })
 	}
 
 	/// The boundary at a column's left edge, draggable: the column follows the pointer. The line is
@@ -224,8 +228,17 @@ impl Rdm {
 		let tint = p.status(download.status);
 		// Every fixed cell is preceded by the same 12px the header spends on a drag handle, so the
 		// columns line up under their titles.
+		// A cell never draws outside its column: at a column's floor the content is wider than the
+		// column is, and without this the status ran across the date beside it.
 		let cell = |column: Column| {
-			div().w(px(self.width(column) + 12.0)).pl(px(12.0)).flex_none().flex().justify_end().text_xs()
+			div()
+				.w(px(self.width(column) + 12.0))
+				.pl(px(12.0))
+				.flex_none()
+				.flex()
+				.justify_end()
+				.overflow_hidden()
+				.text_xs()
 		};
 		self
 			.item(download, cx)
@@ -243,13 +256,16 @@ impl Rdm {
 					div().w(px(32.0)).flex_none().text_right().text_color(p.muted).child(percent(download)),
 				),
 			)
-			.child(cell(Column::Speed).text_color(p.muted).child(speed_cell(download)))
-			.child(cell(Column::Status).whitespace_nowrap().child(status_label(download, tint)))
+			.child(
+				cell(Column::Speed)
+					.text_color(p.muted)
+					.child(div().truncate().child(speed_cell(download))),
+			)
+			.child(cell(Column::Status).child(status_label(download, tint)))
 			.child(
 				cell(Column::Added)
 					.text_color(p.muted)
-					.whitespace_nowrap()
-					.child(format_added(download.added)),
+					.child(div().truncate().child(format_added(download.added))),
 			)
 	}
 
@@ -322,15 +338,18 @@ fn tinted_icon((glyph, color): (Icon, Hsla)) -> gpui::Svg {
 	icon(glyph, color)
 }
 
+/// Text then mark, so the marks line up down the column's right edge. The word gives way first
+/// when the column is at its floor: the mark is what the eye reads down the edge, so it is the
+/// half that stays whole.
 fn status_label(download: &Download, tint: Hsla) -> impl IntoElement {
 	div()
 		.flex()
+		.min_w_0()
 		.items_center()
 		.gap_1()
 		.text_color(tint)
-		.whitespace_nowrap()
-		.child(download.status.label())
-		.child(icon(Icon::for_status(download.status), tint).size_3())
+		.child(div().min_w_0().truncate().child(download.status.label()))
+		.child(icon(Icon::for_status(download.status), tint).size_3().flex_none())
 }
 
 fn progress_bar(p: Palette, download: &Download, fill: Hsla) -> impl IntoElement {

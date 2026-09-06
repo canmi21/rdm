@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-//MISE description="The window through macOS accessibility: `ax tree [window] | ax press <label> | ax windows`"
+//MISE description="The window through macOS accessibility: `ax tree [window] | ax press <label> | ax size <w> <h> | ax windows`"
 // The accessibility tree is what a screen reader sees, and what an agent reads instead of a
 // screenshot: every element GPUI gave a role and a label. `press` performs the element's own
 // action through the same channel, so nothing moves the pointer or takes the keyboard. See
@@ -53,7 +53,12 @@ func find(_ element: AXUIElement, labelled label: String) -> AXUIElement? {
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard let process = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == "Downloads" }) else {
+// Two builds are up more often than not -- `mise run dev` restarts leave the old one a moment,
+// and a second checkout is a second window -- so RDM_PID picks one when the name is ambiguous.
+let wantedPid = ProcessInfo.processInfo.environment["RDM_PID"].flatMap { Int32($0) }
+guard let process = NSWorkspace.shared.runningApplications.first(where: {
+	$0.localizedName == "Downloads" && (wantedPid == nil || $0.processIdentifier == wantedPid)
+}) else {
 	FileHandle.standardError.write("no Downloads process; `mise run dev` first\n".data(using: .utf8)!)
 	exit(1)
 }
@@ -81,6 +86,28 @@ case "tree":
 	for window in windows where wanted.map({ text(window, kAXTitleAttribute).contains($0) }) ?? true {
 		dump(window, 0)
 	}
+// A resize through the same attribute a user's drag on the window's edge ends at, which is how
+// the system's own minimum size gets a say: ask for narrower than the window allows and what
+// comes back is what it allowed. Nothing here moves the pointer. See spec/workflow.md.
+case "size":
+	guard let window = windows.first else {
+		FileHandle.standardError.write("no window\n".data(using: .utf8)!)
+		exit(1)
+	}
+	let numbers = arguments.dropFirst().compactMap { Double($0) }
+	guard numbers.count == 2 else {
+		FileHandle.standardError.write("usage: ax size <width> <height>\n".data(using: .utf8)!)
+		exit(2)
+	}
+	var wanted = CGSize(width: numbers[0], height: numbers[1])
+	if let value = AXValueCreate(.cgSize, &wanted) {
+		AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
+	}
+	var got = CGSize.zero
+	if let value = attribute(window, kAXSizeAttribute) {
+		AXValueGetValue(value as! AXValue, .cgSize, &got)
+	}
+	print("asked \(Int(wanted.width))x\(Int(wanted.height)), got \(Int(got.width))x\(Int(got.height))")
 case "press":
 	let label = arguments.dropFirst().joined(separator: " ")
 	guard let target = windows.lazy.compactMap({ find($0, labelled: label) }).first else {
@@ -94,6 +121,6 @@ case "press":
 	}
 	print("pressed \(describe(target))")
 default:
-	FileHandle.standardError.write("usage: ax tree [window] | ax press <label> | ax windows\n".data(using: .utf8)!)
+	FileHandle.standardError.write("usage: ax tree [window] | ax press <label> | ax size <w> <h> | ax windows\n".data(using: .utf8)!)
 	exit(2)
 }

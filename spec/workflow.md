@@ -19,6 +19,7 @@ their mouse to it, and that is the rule this section exists to keep.
 | ------------------------------------------- | ----------------------------- | ------------------ |
 | What is the state, and change it            | `mise run ctl <command>`      | no                 |
 | What does the window contain, and press it  | `mise run ax tree` / `press`  | no                 |
+| How wide is the window, and resize it       | `mise run ax size <w> <h>`    | no                 |
 | Does a click do the right thing             | `cargo test`, headless        | no window at all   |
 | What does it look like                      | `mise run shot [path] [title]` | reads pixels only |
 
@@ -30,6 +31,16 @@ sidebar, chips, headers and rows do. It is the analogue of the Tauri MCP bridge 
 uses for its webview app, kept to a socket and a Python client because that is all the job
 needs. The socket lives in `target/` so it is per checkout and gone with `cargo clean`.
 
+`ctl drag <column> <points>` is there for the one gesture nothing else can reach: a drag. A
+handle has no action of its own -- it answers a press and then the pointer -- so the
+accessibility tree cannot perform it and the rule against moving the pointer forbids the
+obvious alternative. The command presses, walks the pointer in ten steps and releases, through
+the same three functions a real drag calls, so what it exercises is the drag and not a copy of
+it; ten steps rather than one jump because the bug it was written for only appeared on the
+second move. Negative points widen the column, since the handle is its left edge. `state`
+reports the table beside everything else: the widths asked for, the widths there is room to
+draw, and what the name column is left. See [ui.md](ui.md).
+
 **`ax` is the accessibility tree, which macOS already has.** Every interactive element carries
 a role and a label -- `Button "Pause"`, `RadioButton "Filter: Videos"`, `CheckBox "Completed 2"`,
 `ListItem "rust-book.pdf"` -- so the tree a screen reader sees is a structural snapshot an agent
@@ -37,7 +48,12 @@ can read, and `AXPress` performs an element's own action through the same channe
 one of the four that is also a feature: it is what makes the application usable with VoiceOver.
 Two facts about it are not obvious. AccessKit builds the tree lazily, so the first query only
 switches it on and the elements arrive with the next frame; `ax` reads twice for that reason.
-And element ids must be unique within a frame: a chip, a sidebar row and a header cell all
+`ax size` sets the window's size through the same attribute a drag on its edge ends at, which
+is how the system's own minimum size gets a say: ask for narrower than the window allows and
+what comes back is what it allowed, which is the only way to check that a minimum is really
+enforced and not merely declared. `RDM_PID` picks the process when more than one build is up,
+which is often -- a `dev` restart leaves the old one a moment, and a second checkout is a
+second window. And element ids must be unique within a frame: a chip, a sidebar row and a header cell all
 called "Completed" collided, which surfaced as a click whose down and up landed on different
 state in a headless test and as a duplicate-node panic in the accessibility tree, in the same
 hour.

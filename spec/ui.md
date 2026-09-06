@@ -61,7 +61,10 @@ ascending, a second click descending, and a third lets go, back to the default: 
 Added, which shows no chevron because nothing has been asked for. The chevron sits in a slot every
 title reserves, so ordering by another column does not push its neighbours over -- it did, and
 the header jumped. A status cell reads text then mark, so the marks line up down the right edge
-under a left-aligned title. A handle sits at each column's left edge and
+under a left-aligned title; at a column's floor the text is wider than the column, so the cell
+clips to its own width and the text truncates within it -- the mark is the half that stays,
+being what the eye reads down the edge. Titles truncate for the same reason. Without that the
+status ran across the date beside it, which a screenshot showed and no headless test could. A handle sits at each column's left edge and
 drags that column: the table is anchored at its right and the name column absorbs the rest, so a
 column's left edge is the one that can move, and a boundary that follows the pointer is what a
 drag means -- the first cut put the handle on the right and read as reversed. The widths live on

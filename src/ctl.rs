@@ -10,7 +10,7 @@ use futures::channel::{mpsc, oneshot};
 use gpui::{App, Context, Entity};
 use serde::Serialize;
 
-use crate::app::{Rdm, SortKey, View};
+use crate::app::{Column, Rdm, SortKey, View};
 use crate::download::{Download, Filter, Status};
 use crate::ui::category_sheet::CategorySheet;
 use crate::ui::icon::Icon;
@@ -19,6 +19,7 @@ use crate::ui::icon::Icon;
 pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
 
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings [section] | fullscreen | update | \
+	drag <size|progress|speed|status|added> <points> | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
@@ -89,6 +90,13 @@ struct State<'a> {
 	windows: Vec<u64>,
 	settings: bool,
 	category_sheet: Option<&'static str>,
+	/// The table, as the header has it: the widths asked for, the widths there is room to draw,
+	/// what the name column is left, and how wide the window is. The two rows of widths differ
+	/// only when the window is too narrow to hold what was asked for. See spec/ui.md.
+	widths: [f32; 5],
+	drawn: [f32; 5],
+	name_width: f32,
+	window_width: f32,
 	downloads: &'a [Download],
 }
 
@@ -127,6 +135,10 @@ impl Rdm {
 			selected: self.selected,
 			windows,
 			settings,
+			widths: self.widths,
+			drawn: self.drawn(),
+			name_width: self.name_width(&self.drawn()),
+			window_width: self.viewport.width.into(),
 			category_sheet: self.category_sheet.as_ref().map(|sheet| match sheet {
 				CategorySheet::Presets { .. } => "presets",
 				CategorySheet::Preset(_) => "preset",
@@ -280,6 +292,34 @@ impl Rdm {
 				self.sort = key;
 				self.ascending = rest.get(1) != Some(&"desc");
 				cx.notify();
+			}
+			// The one gesture the accessibility tree cannot perform, since a handle has no action of
+			// its own -- it answers a press and then the pointer, which AXPress is not. The press
+			// and every move go through the same three functions a real drag does, so what this
+			// exercises is the drag itself and not a copy of it. See spec/workflow.md.
+			"drag" => {
+				let Some(column) = rest.first().and_then(|name| match *name {
+					"size" => Some(Column::Size),
+					"progress" => Some(Column::Progress),
+					"speed" => Some(Column::Speed),
+					"status" => Some(Column::Status),
+					"added" => Some(Column::Added),
+					_ => None,
+				}) else {
+					return failure("drag takes size, progress, speed, status or added, then the travel");
+				};
+				let Some(travel) = rest.get(1).and_then(|by| by.parse::<f32>().ok()) else {
+					return failure("drag takes the travel in points, negative to widen the column");
+				};
+				// Somewhere the pointer could be; only the difference from it is ever read.
+				let from = gpui::px(600.0);
+				self.begin_resize(column, from);
+				// A pointer arrives a step at a time, and a bug that only shows on the second move
+				// would hide from a single jump. Ten steps is enough to catch one.
+				for step in 1u8..=10 {
+					self.resize_to(from + gpui::px(travel * f32::from(step) / 10.0), true, cx);
+				}
+				self.end_resize(cx);
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
 			"add" => return failure("add takes a url"),
