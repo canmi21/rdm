@@ -169,6 +169,19 @@ Without ranges there is nothing to choose and the notice says so. A page's links
 itself take the settings' default. `Auto` is the engine's own judgement, in
 [engine.md](engine.md).
 
+**Everything else the engine can be asked is behind `More`.** Under the notice a word opens
+the rest: the name to save under, the folder -- the system's picker, and the download folder
+unless one is chosen -- other addresses of the same file apart by spaces, a checksum the
+finished file must match, sha256, sha512 or md5 as hex with the length saying which, the part
+of the file wanted as `start-end` in bytes, and a limit of the download's own. Each is checked
+before anything is added and a wrong one is said under the field; each empty one is left to
+the defaults. What was asked travels with the row into the database, and a resume after a
+restart asks for the same. The download's window shows what was asked and lets the limit be
+changed while it runs. The transfer settings, a section of their own, are the engine's
+defaults for every new download and are listed in [release.md](release.md)'s neighbour,
+[engine.md](engine.md); the two the engine takes live, concurrent downloads and the speed
+limit, reach it as they are typed.
+
 **Add Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
 clipboard, and if what is there is under a thousand characters and reads as an address --
 with a scheme, or without one and tried as https -- the field starts with it; anything else
@@ -181,6 +194,11 @@ that queues it when pressed and stays pressed; the sheet stays up so several can
 field itself scrolls under its cursor when the address is longer than the box, as every
 native field does: wrapping would make a one-line field two, and an ellipsis would hide the
 part being edited.
+
+**A download's window says what was asked and takes one change.** Under the address and the
+size: the folder, the connections, the mirrors, the checksum and the range where there were
+any, the error while there is one, and a field for the download's own limit, applied on Enter
+to the engine and kept on the row.
 
 **Only a download gets a window; everything else is a sheet.** Settings and Add Task open as a
 card over the dimmed list inside the main window. The distinction is whether the thing is worth

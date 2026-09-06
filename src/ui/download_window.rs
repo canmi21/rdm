@@ -13,6 +13,9 @@ use crate::ui::theme;
 pub struct DownloadWindow {
 	rdm: Entity<Rdm>,
 	id: u64,
+	/// The one thing about a running download that can be changed here: its own limit,
+	/// applied on Enter to the engine and kept on the row.
+	limit: Entity<crate::ui::text_input::TextInput>,
 	_follow: Subscription,
 }
 
@@ -21,7 +24,20 @@ impl DownloadWindow {
 		// The main view owns the downloads; this window only looks at one of them, so it redraws
 		// whenever that view changes and holds no copy of its own.
 		let follow = cx.observe(&rdm, |_, _, cx| cx.notify());
-		Self { rdm, id, _follow: follow }
+		let current = rdm.read(cx).download(id).and_then(|d| d.speed_limit);
+		let owner = rdm.clone();
+		let limit = cx.new(|cx| {
+			let mut field =
+				crate::ui::text_input::TextInput::new("Off", cx).on_confirm(move |text, _, cx| {
+					let limit = crate::download::parse_rate(text).unwrap_or(None);
+					owner.update(cx, |rdm, cx| rdm.set_task_speed_limit(id, limit, cx));
+				});
+			if let Some(limit) = current {
+				field.set_content(&crate::download::format_rate(Some(limit)), cx);
+			}
+			field
+		});
+		Self { rdm, id, limit, _follow: follow }
 	}
 }
 
@@ -61,6 +77,32 @@ impl Render for DownloadWindow {
 		frame
 			.child(field(p.muted, "URL", download.url.clone()))
 			.child(field(p.muted, "Size", format_bytes(download.size)))
+			.child(field(
+				p.muted,
+				"Folder",
+				download.directory.clone().unwrap_or_else(|| "Download folder".to_owned()),
+			))
+			.child(field(
+				p.muted,
+				"Connections",
+				download.connections.map(|n| n.to_string()).unwrap_or_else(|| "Auto".to_owned()),
+			))
+			.when(!download.mirrors.is_empty(), |s| {
+				s.child(field(p.muted, "Mirrors", download.mirrors.join(" ")))
+			})
+			.when_some(download.checksum.clone(), |s, sum| s.child(field(p.muted, "Checksum", sum)))
+			.when_some(download.range.clone(), |s, range| s.child(field(p.muted, "Range", range)))
+			.when_some(download.error.clone(), |s, error| s.child(field(p.failure, "Error", error)))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.text_xs()
+					.child(div().w(px(36.0)).flex_none().text_color(p.muted).child("Limit"))
+					.child(div().w(px(112.0)).child(self.limit.clone()))
+					.child(div().text_color(p.muted).child("KB/s, or with m or g; Enter applies")),
+			)
 			.child(field(
 				p.muted,
 				"Category",
