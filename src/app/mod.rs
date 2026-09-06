@@ -563,8 +563,11 @@ impl Rdm {
 			return;
 		}
 		// Widening one column narrows the name column, which keeps a floor: past it the row would
-		// overflow the window.
-		let others: f32 = self.widths.iter().sum::<f32>() - resize.from_width;
+		// overflow the window. What the others take is read from the widths as they stand now, not
+		// from the width this drag started at: the two agree only on the first move, and after that
+		// the ceiling would follow the column it bounds and the boundary would oscillate under the
+		// pointer.
+		let others: f32 = self.widths.iter().sum::<f32>() - self.width(resize.column);
 		let table =
 			f32::from(self.viewport.width) - crate::ui::sidebar::WIDTH - crate::ui::list::TABLE_CHROME;
 		let room = table - others - 5.0 * crate::ui::list::HANDLE_W - crate::ui::list::NAME_MIN;

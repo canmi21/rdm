@@ -300,6 +300,59 @@ fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.resizing.is_some()));
 }
 
+/// The stop is a ceiling, not a place the boundary bounces off: it held one drag's starting width
+/// against the widths as they stood, so once the column passed it the two disagreed, the ceiling
+/// fell as the column rose, and the boundary alternated across the pointer -- stopping short,
+/// twitching there, and letting a fresh press take half of what was left.
+#[gpui::test]
+fn a_drag_past_the_stop_holds_there_and_a_second_takes_no_more(cx: &mut TestAppContext) {
+	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Point, Pixels, point, px};
+
+	/// One press on the Size handle and twenty points of leftward travel per move, which widens
+	/// the column, with the width after every move so the walk itself can be read.
+	fn drag_left(rdm: &Entity<Rdm>, cx: &mut VisualTestContext, from: Point<Pixels>) -> Vec<f32> {
+		cx.simulate_event(MouseDownEvent {
+			button: MouseButton::Left,
+			position: from,
+			modifiers: Modifiers::default(),
+			click_count: 1,
+			first_mouse: false,
+		});
+		let widths = (1u8..=25)
+			.map(|step| {
+				cx.simulate_event(MouseMoveEvent {
+					position: point(from.x - px(20.0 * f32::from(step)), from.y),
+					pressed_button: Some(MouseButton::Left),
+					modifiers: Modifiers::default(),
+				});
+				rdm.read_with(cx, |rdm, _| rdm.width(Column::Size))
+			})
+			.collect();
+		cx.simulate_event(MouseUpEvent {
+			button: MouseButton::Left,
+			position: from,
+			modifiers: Modifiers::default(),
+			click_count: 1,
+		});
+		widths
+	}
+
+	let (rdm, mut cx) = open(cx);
+	let start = cx.debug_bounds("resize:Size").unwrap().center();
+	let first = drag_left(&rdm, &mut cx, start);
+	assert!(
+		first.windows(2).all(|w| w[1] >= w[0]),
+		"the pointer only went left, so the column only widened: {first:?}"
+	);
+	let stop = *first.last().unwrap();
+	let second = drag_left(&rdm, &mut cx, start);
+	assert_eq!(
+		second.last().copied(),
+		Some(stop),
+		"the same travel from the same place reaches the same stop, however often it is asked"
+	);
+}
+
 #[gpui::test]
 fn the_custom_form_adds_a_rule_and_advanced_exposes_the_pattern(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
