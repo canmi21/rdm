@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::category::{Category, Overrides, extensions_of_pattern};
 use crate::engine::HttpVersion;
+use crate::notify::{Occasion, Style};
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
 use crate::ui::theme::{format_hex, parse_color};
@@ -52,6 +53,19 @@ pub struct Preferences {
 	pub auto_update: bool,
 	#[serde(default)]
 	pub update_policy: Policy,
+	/// Where each kind of notice is said, one field an occasion so one can be turned down without
+	/// touching the others. Finished and failed downloads speak to the system, since the point of
+	/// them is to reach somebody who has looked away; the queue emptying says nothing to start
+	/// with, or the last download of a batch would say it twice; a newer build shows the card in
+	/// the corner, which is the only one of the four that has a button on it. See src/notify.rs.
+	#[serde(default = "to_the_system")]
+	pub notice_finished: Style,
+	#[serde(default = "to_the_system")]
+	pub notice_failed: Style,
+	#[serde(default)]
+	pub notice_queue: Style,
+	#[serde(default = "in_the_window")]
+	pub notice_update: Style,
 	/// Bytes per second across every download; None is unlimited, the default.
 	#[serde(default)]
 	pub speed_limit: Option<u64>,
@@ -89,6 +103,14 @@ pub struct Preferences {
 	pub preallocate: bool,
 }
 
+fn to_the_system() -> Style {
+	Style::System
+}
+
+fn in_the_window() -> Style {
+	Style::InApp
+}
+
 fn three() -> usize {
 	3
 }
@@ -98,6 +120,26 @@ fn auto_http() -> HttpVersion {
 }
 
 impl Preferences {
+	/// Where this occasion's notice is said. One accessor rather than four call sites reaching
+	/// for four fields, so a new occasion is a field, an arm and a row and nothing else.
+	pub fn notice(&self, occasion: Occasion) -> Style {
+		match occasion {
+			Occasion::Finished => self.notice_finished,
+			Occasion::Failed => self.notice_failed,
+			Occasion::Queue => self.notice_queue,
+			Occasion::Update => self.notice_update,
+		}
+	}
+
+	pub fn set_notice(&mut self, occasion: Occasion, style: Style) {
+		*match occasion {
+			Occasion::Finished => &mut self.notice_finished,
+			Occasion::Failed => &mut self.notice_failed,
+			Occasion::Queue => &mut self.notice_queue,
+			Occasion::Update => &mut self.notice_update,
+		} = style;
+	}
+
 	/// The engine's settings for a new download: its own defaults, with what the user set
 	/// written over them.
 	pub fn engine_settings(&self) -> crate::engine::Settings {
@@ -141,6 +183,10 @@ impl Default for Preferences {
 		Preferences {
 			colorful_categories: true,
 			dim_inactive: true,
+			notice_finished: Style::System,
+			notice_failed: Style::System,
+			notice_queue: Style::Silent,
+			notice_update: Style::InApp,
 			update_channel: Channel::default(),
 			check_updates: true,
 			auto_update: true,

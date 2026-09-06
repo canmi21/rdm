@@ -14,6 +14,7 @@ mod download;
 mod engine;
 mod identity;
 mod index;
+mod notify;
 mod state;
 mod store;
 #[cfg(test)]

@@ -1,0 +1,95 @@
+//! Telling somebody that something happened, and where it is said. Four moments are worth
+//! telling about -- a download that finished, one that failed, a queue that emptied, and a build
+//! newer than this one -- and each carries its own choice, because what somebody wants said out
+//! loud about a finished download is rarely what they want said about a failed one. See
+//! spec/ui.md.
+//!
+//! The forms are separate places and not degrees of loudness: the system's notification centre
+//! reaches somebody who is not looking at the window, a card in the corner reaches somebody who
+//! is, and silence reaches nobody. Which is right is the user's to say, so none of them stands in
+//! for another -- a form that cannot be shown is not quietly swapped for one that can, since a
+//! notice arriving somewhere it was not asked for is worse than one that does not arrive.
+
+use serde::{Deserialize, Serialize};
+
+/// Where a notice is said.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Style {
+	/// The system's own notification centre, which reaches past the window and outlives it.
+	System,
+	/// A card in the window's corner, over the list and above the status bar, which reaches
+	/// somebody already looking at it and nobody else.
+	InApp,
+	/// A window of its own, above the others, which needs no main window open. Not offered yet.
+	Window,
+	/// Nothing is said.
+	#[default]
+	Silent,
+}
+
+impl Style {
+	/// What Settings offers, in the order it offers it: the places a notice can go, then the
+	/// choice to send it nowhere, since somebody opening the row is usually turning one down.
+	pub const ALL: [Style; 3] = [Style::System, Style::InApp, Style::Silent];
+
+	pub fn name(self) -> &'static str {
+		match self {
+			Style::System => "System notification",
+			Style::InApp => "In the window",
+			Style::Window => "A window of its own",
+			Style::Silent => "Nothing",
+		}
+	}
+}
+
+/// A moment worth telling about. Each has its own row in Settings and its own field in the
+/// preferences, so one can be turned down without touching the others.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Occasion {
+	Finished,
+	Failed,
+	Queue,
+	Update,
+}
+
+impl Occasion {
+	pub const ALL: [Occasion; 4] =
+		[Occasion::Finished, Occasion::Failed, Occasion::Queue, Occasion::Update];
+
+	/// What Settings calls the row: the moment, said as it happens rather than as a setting.
+	pub fn label(self) -> &'static str {
+		match self {
+			Occasion::Finished => "A download finishes",
+			Occasion::Failed => "A download fails",
+			Occasion::Queue => "Every download finishes",
+			Occasion::Update => "A newer build is found",
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The window is a place a notice can go before it is a place Settings offers, so that a
+	/// preferences file written by a later build still reads here rather than failing whole.
+	#[test]
+	fn every_style_offered_is_named_and_the_unoffered_one_is_too() {
+		for style in Style::ALL {
+			assert!(!style.name().is_empty());
+		}
+		assert_eq!(Style::Window.name(), "A window of its own");
+		assert!(!Style::ALL.contains(&Style::Window), "not offered until it is built");
+		assert_eq!(Style::default(), Style::Silent, "an unreadable choice says nothing");
+	}
+
+	#[test]
+	fn every_occasion_is_named_and_they_are_all_different() {
+		let labels: Vec<&str> = Occasion::ALL.iter().map(|o| o.label()).collect();
+		let mut sorted = labels.clone();
+		sorted.sort_unstable();
+		sorted.dedup();
+		assert_eq!(sorted.len(), labels.len(), "two rows with one label would be one row: {labels:?}");
+	}
+}

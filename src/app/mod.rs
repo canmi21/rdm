@@ -25,6 +25,7 @@ use crate::ui::theme::{self, Palette};
 
 mod categories;
 mod indexing;
+mod notices;
 #[cfg(test)]
 mod tests;
 mod transfers;
@@ -205,6 +206,9 @@ pub struct Rdm {
 	/// The pending write. Replacing it cancels the old one, which is the debounce.
 	save: Option<Task<()>>,
 	_tick: Task<()>,
+	/// The cards in the window's corner, oldest first: what has been said in the window and not
+	/// yet gone. See src/app/notices.rs.
+	pub(crate) notices: Vec<notices::Shown>,
 	/// The update check: what it found, and the card and notification that follow.
 	pub(crate) updates: updates::Updates,
 	_checks: Option<Task<()>>,
@@ -310,6 +314,7 @@ impl Rdm {
 			maximized: saved.maximized,
 			save: None,
 			_tick: tick,
+			notices: Vec::new(),
 			updates: updates::Updates::default(),
 			_checks: None,
 		};
@@ -810,7 +815,7 @@ impl Render for Rdm {
 					.child(div().flex().flex_col().flex_1().min_w_0().child(self.render_list(cx))),
 			)
 			.child(self.render_status_bar(cx))
-			.when_some(self.update_toast(cx), |s, toast| s.child(toast))
+			.when_some(self.corner(cx), |s, corner| s.child(corner))
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when(self.adding.is_some(), |s| s.child(self.add_dialog(cx)))
 			.when(self.settings_open(), |s| s.child(self.settings_sheet(cx)))

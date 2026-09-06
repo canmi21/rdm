@@ -15,6 +15,7 @@ use crate::ui::{LeavesFocus, backdrop, icon_button};
 use std::collections::HashMap;
 
 use crate::engine::HttpVersion;
+use crate::notify::{Occasion, Style};
 use crate::update::Policy;
 
 // TODO: every value row here is a label until there is a setting behind it and a store to keep it
@@ -56,18 +57,25 @@ const FIELDS: [(&str, &str, &str); 13] = [
 pub enum Section {
 	General,
 	Transfers,
+	Notifications,
 	Appearance,
 	About,
 }
 
 impl Section {
-	pub const ALL: [Section; 4] =
-		[Section::General, Section::Transfers, Section::Appearance, Section::About];
+	pub const ALL: [Section; 5] = [
+		Section::General,
+		Section::Transfers,
+		Section::Notifications,
+		Section::Appearance,
+		Section::About,
+	];
 
 	pub fn name(self) -> &'static str {
 		match self {
 			Section::General => "General",
 			Section::Transfers => "Transfers",
+			Section::Notifications => "Notifications",
 			Section::Appearance => "Appearance",
 			Section::About => "About",
 		}
@@ -77,9 +85,21 @@ impl Section {
 		match self {
 			Section::General => Icon::SlidersHorizontal,
 			Section::Transfers => Icon::Download,
+			Section::Notifications => Icon::Bell,
 			Section::Appearance => Icon::Palette,
 			Section::About => Icon::Info,
 		}
+	}
+}
+
+/// A Choice row takes a plain function and so cannot carry the occasion with it; each occasion
+/// names its own instead, which is four lines against changing every other row in the sheet.
+fn notice_setter(occasion: Occasion) -> fn(&mut Rdm, usize, &mut Context<Rdm>) {
+	match occasion {
+		Occasion::Finished => |this, at, cx| this.set_notice(Occasion::Finished, Style::ALL[at], cx),
+		Occasion::Failed => |this, at, cx| this.set_notice(Occasion::Failed, Style::ALL[at], cx),
+		Occasion::Queue => |this, at, cx| this.set_notice(Occasion::Queue, Style::ALL[at], cx),
+		Occasion::Update => |this, at, cx| this.set_notice(Occasion::Update, Style::ALL[at], cx),
 	}
 }
 
@@ -275,7 +295,7 @@ impl Rdm {
 			.as_ref()
 			.map(|p| p.downloads.display().to_string())
 			.unwrap_or_else(|| "the working directory".to_owned());
-		vec![
+		let mut rows = vec![
 			Row { section: Section::General, label: "Download folder", control: Control::Value(folder) },
 			Row {
 				section: Section::General,
@@ -416,7 +436,24 @@ impl Rdm {
 				label: "Identifier",
 				control: Control::Value(identity::id()),
 			},
-		]
+		];
+		// One row an occasion, in the order src/notify.rs lists them, so a new occasion is a
+		// variant and nothing here.
+		rows.extend(Occasion::ALL.map(|occasion| Row {
+			section: Section::Notifications,
+			label: occasion.label(),
+			control: Control::Choice {
+				options: Style::ALL.iter().map(|style| style.name()).collect(),
+				// A style this build no longer offers lands on the first: a row has to light
+				// something, and one lighting nothing reads as broken rather than as unset.
+				chosen: Style::ALL
+					.iter()
+					.position(|style| *style == self.preferences.notice(occasion))
+					.unwrap_or(0),
+				set: notice_setter(occasion),
+			},
+		}));
+		rows
 	}
 
 	pub(crate) fn settings_sheet(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

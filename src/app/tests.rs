@@ -987,6 +987,56 @@ fn a_press_on_a_sheet_that_lands_on_no_field_drops_the_fields_focus(cx: &mut Tes
 	);
 }
 
+/// Notifications is a page of one row an occasion, and each row is a choice of where -- not a
+/// switch, since where a notice goes is the question and whether it goes at all is one of the
+/// answers.
+#[gpui::test]
+fn notifications_are_one_row_an_occasion_and_the_choice_is_kept(cx: &mut TestAppContext) {
+	use crate::notify::{Occasion, Style};
+	let (rdm, mut cx) = open(cx);
+	click(&mut cx, "button:Settings");
+	click(&mut cx, "section:Notifications");
+	for occasion in Occasion::ALL {
+		let selector: &'static str = format!("setting:{}", occasion.label()).leak();
+		assert!(cx.debug_bounds(selector).is_some(), "a row for {}", occasion.label());
+	}
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.preferences.notice(Occasion::Finished), Style::System, "the default");
+		assert_eq!(rdm.preferences.notice(Occasion::Queue), Style::Silent, "or the last would say it twice");
+	});
+	// The choice is the user's and is kept, one occasion at a time.
+	rdm.update(&mut cx, |rdm, cx| rdm.set_notice(Occasion::Finished, Style::InApp, cx));
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.preferences.notice(Occasion::Finished), Style::InApp);
+		assert_eq!(rdm.preferences.notice(Occasion::Failed), Style::System, "and only that one");
+	});
+}
+
+/// What the window is told, the window shows: a card in the corner that goes at a press. The
+/// system's own notification centre is not something a headless test can see, so what is checked
+/// here is that the choice is honoured, not what the system does with it.
+#[gpui::test]
+fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mut TestAppContext) {
+	use crate::notify::{Occasion, Style};
+	let (rdm, mut cx) = open(cx);
+	assert!(cx.debug_bounds("notice:0").is_none(), "nothing said yet");
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_notice(Occasion::Finished, Style::InApp, cx);
+		rdm.tell_of(Occasion::Finished, "Download finished".to_owned(), "debian.iso".to_owned(), cx);
+	});
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("notice:0").is_some(), "the corner says so");
+	click(&mut cx, "notice:0");
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.notices.is_empty(), "and a press takes it away"));
+	// Told to say nothing, it says nothing anywhere.
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_notice(Occasion::Finished, Style::Silent, cx);
+		rdm.tell_of(Occasion::Finished, "Download finished".to_owned(), "debian.iso".to_owned(), cx);
+	});
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.notices.is_empty(), "silent is silent"));
+}
+
 #[gpui::test]
 fn settings_has_sections_and_a_search_that_cuts_across_them(cx: &mut TestAppContext) {
 	use crate::ui::settings_sheet::Section;

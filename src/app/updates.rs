@@ -13,11 +13,11 @@ use gpui::{Context, IntoElement, Role, Task, Window, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::download::format_bytes;
-use crate::identity;
 use crate::ui::icon::{Icon, icon};
 use crate::ui::icon_button;
 use crate::ui::status_bar;
 use crate::ui::theme::Palette;
+use crate::notify::Occasion;
 use crate::update::{self, Available, Manifest, Policy, Region, install};
 
 /// What the check knows and what it last said.
@@ -262,7 +262,7 @@ impl Rdm {
 			eprintln!("could not record the update notice: {error:#}");
 		}
 		self.updates.notified.insert(stage.to_owned(), (version, build));
-		notify(body, cx);
+		self.tell_of(Occasion::Update, body.to_owned(), String::new(), cx);
 	}
 
 	pub(crate) fn dismiss_update(&mut self, cx: &mut Context<Self>) {
@@ -441,7 +441,12 @@ impl Rdm {
 	/// and the one thing to press next.
 	pub(crate) fn update_toast(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
 		let p = self.palette;
-		if !self.updates.announces {
+		// The card is the only place a build can be installed from, so it stands for every choice
+		// but Nothing: `In the window` is the card alone, `System notification` is the card and
+		// the centre as well, and `Nothing` is neither. See spec/ui.md.
+		if !self.updates.announces
+			|| self.preferences.notice(crate::notify::Occasion::Update) == crate::notify::Style::Silent
+		{
 			return None;
 		}
 		let available = self.updates.available.as_ref()?;
@@ -545,54 +550,4 @@ fn word_button(
 		.hover(move |s| s.bg(p.hover))
 		.on_click(cx.listener(move |this, _, _, cx| run(this, cx)))
 		.child(word)
-}
-
-/// Tells the system, and brings the window to the front when the notification is pressed:
-/// the card is there, saying what to do next. On macOS the notification is delivered on the
-/// application's behalf and the system activates the application on a press by itself; on
-/// Linux the notification carries a default action and is waited on for it; on Windows a
-/// press does nothing beyond closing the toast, since activation there needs an application
-/// registered with the shell, which a plain executable is not. Failing to notify is nothing
-/// to report: the card is still there when the window is.
-fn notify(body: &str, cx: &mut Context<Rdm>) {
-	let body = body.to_owned();
-	cx.spawn(async move |this, cx| {
-		let pressed = cx
-			.background_executor()
-			.spawn(async move {
-				// macOS delivers a notification only on behalf of an installed bundle; a
-				// binary run from the build tree has none, and the call fails quietly.
-				#[cfg(target_os = "macos")]
-				let _ = notify_rust::set_application(&identity::id());
-				let mut notification = notify_rust::Notification::new();
-				notification.summary(identity::DISPLAY_NAME).body(&body);
-				#[cfg(target_os = "linux")]
-				{
-					notification.action("default", "Open");
-					match notification.show() {
-						Ok(handle) => {
-							let mut pressed = false;
-							handle.wait_for_action(|action| pressed = action == "default");
-							pressed
-						}
-						Err(_) => false,
-					}
-				}
-				#[cfg(not(target_os = "linux"))]
-				{
-					let _ = notification.show();
-					false
-				}
-			})
-			.await;
-		if pressed {
-			let _ = this.update(cx, |_, cx| cx.activate(true));
-			cx.update(|cx| {
-				for handle in cx.windows() {
-					let _ = handle.update(cx, |_, window, _| window.activate_window());
-				}
-			});
-		}
-	})
-	.detach();
 }

@@ -168,6 +168,26 @@ a Linux desktop with no host for a StatusNotifierItem, say, which is a GNOME wit
 extension for it -- is reported and done without. See [packaging.md](packaging.md) for the two
 rendered icons and [framework.md](framework.md) for why Linux speaks the bus directly.
 
+**Notifications is a page of one row a moment, and each row is a choice of where.** Four moments
+are worth telling somebody about -- a download finishes, a download fails, every download
+finishes, a newer build is found -- and each carries its own setting, because what somebody wants
+said out loud about a finished download is rarely what they want said about a failed one. The
+choices are places and not degrees of loudness: `System notification` reaches somebody who is not
+looking at the window, `In the window` is a card in the corner that reaches somebody who is, and
+`Nothing` reaches nobody. None of them stands in for another -- a place that cannot show a notice
+does not quietly hand it to one that can, since a notice arriving somewhere it was not asked for
+is worse than one that does not arrive.
+
+The defaults are what the four moments are worth: a finished or failed download speaks to the
+system, since the point of them is to reach somebody who has looked away; every download
+finishing says nothing, or the last download of a batch would say it twice; and a newer build
+shows the card in the corner. That last row is the one asymmetry, and it is deliberate: the
+update's card is the only place a build can be installed from, so it stands for every choice but
+`Nothing` -- `In the window` is the card alone and `System notification` is the card and the
+centre as well. Silencing it silences both. A card in the corner goes on its own after six
+seconds or at a press, four at a time at most, oldest first, and the update's card sits under
+them in the same column so neither lands on top of the other.
+
 **An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
 front", under Appearance and on to start with, is the switch behind the monochrome the palette
 takes when the window is not active; off, the window keeps its colors in front or not, for
