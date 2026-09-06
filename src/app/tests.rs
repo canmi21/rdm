@@ -37,6 +37,20 @@ fn open_in(cx: &mut TestAppContext, name: &str) -> (Entity<Rdm>, VisualTestConte
 	(rdm, cx)
 }
 
+/// The same, for the archive index: until no run is under way.
+fn wait_for_index(rdm: &Entity<Rdm>, cx: &mut VisualTestContext) {
+	let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+	while std::time::Instant::now() < deadline {
+		rdm.update(cx, |rdm, cx| rdm.pump_events(cx));
+		cx.run_until_parked();
+		if rdm.read_with(cx, |rdm, _| rdm.indexing.is_none()) {
+			return;
+		}
+		std::thread::sleep(std::time::Duration::from_millis(20));
+	}
+	panic!("the archives were not indexed in time");
+}
+
 /// Runs the window's ticks until the folder's rows have arrived from the background read, or
 /// gives up after a few seconds: the read is a real thread, so the test clock cannot hurry it.
 fn wait_for_folder(rdm: &Entity<Rdm>, cx: &mut VisualTestContext) {
@@ -169,6 +183,43 @@ fn the_status_bar_spins_while_something_runs_behind_the_window(cx: &mut TestAppC
 			rdm.folder_scan.take().unwrap().1,
 		));
 		assert_eq!(rdm.activities(), ["Reading the folder"]);
+	});
+}
+
+#[gpui::test]
+fn an_archive_in_the_folder_is_indexed_and_placed_by_what_it_holds(cx: &mut TestAppContext) {
+	use std::io::Write;
+	let (rdm, mut cx) = open_in(cx, "archive-index");
+	let directory = rdm.read_with(&cx, |rdm, _| rdm.paths.as_ref().unwrap().downloads.clone());
+	for stale in std::fs::read_dir(&directory).unwrap().flatten() {
+		let _ = std::fs::remove_file(stale.path()).or_else(|_| std::fs::remove_dir_all(stale.path()));
+	}
+	let zip_path = directory.join("tool.zip");
+	{
+		let mut zip = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+		zip.start_file("setup.exe", zip::write::SimpleFileOptions::default()).unwrap();
+		zip.write_all(b"MZ").unwrap();
+		zip.finish().unwrap();
+	}
+	click(&mut cx, "button:Folder files");
+	wait_for_folder(&rdm, &mut cx);
+	wait_for_index(&rdm, &mut cx);
+	rdm.read_with(&cx, |rdm, _| {
+		let row = rdm.folder_files.iter().find(|d| d.name == "tool.zip").expect("the zip is a row");
+		let names: Vec<&str> = rdm.categories_of(row).iter().map(|c| c.name.as_str()).collect();
+		assert_eq!(names, ["Archives", "Programs"], "a zip of one program is a program too");
+		assert_eq!(rdm.contents_of(row), ["setup.exe"]);
+		let programs = rdm.categories.iter().find(|c| c.name == "Programs").unwrap().id;
+		assert!(rdm.passes(Filter::Category(programs), row));
+		let key = zip_path.to_string_lossy().into_owned();
+		assert!(rdm.store.as_ref().unwrap().archives().unwrap().contains_key(&key), "and kept");
+	});
+	// The file gone, its index goes with it at the next look.
+	std::fs::remove_file(&zip_path).unwrap();
+	rdm.update(&mut cx, |rdm, _| rdm.queue_indexing());
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.archives.is_empty());
+		assert!(rdm.store.as_ref().unwrap().archives().unwrap().is_empty());
 	});
 }
 

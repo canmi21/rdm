@@ -68,6 +68,12 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros", "io-util"] }
 tokio-util = "0.7"
 url = "2"
+tray-icon = { version = "0.24", default-features = false }
+png = { version = "0.18", default-features = false }
+sevenz-rust2 = { version = "0.22", default-features = false }
+zip = { version = "8", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1"
 
 # Installing an update: the Windows executable comes in a zip and a running one can only be
 # renamed, which self-replace knows; the Linux binary comes in a tarball. See spec/release.md.

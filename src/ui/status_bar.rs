@@ -186,9 +186,7 @@ impl Rdm {
 				let count = self
 					.downloads
 					.iter()
-					.filter(|d| {
-						self.filter.matches(d, &self.categories) && status.is_none_or(|s| d.status == s)
-					})
+					.filter(|d| self.passes(self.filter, d) && status.is_none_or(|s| d.status == s))
 					.count();
 				menu_row(
 					p,

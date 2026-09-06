@@ -27,11 +27,18 @@ Three files, because three kinds of writing:
   and then renamed over the old file, so a crash mid-write leaves the previous state rather than
   half of the new one. It is written on change and not at quit, because a forced quit gives no
   moment to write in, and losing a drag's worth of change is the most that can be lost.
-- **`internal.sqlite`** holds the downloads, one row each, at schema version 3: version 1's
+- **`internal.sqlite`** holds the downloads, one row each, at schema version 4: version 1's
   columns, `connections` from version 2, and from version 3 `directory`, `mirrors` as a JSON
   list, `checksum`, `range` as written and `speed_limit`, everything Add Task can ask for, NULL
-  where it did not; an older file gains the columns on open. See [engine.md](engine.md) and
-  the store.
+  where it did not; an older file gains the columns on open. Version 4 adds a second table,
+  `archives`: for every archive among the rows that can be listed without unpacking -- zip and
+  what is a zip under another name, 7z, tar, and a gzip tar under 64 MB, since gzip has no
+  directory and must be inflated to its end -- its entries as JSON, keyed by path with the
+  file's modification time and size, or the reason it could not be read, so a file is read once
+  and again only when it changed. Read in the background after launch, after a download
+  finishes, and after the folder is read, one file at a time; a file gone from disk takes its
+  row with it. The categories judge an archive by what it holds as well as by its name, see
+  [ui.md](ui.md). See [engine.md](engine.md) and the store.
 - **`config.json`**, in the platform's *configuration* directory rather than its state directory,
   is the user's: the categories, and the switches the settings sheet offers, each with a default
   so a file from before a switch reads as if it had been left alone. It is seeded with the built-in

@@ -13,6 +13,7 @@ mod ctl;
 mod download;
 mod engine;
 mod identity;
+mod index;
 mod state;
 mod store;
 #[cfg(test)]

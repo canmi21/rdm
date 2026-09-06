@@ -103,6 +103,14 @@ impl Render for DownloadWindow {
 					.child(div().w(px(112.0)).child(self.limit.clone()))
 					.child(div().text_color(p.muted).child("KB/s, or with m or g; Enter applies")),
 			)
+			.child(field(p.muted, "Contents", {
+				let contents = self.rdm.read(cx).contents_of(&download);
+				match contents.len() {
+					0 => String::new(),
+					n if n <= 6 => contents.join(", "),
+					n => format!("{}, and {} more", contents[..6].join(", "), n - 6),
+				}
+			}))
 			.child(field(
 				p.muted,
 				"Category",

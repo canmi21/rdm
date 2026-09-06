@@ -117,12 +117,24 @@ impl Rdm {
 						self.adopt_folder_files(files);
 					}
 					changed = true;
+					self.queue_indexing();
 				}
 				Err(std::sync::mpsc::TryRecvError::Disconnected) => self.folder_scan = None,
 				Err(std::sync::mpsc::TryRecvError::Empty) => {
 					changed |= since.elapsed() >= crate::app::SPINNER_AFTER;
 				}
 			}
+		}
+		// The archives read so far, and any that a finished download or a folder change made
+		// new; a run under way redraws past a moment so the status bar spins for it.
+		if self.poll_indexing() {
+			changed = true;
+		}
+		if changed {
+			self.queue_indexing();
+		}
+		if let Some(run) = &self.indexing {
+			changed |= run.since.elapsed() >= crate::app::SPINNER_AFTER;
 		}
 		if changed {
 			cx.notify();

@@ -124,6 +124,17 @@ takes when the window is not active; off, the window keeps its colors in front o
 someone who keeps it beside another window and reads it there. See the palette in
 [framework.md](framework.md).
 
+**An archive is judged by what it holds as well as by its name.** Once the index has read it
+-- see [state.md](state.md) for which kinds, and the status bar's spinner while it runs -- an
+archive is in every category its own name matches, Archives for one, and also in every category
+that every one of its top-level names matches: a zip of one `.exe` or of one `.app` is a
+program, a tar of `.mp3`s is audio, a zip of a `.pdf` and a `.mp4` is only an archive. The top
+level is the first path component of each entry, a directory's children folded into it, and a
+lone wrapping folder that is not itself a bundle looked through, since `project-1.0/` is the
+archive's own name and says nothing. The download window names the contents, up to six and a
+count of the rest. Programs is where a program goes whatever wrapped it: the preset names the
+installers and packages by extension, and the rule above brings the archives that hold one.
+
 **The categories' hues are always on, unless asked otherwise.** "Always use colorful
 categories", on to start with, has every category icon in the sidebar wear its hue all the
 time; off, an icon is grey until its row is chosen or hovered and then its own hue. The state

@@ -103,8 +103,13 @@ impl Category {
 	/// Matches the file name only: a URL's path is what the name came from, and a pattern over the
 	/// whole address would catch hosts as often as files.
 	pub fn matches(&self, download: &Download) -> bool {
+		self.matches_name(&download.name)
+	}
+
+	/// The rule against a bare name: a download's, or a file's inside an archive.
+	pub fn matches_name(&self, name: &str) -> bool {
 		match &self.regex {
-			Some(regex) => regex.is_match(&download.name).unwrap_or(false),
+			Some(regex) => regex.is_match(name).unwrap_or(false),
 			None => false,
 		}
 	}
@@ -395,7 +400,29 @@ pub fn pattern_for_rule(
 /// does. A file that two rules describe is in both, which is what makes an order between rules
 /// unnecessary.
 pub fn categories_of<'a>(categories: &'a [Category], download: &Download) -> Vec<&'a Category> {
-	let matched: Vec<&Category> = categories.iter().filter(|c| c.matches(download)).collect();
+	categories_with_contents(categories, download, &[])
+}
+
+/// The same, for a download that is an archive whose top-level names are known: it is in every
+/// category its own name matches, and also in every category that every one of its contents
+/// matches -- a zip of one `.exe` is a program, a tar of `.mp3`s is audio, a zip of a `.pdf`
+/// and a `.mp4` is only an archive. Other takes it when nothing else does. See spec/ui.md.
+pub fn categories_with_contents<'a>(
+	categories: &'a [Category],
+	download: &Download,
+	contents: &[String],
+) -> Vec<&'a Category> {
+	let mut matched: Vec<&Category> = categories.iter().filter(|c| c.matches(download)).collect();
+	if !contents.is_empty() {
+		for category in categories.iter().filter(|c| !c.is_catch_all()) {
+			if !matched.iter().any(|m| m.id == category.id)
+				&& contents.iter().all(|name| category.matches_name(name))
+			{
+				matched.push(category);
+			}
+		}
+		matched.sort_by_key(|c| categories.iter().position(|k| k.id == c.id));
+	}
 	if matched.is_empty() {
 		categories.iter().filter(|c| c.is_catch_all()).take(1).collect()
 	} else {
@@ -412,6 +439,24 @@ mod tests {
 		let mut d = sample().remove(0);
 		d.name = name.to_owned();
 		d
+	}
+
+	#[test]
+	fn an_archive_is_also_where_all_of_its_contents_are() {
+		let categories = Category::defaults();
+		let names = |name: &str, contents: &[&str]| -> Vec<String> {
+			let contents: Vec<String> = contents.iter().map(|c| (*c).to_owned()).collect();
+			categories_with_contents(&categories, &named(name), &contents)
+				.iter()
+				.map(|c| c.name.clone())
+				.collect()
+		};
+		assert_eq!(names("tool.zip", &["setup.exe"]), ["Archives", "Programs"]);
+		assert_eq!(names("Foo.zip", &["Foo.app"]), ["Archives", "Programs"]);
+		assert_eq!(names("album.tar", &["01.mp3", "02.flac"]), ["Audio", "Archives"]);
+		assert_eq!(names("mixed.zip", &["a.pdf", "b.mp4"]), ["Archives"]);
+		assert_eq!(names("mixed.zip", &[]), ["Archives"]);
+		assert_eq!(names("plain.xyz", &["a.mp3"]), ["Audio"], "the contents alone can place it");
 	}
 
 	#[test]

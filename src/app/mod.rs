@@ -11,7 +11,7 @@ use gpui::{
 
 use serde::Serialize;
 
-use crate::category::{Category, categories_of};
+use crate::category::{Category, categories_with_contents};
 use crate::config::{Config, Preferences};
 use crate::download::{Download, Filter, Status};
 use crate::engine::{self, Engine, Event, TaskId};
@@ -24,6 +24,7 @@ use crate::ui::settings_sheet::SettingsSheet;
 use crate::ui::theme::{self, Palette};
 
 mod categories;
+mod indexing;
 #[cfg(test)]
 mod tests;
 mod transfers;
@@ -162,6 +163,9 @@ pub struct Rdm {
 	pub(crate) folder_files: Vec<Download>,
 	/// A read of the folder under way: when it started, and where its rows will arrive.
 	pub(crate) folder_scan: Option<(std::time::Instant, std::sync::mpsc::Receiver<Vec<FolderFile>>)>,
+	/// What each archive among the rows holds, by path, from the store and the indexer.
+	pub(crate) archives: HashMap<String, crate::index::Indexed>,
+	pub(crate) indexing: Option<indexing::Indexing>,
 	pub(crate) sort: SortKey,
 	pub(crate) ascending: bool,
 	pub(crate) view: View,
@@ -270,6 +274,8 @@ impl Rdm {
 			folder_shown: saved.folder_shown,
 			folder_files: Vec::new(),
 			folder_scan: None,
+			archives: HashMap::new(),
+			indexing: None,
 			sort: SortKey::Added,
 			ascending: false,
 			view: saved.view.unwrap_or(View::Detailed),
@@ -292,6 +298,8 @@ impl Rdm {
 		this.engine.set_speed_limit(this.preferences.speed_limit);
 		this.engine.set_max_active(this.preferences.max_active);
 		this.import_strays();
+		this.load_archives();
+		this.queue_indexing();
 		// The headless tests have no network to ask and no build number to compare; a test
 		// that wants a manifest hands one in.
 		if !cfg!(test) {
@@ -324,9 +332,7 @@ impl Rdm {
 	pub(crate) fn shown(&self) -> Vec<&Download> {
 		let mut rows: Vec<&Download> = self
 			.rows()
-			.filter(|d| {
-				self.filter.matches(d, &self.categories) && self.status.is_none_or(|s| d.status == s)
-			})
+			.filter(|d| self.passes(self.filter, d) && self.status.is_none_or(|s| d.status == s))
 			.collect();
 		rows.sort_by(|a, b| {
 			let order = match self.sort {
@@ -342,8 +348,18 @@ impl Rdm {
 		rows
 	}
 
+	/// The categories a row is in: by its name, and for an archive that has been read, by what
+	/// it holds. See src/app/indexing.rs.
 	pub(crate) fn categories_of(&self, download: &Download) -> Vec<&Category> {
-		categories_of(&self.categories, download)
+		categories_with_contents(&self.categories, download, &self.contents_of(download))
+	}
+
+	/// Whether the sidebar's filter lets a row through, judging a category by `categories_of`.
+	pub(crate) fn passes(&self, filter: Filter, download: &Download) -> bool {
+		match filter {
+			Filter::Category(id) => self.categories_of(download).iter().any(|c| c.id == id),
+			other => other.matches(download, &self.categories),
+		}
 	}
 
 	/// The category a row is drawn as: the filtered one when one is filtered and matches, else
@@ -466,6 +482,14 @@ impl Rdm {
 		}
 		if self.folder_scan.as_ref().is_some_and(|(since, _)| since.elapsed() >= SPINNER_AFTER) {
 			list.push("Reading the folder".to_owned());
+		}
+		if let Some(run) = &self.indexing
+			&& run.since.elapsed() >= SPINNER_AFTER
+		{
+			list.push(match run.pending {
+				1 => "Indexing an archive".to_owned(),
+				n => format!("Indexing {n} archives"),
+			});
 		}
 		list
 	}

@@ -4,17 +4,20 @@
 //! the list a user left is the list they find. The plans beside partial files are the
 //! engine's; this is the window's. See spec/state.md.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context as _, Result};
 use chrono::{DateTime, Local};
 use rusqlite::{Connection, params};
 
+use crate::index::Indexed;
+
 use crate::download::{Download, Status};
 
 /// The schema's version, in SQLite's `user_version`. Bumped only when a database written before
 /// can no longer be read as it is; the same rule as state.json's.
-pub const VERSION: i64 = 3;
+pub const VERSION: i64 = 4;
 
 pub struct Store {
 	connection: Connection,
@@ -52,6 +55,13 @@ impl Store {
 					checksum TEXT,
 					range TEXT,
 					speed_limit INTEGER
+				);
+				CREATE TABLE IF NOT EXISTS archives (
+					path TEXT PRIMARY KEY,
+					modified INTEGER NOT NULL,
+					size INTEGER NOT NULL,
+					entries TEXT NOT NULL,
+					error TEXT
 				);",
 			)?;
 			connection.pragma_update(None, "user_version", VERSION)?;
@@ -73,7 +83,62 @@ impl Store {
 			)?;
 			connection.pragma_update(None, "user_version", 3)?;
 		}
+		if version <= 3 && version != 0 {
+			// What each archive in the folder holds, read once and kept by the file's stamp.
+			// See src/index.rs.
+			connection.execute_batch(
+				"CREATE TABLE IF NOT EXISTS archives (
+					path TEXT PRIMARY KEY,
+					modified INTEGER NOT NULL,
+					size INTEGER NOT NULL,
+					entries TEXT NOT NULL,
+					error TEXT
+				);",
+			)?;
+			connection.pragma_update(None, "user_version", 4)?;
+		}
 		Ok(Store { connection })
+	}
+
+	/// Every archive indexed so far, by the file's path.
+	pub fn archives(&self) -> Result<HashMap<String, Indexed>> {
+		let mut statement =
+			self.connection.prepare("SELECT path, modified, size, entries, error FROM archives")?;
+		let rows = statement.query_map([], |r| {
+			let entries: String = r.get(3)?;
+			Ok((
+				r.get::<_, String>(0)?,
+				Indexed {
+					modified: r.get(1)?,
+					size: r.get::<_, i64>(2)? as u64,
+					entries: serde_json::from_str(&entries).unwrap_or_default(),
+					error: r.get(4)?,
+				},
+			))
+		})?;
+		Ok(rows.collect::<Result<_, _>>()?)
+	}
+
+	/// One archive's index, written over any earlier one for the path.
+	pub fn save_archive(&self, path: &str, indexed: &Indexed) -> Result<()> {
+		self.connection.execute(
+			"INSERT OR REPLACE INTO archives (path, modified, size, entries, error)
+			 VALUES (?1, ?2, ?3, ?4, ?5)",
+			params![
+				path,
+				indexed.modified,
+				indexed.size as i64,
+				serde_json::to_string(&indexed.entries)?,
+				indexed.error
+			],
+		)?;
+		Ok(())
+	}
+
+	/// The index of an archive that is gone, dropped with it.
+	pub fn forget_archive(&self, path: &str) -> Result<()> {
+		self.connection.execute("DELETE FROM archives WHERE path = ?1", params![path])?;
+		Ok(())
 	}
 
 	/// Every row, oldest first.
@@ -245,6 +310,26 @@ mod tests {
 		let version: i64 =
 			store.connection.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
 		assert_eq!(version, VERSION);
+	}
+
+	#[test]
+	fn an_archive_index_is_kept_by_path_and_replaced() {
+		let path = scratch("archives");
+		let store = Store::open(&path).unwrap();
+		assert!(store.archives().unwrap().is_empty());
+		let first = Indexed {
+			modified: 10,
+			size: 20,
+			entries: vec![crate::index::Entry { name: "a.txt".to_owned(), size: 3, dir: false }],
+			error: None,
+		};
+		store.save_archive("/d/x.zip", &first).unwrap();
+		assert_eq!(store.archives().unwrap()["/d/x.zip"], first);
+		let failed = Indexed { modified: 11, size: 21, entries: vec![], error: Some("bad".to_owned()) };
+		store.save_archive("/d/x.zip", &failed).unwrap();
+		assert_eq!(store.archives().unwrap()["/d/x.zip"], failed);
+		store.forget_archive("/d/x.zip").unwrap();
+		assert!(store.archives().unwrap().is_empty());
 	}
 
 	#[test]
