@@ -117,6 +117,15 @@ it is the user's. The list's type icons wear their hues either way, since there 
 which bucket a file fell into. And either way the window's inactive grey wins: a background
 window gives up its hues.
 
+**The window's corners are macOS 27's, everywhere.** The radius is 17 points, measured rather
+than chosen: a window captured without its shadow is transparent outside the corner, so the
+first opaque pixel of each row traces the arc, and a circle fitted to it gives the number; a
+Finder window traces the same arc, so it is the system's. The root draws itself rounded to it
+and clips what it holds, which on macOS changes nothing, since the system clips the window to
+the same curve, and on Windows and Linux is the only rounding the window gets, its frame being
+the toolbar. A window that fills the screen, maximized or full screen, draws square corners,
+as every system's own do.
+
 **The window is blurred, and only the sidebar lets it show.** `WindowBackgroundAppearance::Blurred`
 asks macOS for the blur behind a native window, but a native window is not transparent: Finder's
 content is opaque and its sidebar is a *material*, mostly opaque with a hint of the desktop's

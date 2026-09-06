@@ -499,6 +499,9 @@ impl Render for Rdm {
 			// Zed's density: a 13px UI face, and everything else in rems of it.
 			.text_size(px(13.0))
 			.bg(p.window)
+			// The window's corners, the system's radius, on the systems that draw none.
+			.rounded(crate::ui::frame::radius(window))
+			.overflow_hidden()
 			.text_color(p.text)
 			.relative()
 			.track_focus(&self.root_focus)

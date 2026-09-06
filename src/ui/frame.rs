@@ -18,6 +18,19 @@ use crate::ui::toolbar;
 /// How wide the strip's edge is that resizes rather than drags, in points.
 const EDGE: f32 = 6.0;
 
+/// The window's corner radius, in points, on every system: macOS 27's, measured off a window
+/// captured without its shadow -- the first opaque pixel of each row of the corner, fitted to
+/// a circle -- and the same for Finder's, so it is the system's number and not this
+/// application's. macOS clips the window to it anyway; Windows and Linux are given it by the
+/// root, which is the only frame they have. See spec/ui.md.
+pub const RADIUS: f32 = 17.0;
+
+/// The radius the root draws with now: none while the window fills the screen, where every
+/// system squares the corners off.
+pub fn radius(window: &Window) -> Pixels {
+	if window.is_maximized() || window.is_fullscreen() { px(0.0) } else { px(RADIUS) }
+}
+
 /// Whether the toolbar is the window's frame here: always on Windows, whose transparent
 /// titlebar is otherwise empty; on Linux when the window was given client-side decorations;
 /// never on macOS, whose system draws the lights.
