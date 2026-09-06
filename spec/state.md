@@ -134,11 +134,43 @@ an enum with a variant taken out of it can no longer read the name of that varia
 cannot read fails the whole object, so a file naming Compact would have cost its reader the
 window's frame and the column widths too. The arm rewrites the name to Detailed and moves on.
 
-## A frame is restored only onto a display that is there
+## A window comes back to the display it was left on
 
-The saved frame is used when any of it lands on one of the displays present at launch, and the
-window is centred otherwise. A window saved on an external monitor that is unplugged would come
-back off-screen, with no edge to grab; centring is the one answer that is always visible.
+**Which display is remembered, not only where the window was.** A desktop is one plane and the
+displays move about in it: unplug a second monitor and plug it in on the other side, or change
+which one the system calls first, and the coordinates that meant "the top left of the right-hand
+screen" now mean somewhere else, or nowhere. So the file keeps the display beside the frame --
+the name the system keeps for it across a restart and a replug, and where that display sat at the
+time -- and the frame is read as an offset into it. Both are written on every move and resize,
+like everything else here, because there is no hook for a forced quit.
+
+Coming back, the display with that name is found among the ones there are now and the window is
+put at the same offset into it, wherever it has moved to. A display that came back smaller keeps
+the window whole rather than showing a corner of it: a side that still fits keeps its length and
+is pulled in until it is on the screen, and only a side that cannot fit is cut down to what there
+is.
+
+**A display that is not there falls back twice.** First to the older rule -- the coordinates as
+they were, used when any of the window would land on any screen present -- and then to centring.
+A window saved on an external monitor that is unplugged would otherwise come back off-screen with
+no edge to grab, and centring is the one answer that is always visible. A system that has no name
+to keep for a screen records none, and is read the older way throughout.
+
+The display is a field added beside the others, so it does not move the version: a file written
+before it says nothing, which reads as the older way, and that is the correct answer for it.
+
+**Two things had to be worked out rather than asked for.** GPUI reads a window's display once,
+when the window is made, and macOS answers nothing for a window that is not on screen yet -- so
+the answer is nothing at launch and stays nothing however far the window is dragged afterwards.
+And GPUI's macOS display reads `CGDisplayBounds`, whose rectangle is in the same desktop
+coordinates a window's frame is in, and then returns it with the origin thrown away: every
+display comes back at `(0, 0)`, which says how big each screen is and nothing about where it is.
+On a desk with three of them that is three rectangles at the same place.
+
+So the origin is asked of the system again, in `src/screens.rs`, and only the size is taken from
+GPUI; and the display a window is on is worked out from the frames -- the one the window is
+mostly on, by area. That also answers a window straddling two screens, which no single call
+answers well.
 
 ## The identifier
 

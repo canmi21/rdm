@@ -21,6 +21,7 @@ mod notify;
 mod proxy;
 mod quarantine;
 mod reveal;
+mod screens;
 mod startup;
 mod state;
 mod thumbnail;
@@ -41,7 +42,7 @@ use gpui_platform::application;
 
 use crate::app::Rdm;
 use crate::assets::Assets;
-use crate::state::{Frame, Paths};
+use crate::state::Paths;
 
 /// Measured from a capture of the window; see spec/ui.md.
 const TRAFFIC_LIGHT: f32 = 14.0;
@@ -57,20 +58,10 @@ fn main() {
 		let saved = paths.as_ref().map(|p| state::load(&p.state)).unwrap_or_default();
 		let config =
 			paths.as_ref().map(|p| config::load_or_seed(&p.config)).unwrap_or_else(config::Config::seed);
-		let displays: Vec<Frame> = cx
-			.displays()
-			.iter()
-			.map(|d| {
-				let b = d.bounds();
-				Frame {
-					x: b.origin.x.into(),
-					y: b.origin.y.into(),
-					width: b.size.width.into(),
-					height: b.size.height.into(),
-				}
-			})
-			.collect();
-		let bounds = match saved.frame_on(&displays) {
+		// Every display there is now, by the name the system keeps for it and where it sits, so the
+		// window can be put back on the one it was left on. See src/screens.rs.
+		let screens = screens::all(cx);
+		let bounds = match saved.frame_on(&screens) {
 			Some(f) => Bounds::new(point(px(f.x), px(f.y)), size(px(f.width), px(f.height))),
 			None => Bounds::centered(None, size(px(960.0), px(600.0)), cx),
 		};

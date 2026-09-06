@@ -293,6 +293,9 @@ pub struct Rdm {
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
 	pub(crate) paths: Option<Paths>,
 	frame: Option<Frame>,
+	/// And the display that frame is on, so a rearranged desktop still puts the window back where
+	/// it was rather than where its coordinates used to point.
+	display: Option<state::Screen>,
 	maximized: bool,
 	/// The pending write. Replacing it cancels the old one, which is the debounce.
 	save: Option<Task<()>>,
@@ -346,7 +349,7 @@ impl Rdm {
 		window.request_decorations(gpui::WindowDecorations::Client);
 		// Every move or resize is remembered a moment later; there is no hook for a forced quit.
 		cx.observe_window_bounds(window, |this, window, cx| {
-			this.remember_frame(window);
+			this.remember_frame(window, cx);
 			this.schedule_save(cx);
 		})
 		.detach();
@@ -426,6 +429,7 @@ impl Rdm {
 			adding: None,
 			paths,
 			frame: saved.window,
+			display: saved.display.clone(),
 			maximized: saved.maximized,
 			save: None,
 			_tick: tick,
@@ -448,6 +452,11 @@ impl Rdm {
 			this.look_for_proxy(cx);
 		}
 		this.import_strays();
+		// Where the window opened, read now rather than waited for. The observer above only fires
+		// on a move or a resize, so a launch that touched neither would have left the file saying
+		// nothing about the display -- and on a first launch, nothing at all. The system may have
+		// put the window somewhere other than where it was asked to, which is worth recording too.
+		this.remember_frame(window, cx);
 		this.load_archives();
 		// The funnel left lit last time reads the folder now, as a press would.
 		if this.folder_shown {
@@ -887,7 +896,13 @@ impl Rdm {
 		cx.notify();
 	}
 
-	fn remember_frame(&mut self, window: &Window) {
+	/// The frame, and the display it is a frame on. Both are read on every move and resize, so
+	/// the file is right whatever ends the process -- a quit, a crash, or a kill, none of which
+	/// gets a hook. The display is written down by the name the system keeps across a restart and
+	/// a replug, beside where that display sat, since a frame alone says where the window was on
+	/// the desktop and the desktop is rearranged every time a monitor comes or goes. A system
+	/// with no such name for a screen simply records none. See src/state.rs and spec/state.md.
+	fn remember_frame(&mut self, window: &Window, cx: &App) {
 		let bounds = window.window_bounds();
 		self.maximized = matches!(bounds, gpui::WindowBounds::Maximized(_));
 		let b = bounds.get_bounds();
@@ -897,11 +912,24 @@ impl Rdm {
 			width: b.size.width.into(),
 			height: b.size.height.into(),
 		});
+		// Which display, worked out from where the window is rather than asked of the window.
+		// GPUI reads the window's display once, when it is made, and macOS answers nothing for a
+		// window that is not yet on screen -- so the answer is None at launch and stays None
+		// however far the window is dragged afterwards. The display a window is on is the one it
+		// is mostly on, which the frames say plainly. See src/screens.rs and spec/state.md.
+		let frame = self.frame.expect("set a line ago");
+		self.display = crate::screens::all(cx)
+			.into_iter()
+			.map(|screen| (frame.overlap_with(&screen.frame), screen))
+			.filter(|(overlap, _)| *overlap > 0.0)
+			.max_by(|a, b| a.0.total_cmp(&b.0))
+			.map(|(_, screen)| screen);
 	}
 
 	fn snapshot(&self) -> State {
 		State {
 			window: self.frame,
+			display: self.display.clone(),
 			maximized: self.maximized,
 			widths: Some(self.widths),
 			view: Some(self.view),
