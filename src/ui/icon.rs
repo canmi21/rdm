@@ -65,6 +65,8 @@ pub enum Icon {
 	Cpu,
 	FolderOpen,
 	Table,
+	Flag,
+	FlagOff,
 	Info,
 }
 
@@ -86,6 +88,8 @@ impl Icon {
 			Icon::Cpu => "lucide/cpu.svg",
 			Icon::FolderOpen => "lucide/folder-open.svg",
 			Icon::Table => "lucide/table.svg",
+			Icon::Flag => "lucide/flag.svg",
+			Icon::FlagOff => "lucide/flag-off.svg",
 			Icon::Info => "lucide/info.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",

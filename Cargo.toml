@@ -76,6 +76,9 @@ url = "2"
 # What language the machine is set to, for a first launch that has to guess. One small crate
 # against three platform APIs. See src/i18n.rs.
 sys-locale = "0.3"
+# Reading and taking off the mark a system puts on a downloaded file. One call each way; a crate
+# for two calls would be a crate. See src/quarantine.rs.
+libc = "0.2"
 # Decodes the tray's PNG, rendered from the artwork by `mise run icon`.
 png = "0.18"
 # The system's own icon for a file, which arrives as TIFF and is drawn as a gpui RenderImage.

@@ -259,6 +259,7 @@ impl Rdm {
 			.child(self.folder_indent(download))
 			.child(tinted_icon(self.category_icon(download)).size_3p5())
 			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child(download.name.clone()))
+			.child(self.quarantine_flag(download, cx))
 			.child(
 				cell(Column::Size).text_color(p.muted).child(div().truncate().child(size_cell(download))),
 			)
@@ -278,6 +279,60 @@ impl Rdm {
 					.text_color(p.muted)
 					.child(div().truncate().child(format_added(download.added))),
 			)
+	}
+
+	/// The small flag on a row whose file the system has marked as having come from the internet.
+	/// Only on the kinds where the mark does anything -- it is on nearly every downloaded file
+	/// and matters when one is opened as a program -- so a flag means something rather than
+	/// being on everything. The pointer over it turns it into the same flag struck through,
+	/// which is what pressing it does; pressing takes the mark off, and asks nobody for anything.
+	fn quarantine_flag(&self, download: &Download, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let p = self.palette;
+		let Some(path) = download.path.clone() else { return div().into_any_element() };
+		if !crate::quarantine::worth_flagging(&download.name)
+			|| !self.marked.borrow_mut().of(std::path::Path::new(&path))
+		{
+			return div().into_any_element();
+		}
+		let id = download.id;
+		div()
+			.id(("quarantine", id))
+			.role(Role::Button)
+			.aria_label("From the internet")
+			.debug_selector(move || format!("quarantine:{id}"))
+			.flex()
+			.flex_none()
+			.items_center()
+			.justify_center()
+			.size_4()
+			.ml_1()
+			.relative()
+			.rounded_sm()
+			.cursor_pointer()
+			.group("quarantine")
+			.tooltip(tooltip("From the internet; press to clear"))
+			.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+				// The row's own click would select it; this press is about the flag.
+				let _ = event;
+				this.clear_quarantine(id, cx);
+			}))
+			// The two flags sit on top of each other and take turns: the plain one until the
+			// pointer is over it, the struck-through one while it is, which is a picture of what
+			// pressing does.
+			.child(
+				div()
+					.absolute()
+					.group_hover("quarantine", |s| s.invisible())
+					.child(icon(Icon::Flag, p.muted).size_3p5()),
+			)
+			.child(
+				div()
+					.absolute()
+					.invisible()
+					.group_hover("quarantine", |s| s.visible())
+					.child(icon(Icon::FlagOff, p.accent).size_3p5()),
+			)
+			.into_any_element()
 	}
 
 	/// What sits before a row's icon while the folders are kept as folders: a step of space for

@@ -286,6 +286,24 @@ behind `More`. An empty field beside a resolved address reads as though nothing 
 a name somebody may want to change is not a thing to hide behind a word; everything else behind
 `More` is something most people never touch, and this is not.
 
+**A file the system marked as having come from the internet wears a small flag.** macOS writes
+`com.apple.quarantine` on anything a browser or a download manager saves, and reads it back when
+the file is opened: an application carrying it is the one that asks whether you are sure, and an
+unsigned `.app` carrying it is the one that refuses outright. The flag appears only on the kinds
+where the mark does anything -- `.app`, `.dmg`, `.pkg`, `.exe`, `.msi`, `.deb` and their like --
+since it is on nearly every downloaded file and a flag on everything means nothing. The pointer
+over it turns it into the same flag struck through, which is a picture of what pressing does;
+pressing takes the mark off.
+
+**No privileges are asked for, and that is the design rather than a shortcut.** The mark lives on
+the file, and a file the user owns is a file the user may write the attributes of -- `xattr -d`
+in a terminal needs no `sudo` for a file in one's own downloads, and neither does this. Where it
+does fail, on a file owned by somebody else or a read-only volume, it is reported and nothing is
+escalated: an application that raised an administrator prompt to change an attribute on a file
+you own would be asking for something it does not need, and a prompt nobody is there to answer is
+a prompt that hangs. Only macOS keeps a mark of this shape; Windows writes a `Zone.Identifier`
+stream and Linux keeps nothing, and both read as unmarked until somebody writes them.
+
 **A download remembers where it came from.** The window a row opens says `From`, which is the
 address it was fetched from, and `Found on` where it came from a page rather than being typed in.
 A row with no address was not downloaded here -- it is a file the folder already held -- and the

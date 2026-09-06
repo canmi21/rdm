@@ -19,6 +19,7 @@ mod identity;
 mod index;
 mod notify;
 mod proxy;
+mod quarantine;
 mod reveal;
 mod startup;
 mod state;

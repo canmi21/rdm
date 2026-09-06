@@ -5381,6 +5381,7 @@ dependencies = [
  "image",
  "infer",
  "ksni",
+ "libc",
  "md-5 0.11.0",
  "notify",
  "notify-rust",

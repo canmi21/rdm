@@ -26,6 +26,7 @@ use crate::ui::theme::{self, Palette};
 mod categories;
 mod indexing;
 mod network;
+pub(crate) mod quarantine;
 mod notices;
 #[cfg(test)]
 mod tests;
@@ -311,6 +312,10 @@ pub struct Rdm {
 	/// drawing is the only thing that asks and drawing has the window by shared reference; the
 	/// alternative is asking the window server once a row a frame. See src/thumbnail.rs.
 	pub(crate) thumbnails: std::cell::RefCell<crate::thumbnail::Thumbnails>,
+	/// Which files the system has marked as having come from the internet, by path. Read once a
+	/// file and kept: the answer is one attribute lookup, and the list draws every row it has.
+	/// Interior mutability for the reason the pictures have it -- drawing is what asks.
+	pub(crate) marked: std::cell::RefCell<crate::app::quarantine::Marks>,
 	/// The proxy the last look found, None until it has looked or when it found none. Not kept
 	/// in the config: it is a fact about the machine now rather than a choice. See src/proxy.rs.
 	pub(crate) found_proxy: Option<String>,
@@ -428,6 +433,7 @@ impl Rdm {
 			folder_shape: HashMap::new(),
 			opened: std::collections::HashSet::new(),
 			thumbnails: std::cell::RefCell::default(),
+			marked: std::cell::RefCell::default(),
 			found_proxy: None,
 			looking_for_proxy: false,
 			proxy_look: None,
