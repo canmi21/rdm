@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::app::View;
-use crate::identity::{APPLICATION, ORGANIZATION, QUALIFIER};
+use crate::identity::{ORGANIZATION, QUALIFIER};
 
 /// The shape of `state.json`. Bumped only when an older file can no longer be read as-is; fields
 /// added or dropped without breaking that stay at the same version.
@@ -43,7 +43,9 @@ impl Paths {
 	}
 
 	pub fn resolve() -> Option<Paths> {
-		let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)?;
+		// The third word carries the suffix, so a development build's state, config and database
+		// sit beside the installed application's rather than in them. See src/identity.rs.
+		let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, &crate::identity::instance())?;
 		// Linux has a directory for state as distinct from data; the others fold them together.
 		let root = dirs.state_dir().unwrap_or_else(|| dirs.data_local_dir()).to_path_buf();
 		let user = directories::UserDirs::new()?;

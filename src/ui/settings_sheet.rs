@@ -414,7 +414,7 @@ impl Rdm {
 			Row {
 				section: Section::About,
 				label: "Identifier",
-				control: Control::Value(identity::BUNDLE_ID.to_owned()),
+				control: Control::Value(identity::id()),
 			},
 		]
 	}

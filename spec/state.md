@@ -9,12 +9,26 @@ hand:
 | Platform | Directory                                            |
 | -------- | ---------------------------------------------------- |
 | macOS    | `~/Library/Application Support/app.canmi.rdm/` for both |
+| any, dev | the same with `.dev` after the last word; see below    |
 | Linux    | state in `$XDG_STATE_HOME/rdm/`, config in `$XDG_CONFIG_HOME/rdm/` |
 | Windows  | state in `%LOCALAPPDATA%\canmi\rdm\`, config in `%APPDATA%\canmi\rdm\` |
 
 Linux distinguishes state from data and the others do not; the code asks for the state directory
 and falls back to the local data directory, so on every platform the files land where that
-platform's own applications put the same kind of thing. None of it is meant to be edited by hand:
+platform's own applications put the same kind of thing.
+
+**A development build keeps its own.** The last of the three words is spelled `rdm.dev` in a
+build with `debug_assertions` on -- which the dev profile leaves on, and which is the same thing
+the control socket answers to -- so `mise run dev` writes to `app.canmi.rdm.dev` and the
+installed application to `app.canmi.rdm`, and neither can overwrite the other's state, config or
+database. The identifier the system is given follows it, `app.canmi.rdm.dev`, and Settings shows
+that one, so a window that is a development build says which it is where somebody would look.
+Two things do not move: `APPLICATION` itself, because the CDN path and the release's files are
+spelled from it, and `BUNDLE_ID`, because `.mise/tasks/bundle` reads that line out of the source
+with a regular expression and `Info.plist` must carry the published identifier. The downloads
+folder is shared, being the user's own and not this application's to fork. The cost of the
+isolation is that a development build starts empty the first time it runs after this, with
+whatever was there before waiting in the installed application's directory. None of it is meant to be edited by hand:
 this is the window's memory, not the user's configuration, and a settings file a user is meant to
 open would be a third file with its own rules.
 

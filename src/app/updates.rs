@@ -548,7 +548,7 @@ fn notify(body: &str, cx: &mut Context<Rdm>) {
 				// macOS delivers a notification only on behalf of an installed bundle; a
 				// binary run from the build tree has none, and the call fails quietly.
 				#[cfg(target_os = "macos")]
-				let _ = notify_rust::set_application(identity::BUNDLE_ID);
+				let _ = notify_rust::set_application(&identity::id());
 				let mut notification = notify_rust::Notification::new();
 				notification.summary(identity::DISPLAY_NAME).body(&body);
 				#[cfg(target_os = "linux")]

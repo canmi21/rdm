@@ -6,10 +6,38 @@ pub const QUALIFIER: &str = "app";
 pub const ORGANIZATION: &str = "canmi";
 pub const APPLICATION: &str = "rdm";
 
-/// What `Info.plist` carries, read by the bundle task out of this source; what the window is
-/// named to a Linux desktop, handed to GPUI as its app id; and the three words that name the
-/// state directory.
+/// What `Info.plist` carries and what a Linux desktop matches the window to, for the build that
+/// is published. `.mise/tasks/bundle` reads this line out of this source with a regular
+/// expression, so it stays a plain literal; a running build answers to [`id`] instead, which is
+/// this and the suffix below.
 pub const BUNDLE_ID: &str = "app.canmi.rdm";
+
+/// What separates a development build from an installed one. A debug build keeps its own state
+/// directory, its own `config.json` and its own database: everything under the three words is
+/// spelled with `.dev` after the last of them, so `mise run dev` cannot disturb what the
+/// installed application has, and neither can rewrite the other's. The downloads folder is the
+/// user's own and is shared, since a download folder nobody looks in is no use to either. The
+/// discriminator is `debug_assertions`, the same one the control socket answers to, and the dev
+/// profile leaves it on. See spec/state.md.
+#[cfg(debug_assertions)]
+pub const SUFFIX: &str = ".dev";
+#[cfg(not(debug_assertions))]
+pub const SUFFIX: &str = "";
+
+/// What this build answers to: the bundle identifier as published, or that with `.dev` after it
+/// in a development build. This is what GPUI is handed as the app id, what the system is told a
+/// notification comes from, and what Settings shows -- so a window that is a development build
+/// says so where somebody would look.
+pub fn id() -> String {
+	format!("{BUNDLE_ID}{SUFFIX}")
+}
+
+/// The last of the three words as this build spells it, which is what names the directory the
+/// state lives in. `APPLICATION` itself never moves: the release's files and the CDN path are
+/// spelled from it.
+pub fn instance() -> String {
+	format!("{APPLICATION}{SUFFIX}")
+}
 
 /// The name in full, what the `.app` is called and the menu bar and About show; and the name
 /// the Dock, Spotlight and the window title show, one word like the system's own. The code
@@ -59,6 +87,17 @@ mod tests {
 	#[test]
 	fn the_bundle_id_is_the_three_words_joined() {
 		assert_eq!(BUNDLE_ID, format!("{QUALIFIER}.{ORGANIZATION}.{APPLICATION}"));
+	}
+
+	/// A development build and an installed one must not meet in the same directory, and the
+	/// tests are a development build, so this reads the suffix rather than asserting it away.
+	#[test]
+	fn a_development_build_answers_to_its_own_id_and_its_own_directory() {
+		assert_eq!(id(), format!("{BUNDLE_ID}{SUFFIX}"));
+		assert_eq!(instance(), format!("{APPLICATION}{SUFFIX}"));
+		assert_eq!(SUFFIX, ".dev", "a test binary is a debug build");
+		assert_eq!(id(), "app.canmi.rdm.dev");
+		assert_ne!(id(), BUNDLE_ID, "so it cannot be handed the installed build's directory");
 	}
 
 	#[test]

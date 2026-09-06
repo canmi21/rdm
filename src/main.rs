@@ -75,7 +75,7 @@ fn main() {
 					window_bounds: Some(window_bounds),
 					// What a Linux desktop matches the window to its .desktop entry by; the same three
 					// words as the bundle identifier. See spec/packaging.md.
-					app_id: Some(identity::BUNDLE_ID.to_owned()),
+					app_id: Some(identity::id()),
 					// The desktop shows through the blur; the palette carries the alpha. See spec/ui.md.
 					window_background: WindowBackgroundAppearance::Blurred,
 					// Every column's floor and what sits around them: past this the table would have
