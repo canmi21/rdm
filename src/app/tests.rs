@@ -14,11 +14,16 @@ fn scratch_paths(name: &str) -> Paths {
 }
 
 fn open(cx: &mut TestAppContext) -> (Entity<Rdm>, VisualTestContext) {
+	open_in(cx, "open")
+}
+
+/// The same, with a download folder of the test's own, for one that reads the folder.
+fn open_in(cx: &mut TestAppContext, name: &str) -> (Entity<Rdm>, VisualTestContext) {
 	let window = cx.update(|cx| {
 		cx.open_window(Default::default(), |window, cx| {
 			cx.new(|cx| {
 				let (engine, events) = Engine::new(engine::EngineSettings::default()).unwrap();
-				let paths = scratch_paths("open");
+				let paths = scratch_paths(name);
 				let mut rdm =
 					Rdm::new(State::default(), Config::seed(), Some(paths), engine, events, window, cx);
 				rdm.downloads = crate::download::sample();
@@ -116,14 +121,52 @@ fn dragging_a_header_edge_resizes_that_column(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn the_corner_over_the_icons_resets_every_column_width(cx: &mut TestAppContext) {
+fn reset_under_appearance_puts_every_column_width_back(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.widths = [200.0, 90.0, 60.0, 70.0, 80.0];
-		cx.notify();
+		rdm.open_settings(cx);
 	});
-	click(&mut cx, "button:Reset to default");
+	click(&mut cx, "section:Appearance");
+	click(&mut cx, "button:Reset");
 	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.widths, Column::DEFAULT_WIDTHS));
+}
+
+#[gpui::test]
+fn the_funnel_in_the_corner_lists_the_folder_files_under_all_only(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open_in(cx, "folder-files");
+	let directory = rdm.read_with(&cx, |rdm, _| rdm.paths.as_ref().unwrap().downloads.clone());
+	for stale in std::fs::read_dir(&directory).unwrap().flatten() {
+		let _ = std::fs::remove_file(stale.path()).or_else(|_| std::fs::remove_dir_all(stale.path()));
+	}
+	std::fs::write(directory.join("photo.jpg"), b"jpeg").unwrap();
+	std::fs::write(directory.join(".DS_Store"), b"").unwrap();
+	std::fs::write(directory.join("movie.mkv.rdm"), b"plan").unwrap();
+	std::fs::create_dir(directory.join("folder")).unwrap();
+	let sample = rdm.read_with(&cx, |rdm, _| rdm.downloads[0].name.clone());
+	std::fs::write(directory.join(&sample), b"already a row").unwrap();
+	let downloads = rdm.read_with(&cx, |rdm, _| rdm.shown().len());
+	click(&mut cx, "button:Folder files");
+	rdm.read_with(&cx, |rdm, _| {
+		let shown = rdm.shown();
+		let extra: Vec<&Download> =
+			shown.iter().copied().filter(|d| Rdm::is_folder_file(d.id)).collect();
+		assert_eq!(shown.len(), downloads + extra.len(), "the downloads are all still there");
+		let names: Vec<&str> = extra.iter().map(|d| d.name.as_str()).collect();
+		assert_eq!(names, ["photo.jpg"], "one plain file: no hidden, no plan, no directory, no row");
+		assert_eq!((extra[0].status, extra[0].size), (Status::Completed, 4));
+	});
+	click(&mut cx, "filter:Completed");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.shown().iter().all(|d| !Rdm::is_folder_file(d.id)), "only All lists them");
+	});
+	assert!(cx.debug_bounds("button:Folder files").is_some(), "the funnel stays, dimmed");
+	click(&mut cx, "filter:All Tasks");
+	click(&mut cx, "button:Folder files");
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.shown().len(), downloads, "pressed again, the downloads alone");
+		assert!(rdm.folder_files.is_empty());
+	});
 }
 
 #[gpui::test]

@@ -367,6 +367,15 @@ impl Rdm {
 			},
 			Row {
 				section: Section::Appearance,
+				label: "Column widths",
+				control: Control::Action {
+					word: "Reset",
+					note: String::new(),
+					run: |this, cx| this.reset_widths(cx),
+				},
+			},
+			Row {
+				section: Section::Appearance,
 				label: "Always use colorful categories",
 				control: Control::Switch {
 					on: self.preferences.colorful_categories,

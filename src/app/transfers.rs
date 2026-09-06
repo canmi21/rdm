@@ -96,10 +96,16 @@ impl Rdm {
 		}
 		// The folder changed and has been quiet since: look at the files that changed, and only
 		// those, for a plan that arrived.
-		if let Some(paths) = self.watcher.as_ref().and_then(|w| w.try_signal())
-			&& self.import_paths(&paths)
-		{
-			changed = true;
+		if let Some(paths) = self.watcher.as_ref().and_then(|w| w.try_signal()) {
+			if self.import_paths(&paths) {
+				changed = true;
+			}
+			// And while the funnel is lit, the folder's other files are read again, since one of
+			// them may be what changed.
+			if self.folder_shown {
+				self.scan_folder();
+				changed = true;
+			}
 		}
 		if changed {
 			cx.notify();
@@ -332,6 +338,16 @@ impl Rdm {
 	/// The row goes, and with it a partial file and its plan; a finished file stays where it
 	/// landed, since it is the user's now.
 	pub(crate) fn remove(&mut self, id: u64, cx: &mut Context<Self>) {
+		// One of the folder's files leaves the list for the session and stays on disk: it was
+		// never this application's to delete.
+		if Rdm::is_folder_file(id) {
+			self.folder_files.retain(|d| d.id != id);
+			if self.selected == Some(id) {
+				self.selected = None;
+			}
+			cx.notify();
+			return;
+		}
 		self.downloads.retain(|d| d.id != id);
 		if self.selected == Some(id) {
 			self.selected = None;

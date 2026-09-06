@@ -100,36 +100,40 @@ impl Rdm {
 			.text_color(p.muted)
 			.border_b_1()
 			.border_color(p.border)
-			.child(self.reset_widths_control(cx))
+			.child(self.folder_control(cx))
 			.child(self.header_cell(SortKey::Name, "Name", false, cx).flex_1().min_w_0().pl(px(12.0)))
 			.children(cells)
 	}
 
-	/// The corner over the type icons is empty until the pointer rests on it; then it shows a
-	/// reset glyph, named in a tooltip, and a press puts every column back to its starting
-	/// width. Hidden by opacity rather than left out, so the slot keeps the width the cells match.
-	fn reset_widths_control(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+	/// The corner over the type icons holds a funnel that stays: lit, All also lists what else
+	/// the download folder holds; pressed again, the downloads alone. Under any other list it
+	/// is dimmed and takes no press, since it acts on All only. The slot keeps the width the
+	/// cells match.
+	fn folder_control(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
+		let lit = self.folder_shown;
+		let acts = self.filter == crate::download::Filter::All;
 		div()
-			.id("reset-widths")
+			.id("folder-files")
 			.role(Role::Button)
-			.aria_label("Reset column widths")
-			.debug_selector(|| "button:Reset to default".to_owned())
+			.aria_label("Folder files")
+			.debug_selector(|| "button:Folder files".to_owned())
 			.w(px(14.0))
 			.h_full()
 			.flex()
 			.flex_none()
 			.items_center()
 			.justify_center()
-			.cursor_pointer()
-			.group("reset-widths")
-			.tooltip(tooltip("Reset to default"))
-			.on_click(cx.listener(|this, _, _, cx| this.reset_widths(cx)))
+			.when(acts, |s| {
+				s.cursor_pointer()
+					.tooltip(tooltip(if lit { "Downloads only" } else { "Include folder files" }))
+					.on_click(cx.listener(|this, _, _, cx| this.toggle_folder_files(cx)))
+			})
+			.when(!acts, |s| s.tooltip(tooltip("Folder files, under All")))
 			.child(
-				icon(Icon::ListRestart, p.text)
+				icon(Icon::Funnel, if lit { p.accent } else { p.muted })
 					.size_3()
-					.opacity(0.0)
-					.group_hover("reset-widths", |s| s.opacity(1.0)),
+					.when(!acts, |s| s.opacity(0.35)),
 			)
 	}
 

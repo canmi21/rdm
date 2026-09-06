@@ -70,9 +70,19 @@ their titles. A drag is clamped at both ends: a column no narrower than fits its
 wider than leaves the name column its floor, because past that the row runs out of the window. A drag is tracked on the window root, not on the handle, because the pointer leaves
 the handle the moment it moves; a move with the button up ends it, since a release outside the
 window is never seen and would otherwise leave the next pointer movement resizing on its own. The
-corner over the type icons, empty at rest, shows a reset glyph while the pointer is on it, named
-"Reset to default" in a tooltip; a press puts every column back to its starting width, so a
-table dragged out of shape has one way home rather than five drags. A funnel at the
+corner over the type icons holds a funnel that stays: lit, All Tasks also lists what else the
+download folder holds -- every plain file that is not hidden, not one of a download's two
+files meanwhile, and not named by a row -- each as a completed row with the file's size and
+time and no address; pressed again, the downloads alone. It acts on All Tasks only, since the
+sidebar's other lists are made of downloads by what they are, which a file that arrived by
+other means is not, so under any other list it is dimmed and takes no press. The rows are read
+when the funnel is lit and again whenever the folder changes while it is; they are not
+remembered across launches, like the sidebar's filter. Remove on one of them takes it off the
+list for the session and leaves the file where it is, since a file that was never downloaded
+here is not this application's to delete. The corner held the column widths' reset before,
+shown only while the pointer rested on it; that moved to `Reset` under `Column widths` in
+Settings' Appearance, so a table dragged out of shape still has one way home rather than five
+drags, and the corner could hold something consulted more often. A funnel at the
 status bar's corner opens a menu of statuses that cuts within whatever the sidebar selected --
 one at a time, with All to clear it -- and the funnel stays lit, naming the status, while one is
 chosen. The statuses were a row of chips above the list first, then a row in the status bar, and

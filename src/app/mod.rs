@@ -82,6 +82,10 @@ pub struct Resize {
 	pub from_width: f32,
 }
 
+/// Where the folder's files are numbered from: far above any download's id, which the store
+/// hands out from one.
+pub(crate) const FOLDER_ID: u64 = 1 << 62;
+
 /// What a sidebar row carries while it is dragged: the category's id.
 #[derive(Clone, Copy, Debug)]
 pub struct DraggedCategory(pub u64);
@@ -113,6 +117,11 @@ pub struct Rdm {
 	pub(crate) status: Option<Status>,
 	/// The status menu under the funnel is open.
 	pub(crate) filter_open: bool,
+	/// The header's funnel is lit: All also lists what else the download folder holds.
+	pub(crate) folder_shown: bool,
+	/// The folder's other files as rows, read when the funnel is lit and whenever the folder
+	/// changes while it is; empty otherwise. Their ids start at `FOLDER_ID`.
+	pub(crate) folder_files: Vec<Download>,
 	pub(crate) sort: SortKey,
 	pub(crate) ascending: bool,
 	pub(crate) view: View,
@@ -218,6 +227,8 @@ impl Rdm {
 			filter: Filter::All,
 			status: None,
 			filter_open: false,
+			folder_shown: false,
+			folder_files: Vec::new(),
 			sort: SortKey::Added,
 			ascending: false,
 			view: saved.view.unwrap_or(View::Detailed),
@@ -258,14 +269,18 @@ impl Rdm {
 		this
 	}
 
-	/// The rows the list shows, in the order it shows them.
+	/// The rows the list shows, in the order it shows them: the downloads the sidebar's filter
+	/// and the status menu let through, and under All with the funnel lit, the folder's other
+	/// files after them.
 	pub(crate) fn shown(&self) -> Vec<&Download> {
+		let folder =
+			if self.folder_shown && self.filter == Filter::All { &self.folder_files[..] } else { &[] };
 		let mut rows: Vec<&Download> = self
 			.downloads
 			.iter()
-			.filter(|d| {
-				self.filter.matches(d, &self.categories) && self.status.is_none_or(|s| d.status == s)
-			})
+			.filter(|d| self.filter.matches(d, &self.categories))
+			.chain(folder)
+			.filter(|d| self.status.is_none_or(|s| d.status == s))
 			.collect();
 		rows.sort_by(|a, b| {
 			let order = match self.sort {
@@ -307,7 +322,88 @@ impl Rdm {
 	}
 
 	pub(crate) fn download(&self, id: u64) -> Option<&Download> {
-		self.downloads.iter().find(|d| d.id == id)
+		self.downloads.iter().chain(&self.folder_files).find(|d| d.id == id)
+	}
+
+	/// Whether the row is one of the folder's files rather than a download: nothing to pause,
+	/// resume or forget, and nothing the engine or the store knows.
+	pub(crate) fn is_folder_file(id: u64) -> bool {
+		id >= FOLDER_ID
+	}
+
+	/// The funnel in the header's corner: lit, All also lists the folder's other files; pressed
+	/// again, it lists the downloads alone. Only All is affected, since the sidebar's other
+	/// lists are made of downloads by what they are, which a file that arrived by other means
+	/// is not.
+	pub(crate) fn toggle_folder_files(&mut self, cx: &mut Context<Self>) {
+		self.folder_shown = !self.folder_shown;
+		if self.folder_shown {
+			self.scan_folder();
+		} else {
+			self.folder_files.clear();
+			if self.selected.is_some_and(Self::is_folder_file) {
+				self.selected = None;
+			}
+		}
+		cx.notify();
+	}
+
+	/// The download folder's files that are not a download's: not hidden, not one of the two
+	/// files a download keeps meanwhile, and not named by any row. Each becomes a completed row
+	/// with the file's size and time and no address, in the folder's order, numbered from
+	/// `FOLDER_ID` so a press on one finds it and nothing mistakes it for a download.
+	pub(crate) fn scan_folder(&mut self) {
+		let Some(directory) = self.paths.as_ref().map(|p| p.downloads.clone()) else { return };
+		let Ok(entries) = std::fs::read_dir(&directory) else { return };
+		let mut files: Vec<(String, std::fs::Metadata, std::path::PathBuf)> = entries
+			.flatten()
+			.filter_map(|entry| {
+				let path = entry.path();
+				let name = path.file_name()?.to_str()?.to_owned();
+				let metadata = entry.metadata().ok()?;
+				(metadata.is_file()
+					&& !name.starts_with('.')
+					&& engine::control::target_of(&path).is_none()
+					&& !self.downloads.iter().any(|d| {
+						d.name == name || d.path.as_deref().is_some_and(|p| std::path::Path::new(p) == path)
+					}))
+				.then_some((name, metadata, path))
+			})
+			.collect();
+		files.sort_by(|a, b| a.0.cmp(&b.0));
+		let selected = self
+			.selected
+			.filter(|&id| Self::is_folder_file(id))
+			.and_then(|id| self.folder_files.iter().find(|d| d.id == id).map(|d| d.name.clone()));
+		self.folder_files = files
+			.into_iter()
+			.enumerate()
+			.map(|(index, (name, metadata, path))| Download {
+				id: FOLDER_ID + index as u64,
+				name,
+				url: String::new(),
+				size: metadata.len(),
+				received: metadata.len(),
+				speed: 0,
+				status: Status::Completed,
+				added: metadata.modified().map_or_else(|_| chrono::Local::now(), chrono::DateTime::from),
+				source: None,
+				path: Some(path.to_string_lossy().into_owned()),
+				error: None,
+				connections: None,
+				directory: None,
+				mirrors: Vec::new(),
+				checksum: None,
+				range: None,
+				speed_limit: None,
+			})
+			.collect();
+		// The rows were renumbered; the selection follows its file by name, or lets go.
+		if let Some(name) = selected {
+			self.selected = self.folder_files.iter().find(|d| d.name == name).map(|d| d.id);
+		} else if self.selected.is_some_and(Self::is_folder_file) {
+			self.selected = None;
+		}
 	}
 
 	pub(crate) fn selected(&self) -> Option<&Download> {
@@ -386,7 +482,7 @@ impl Rdm {
 		}
 	}
 
-	/// Every column back to the width it started with, from the control in the header's corner.
+	/// Every column back to the width it started with, from Reset under Appearance in Settings.
 	pub(crate) fn reset_widths(&mut self, cx: &mut Context<Self>) {
 		self.widths = Column::DEFAULT_WIDTHS;
 		self.schedule_save(cx);
