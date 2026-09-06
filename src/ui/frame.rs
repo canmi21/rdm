@@ -91,10 +91,13 @@ pub fn drag_area() -> impl IntoElement {
 }
 
 /// Minimize, maximize or restore, close: the system's arrangement and width, the
-/// application's glyphs on a ten point grid, close hovering red. Each answers its own press.
+/// application's glyphs on a ten point grid, close hovering red. Each answers its own press,
+/// except maximize on Windows: gpui's zoom there only maximizes and cannot restore, while the
+/// system's own maximize button toggles, so that one is left to the system as its control
+/// area, which also gives it the snap layouts on hover.
 pub fn controls(p: Palette, window: &Window) -> impl IntoElement {
 	let maximized = window.is_maximized();
-	let control = move |label: &'static str, glyph: Icon, close: bool, press: fn(&mut Window)| {
+	let control = move |label: &'static str, glyph: Icon, close: bool, press: Press| {
 		div()
 			.id(SharedString::from(format!("frame-{label}")))
 			.role(gpui::Role::Button)
@@ -107,21 +110,41 @@ pub fn controls(p: Palette, window: &Window) -> impl IntoElement {
 			.h(px(toolbar::HEIGHT))
 			.cursor_default()
 			.hover(move |s| if close { s.bg(p.failure).text_color(p.text) } else { s.bg(p.hover) })
-			.on_click(move |_, window, _| press(window))
+			.map(|s| match press {
+				Press::Own(press) => s.on_click(move |_, window, _| press(window)),
+				Press::System(area) => s.window_control_area(area),
+			})
 			.child(icon(glyph, p.muted).size(px(10.0)))
+	};
+	let zoom = if cfg!(target_os = "windows") {
+		Press::System(gpui::WindowControlArea::Max)
+	} else {
+		Press::Own(|window| window.zoom_window())
 	};
 	div()
 		.flex()
 		.items_center()
 		.h_full()
-		.child(control("Minimize", Icon::Minimize, false, |window| window.minimize_window()))
+		.child(control(
+			"Minimize",
+			Icon::Minimize,
+			false,
+			Press::Own(|window| window.minimize_window()),
+		))
 		.child(control(
 			if maximized { "Restore" } else { "Maximize" },
 			if maximized { Icon::Restore } else { Icon::Maximize },
 			false,
-			|window| window.zoom_window(),
+			zoom,
 		))
-		.child(control("Close", Icon::Close, true, |window| window.remove_window()))
+		.child(control("Close", Icon::Close, true, Press::Own(|window| window.remove_window())))
+}
+
+/// Who answers a control's press: the application, or the system through its control area.
+#[derive(Clone, Copy)]
+enum Press {
+	Own(fn(&mut Window)),
+	System(gpui::WindowControlArea),
 }
 
 #[cfg(test)]

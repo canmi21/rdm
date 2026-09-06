@@ -27,7 +27,9 @@ at one point of stroke -- Lucide's minus, square and cross read as three weights
 side -- and each answers its own press through the window: minimize, zoom, close. They are
 the application's buttons, not the system's control areas: marking the strip as the system's
 caption was tried and the system then took every press on it, buttons included, and read two
-of them as a maximize. Only the empty middle is the system's on Windows, so it drags and
+of them as a maximize. The one exception is maximize on Windows, which is the system's
+control area after all: gpui's zoom there only maximizes and cannot restore, while the
+system's own button toggles, and it brings the snap layouts on hover with it. Only the empty middle is the system's on Windows, so it drags and
 double-clicks as a caption does; on Linux a press there starts a move through the compositor,
 a double press zooms, the right button opens the window's menu, and a press within six points
 of the window's edge starts a resize, since with client-side decorations nobody else would.
