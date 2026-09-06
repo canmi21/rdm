@@ -18,7 +18,7 @@ use crate::ui::icon::Icon;
 /// Under the build directory, so it is per checkout and gone with `cargo clean`.
 pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
 
-const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings | fullscreen | update | \
+const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings [section] | fullscreen | update | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
@@ -166,7 +166,18 @@ impl Rdm {
 					_ => self.remove(id, cx),
 				}
 			}
-			"settings" => self.toggle_settings(!self.settings_open(), cx),
+			// Alone, the sheet is toggled; with a section's name, it is opened on that section.
+			"settings" if label.is_empty() => self.toggle_settings(!self.settings_open(), cx),
+			"settings" => {
+				let Some(section) = crate::ui::settings_sheet::Section::ALL
+					.into_iter()
+					.find(|s| s.name().eq_ignore_ascii_case(&label))
+				else {
+					return failure("settings takes a section: general, transfers, appearance, about");
+				};
+				self.open_settings(cx);
+				self.set_settings_section(section, cx);
+			}
 			// Check now, as the settings row does: a hand build is then shown the newest build.
 			"update" => self.check_for_updates(true, cx),
 			// The main window is the one whose root is this entity; toggling through it is what
