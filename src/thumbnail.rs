@@ -21,6 +21,28 @@ use gpui::RenderImage;
 /// scale down is one trip to the system rather than two.
 pub const SIZE: usize = 128;
 
+/// What the grid can put on a card, beyond the category's glyph.
+#[derive(Clone)]
+pub enum Preview {
+	/// The file itself, scaled to fit: a picture of a picture.
+	Picture(Arc<RenderImage>),
+	/// The first few lines of it, as they are. A text file's contents are its own best icon, and
+	/// a page of real words says more about what a file is than any glyph.
+	Lines(Vec<String>),
+	/// The system's icon for the kind, which is what everything else falls back to.
+	Icon(Arc<RenderImage>),
+}
+
+/// How big a picture is drawn on a card, and the largest file worth opening to make one. A
+/// hundred megapixels of RAW is not a card, it is a stall.
+const CARD: u32 = 256;
+const BIGGEST: u64 = 32 * 1024 * 1024;
+
+/// How much of a text file is read and shown. Six lines of sixty is a paragraph's worth: enough
+/// to tell a licence from a changelog from a stack trace, and no more than a card can hold.
+const LINES: usize = 6;
+const COLUMNS: usize = 60;
+
 /// The pictures asked for so far, by path. `None` is a file the system had no picture for, kept
 /// so it is not asked about again.
 /// How many pictures a single frame will ask the system for. Asking is a trip to the window
@@ -33,6 +55,7 @@ const A_FRAME: u32 = 24;
 #[derive(Default)]
 pub struct Thumbnails {
 	cache: HashMap<PathBuf, Option<Arc<RenderImage>>>,
+	previews: HashMap<PathBuf, Option<Preview>>,
 	/// What is left of this frame's allowance, and whether the frame ran out. Running out is
 	/// what asks for another frame: the rest of the pictures are waiting in it.
 	budget: u32,
@@ -69,9 +92,28 @@ impl Thumbnails {
 		self.starved
 	}
 
+	/// What to put on a card for this file: the file itself where it can be shown, the first
+	/// lines where it is text, and the system's icon otherwise. Under the same allowance as
+	/// `of`, and for the same reason -- reading and decoding is work, and the list draws every
+	/// row it has.
+	pub fn preview(&mut self, path: &Path) -> Option<Preview> {
+		if let Some(known) = self.previews.get(path) {
+			return known.clone();
+		}
+		if self.budget == 0 {
+			self.starved = true;
+			return None;
+		}
+		self.budget -= 1;
+		let made = read_preview(path).or_else(|| read(path).map(|image| Preview::Icon(Arc::new(image))));
+		self.previews.insert(path.to_path_buf(), made.clone());
+		made
+	}
+
 	/// Forgets a file's picture, for a file that has changed on disk.
 	pub fn forget(&mut self, path: &Path) {
 		self.cache.remove(path);
+		self.previews.remove(path);
 	}
 }
 
@@ -112,6 +154,61 @@ fn read(path: &Path) -> Option<RenderImage> {
 		pixel.swap(0, 2);
 	}
 	render_image(SIZE as u32, SIZE as u32, bgra)
+}
+
+/// A picture of the file, or the first lines of it, or nothing. Extension-led rather than
+/// content-led: opening every file in a folder to find out what it is would be the very thing
+/// the allowance exists to prevent, and a file named `.png` that is not one simply fails to
+/// decode and falls back like everything else.
+fn read_preview(path: &Path) -> Option<Preview> {
+	let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+	let size = std::fs::metadata(path).ok()?.len();
+	if size > BIGGEST {
+		return None;
+	}
+	const PICTURES: [&str; 8] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff"];
+	if PICTURES.contains(&extension.as_str()) {
+		return picture(path);
+	}
+	const TEXT: [&str; 26] = [
+		"txt", "text", "md", "markdown", "rst", "log", "nfo", "json", "toml", "yaml", "yml", "xml",
+		"csv", "tsv", "rs", "py", "js", "ts", "go", "c", "h", "sh", "sql", "html", "css", "ini",
+	];
+	if TEXT.contains(&extension.as_str()) {
+		return lines(path);
+	}
+	None
+}
+
+/// The file scaled to fit a card, keeping its shape: a picture squashed to a square is a picture
+/// somebody has to look at twice to recognise.
+fn picture(path: &Path) -> Option<Preview> {
+	let decoded = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
+	let scaled = decoded.resize(CARD, CARD, image::imageops::FilterType::Triangle).into_rgba8();
+	let (width, height) = (scaled.width(), scaled.height());
+	let mut bgra = scaled.into_raw();
+	for pixel in bgra.as_chunks_mut::<4>().0 {
+		pixel.swap(0, 2);
+	}
+	Some(Preview::Picture(Arc::new(render_image(width, height, bgra)?)))
+}
+
+/// The first lines of a text file, as they are. Read as bytes and lossily converted: a file that
+/// is not UTF-8 still has readable words in it, and a card that showed nothing because of one
+/// stray byte would be a card that lied about the file.
+fn lines(path: &Path) -> Option<Preview> {
+	use std::io::Read;
+	let mut head = vec![0; LINES * COLUMNS * 4];
+	let mut file = std::fs::File::open(path).ok()?;
+	let read = file.read(&mut head).ok()?;
+	head.truncate(read);
+	let text = String::from_utf8_lossy(&head);
+	let lines: Vec<String> = text
+		.lines()
+		.take(LINES)
+		.map(|line| line.chars().take(COLUMNS).collect::<String>())
+		.collect();
+	(!lines.iter().all(|line| line.trim().is_empty())).then_some(Preview::Lines(lines))
 }
 
 /// Windows keeps one too, and asking for it is `SHGetFileInfo`; until that is written the

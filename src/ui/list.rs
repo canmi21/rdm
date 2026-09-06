@@ -374,6 +374,40 @@ impl Rdm {
 			.child(icon(Icon::for_status(download.status), tint).size_3())
 	}
 
+	/// What fills a card's picture: the file itself where one can be made of it, the first lines
+	/// where it is text, the system's icon where there is one, and the category's glyph where
+	/// there is not. A file with nothing to show is drawn the way every file used to be.
+	fn card_face(&self, download: &Download) -> gpui::AnyElement {
+		let p = self.palette;
+		let preview = download
+			.path
+			.as_deref()
+			.map(std::path::Path::new)
+			.and_then(|path| self.thumbnails.borrow_mut().preview(path));
+		match preview {
+			Some(crate::thumbnail::Preview::Picture(picture)) => {
+				// Filling the card rather than fitting inside it: a picture with bars around it
+				// reads as a picture of a picture, and the card is a glance rather than a viewer.
+				gpui::img(picture).size_full().object_fit(gpui::ObjectFit::Cover).into_any_element()
+			}
+			Some(crate::thumbnail::Preview::Lines(lines)) => div()
+				.size_full()
+				.flex()
+				.flex_col()
+				.px_1p5()
+				.py_1()
+				.overflow_hidden()
+				.text_color(p.muted)
+				.text_size(px(6.0))
+				.children(lines.into_iter().map(|line| div().truncate().child(line)))
+				.into_any_element(),
+			Some(crate::thumbnail::Preview::Icon(icon)) => {
+				gpui::img(icon).size_10().into_any_element()
+			}
+			None => tinted_icon(self.category_icon(download)).size_8().into_any_element(),
+		}
+	}
+
 	fn card(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let tint = p.status(download.status);
@@ -391,8 +425,9 @@ impl Rdm {
 					.justify_center()
 					.items_center()
 					.rounded_sm()
+					.overflow_hidden()
 					.bg(p.panel)
-					.child(tinted_icon(self.category_icon(download)).size_8()),
+					.child(self.card_face(download)),
 			)
 			.child(div().truncate().text_xs().child(download.name.clone()))
 			.child(progress_bar(p, download, tint))

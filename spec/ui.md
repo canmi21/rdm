@@ -60,6 +60,20 @@ glyph stands in; that is not a failure, since the glyph is what this application
 drawing for itself. The pictures are cached by path for the run and asked for again when a
 download finishes, the file on disk no longer being what it was.
 
+**A card in the grid shows the file where it can.** A picture is decoded and drawn filling the
+card, keeping its shape -- a picture with bars around it reads as a picture of a picture, and a
+card is a glance rather than a viewer. A text file shows its first six lines as they are, which
+is the best icon a text file has: a paragraph of real words tells a licence from a changelog
+from a stack trace, and no glyph does. Anything else falls back to the system's icon, and then to
+the category's glyph.
+
+Which is which is decided by the extension rather than by opening the file: opening every file in
+a folder to find out what it is would be the very thing the allowance exists to prevent, and a
+file named `.png` that is not one simply fails to decode and falls back like everything else. A
+file over thirty-two megabytes is not opened at all -- a hundred megapixels of RAW is not a card,
+it is a stall. Video and fonts are not previewed yet and show the system's icon; both want
+QuickLook, whose generator is asynchronous and is a piece of work of its own.
+
 **A frame asks for two dozen of them and no more.** Asking is a trip to the window server and a
 decode, and the list draws every row it has rather than only the ones on screen; a folder of a
 thousand files spent a minute in one frame and the window answered nothing until it was over.

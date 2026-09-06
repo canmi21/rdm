@@ -81,7 +81,7 @@ png = "0.18"
 # The system's own icon for a file, which arrives as TIFF and is drawn as a gpui RenderImage.
 # The version is gpui's own: a RenderImage is built from this crate's Frame, so the two have to
 # agree on what a Frame is. See src/thumbnail.rs.
-image = { version = "0.25", default-features = false, features = ["tiff"] }
+image = { version = "0.25", default-features = false, features = ["tiff", "png", "jpeg", "gif", "webp", "bmp"] }
 # What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
 # zip is also what the Windows build comes in, and tar with flate2 the Linux one; see
 # src/update/install.rs.
