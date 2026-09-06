@@ -15,8 +15,11 @@ use crate::ui::status_bar;
 use crate::update::{self, Available, Manifest, Region};
 
 /// What the check knows and what it last said.
-#[derive(Default)]
 pub struct Updates {
+	/// The number this binary was built as, None for one made by hand. Read once from the
+	/// build's environment; a test sets it, since the test binary is built in that environment
+	/// too and would otherwise carry the run's number.
+	pub this: Option<u64>,
 	/// Asked of the traces once per run; asked again only if no trace answered.
 	pub region: Option<Region>,
 	pub checking: bool,
@@ -35,6 +38,24 @@ pub struct Updates {
 	pub active: bool,
 	/// The read of the check under way, polled below.
 	_poll: Option<Task<()>>,
+}
+
+impl Default for Updates {
+	fn default() -> Self {
+		Updates {
+			this: update::this_build(),
+			region: None,
+			checking: false,
+			by_hand: false,
+			latest: None,
+			available: None,
+			outcome: None,
+			dismissed: None,
+			notified: None,
+			active: false,
+			_poll: None,
+		}
+	}
 }
 
 /// One outcome of a check as the runtime hands it back.
@@ -120,7 +141,7 @@ impl Rdm {
 		cx: &mut Context<Self>,
 	) {
 		self.updates.outcome = Some(Ok(manifest.build));
-		let this = update::this_build();
+		let this = self.updates.this;
 		let available = update::compare(&manifest, this).filter(|_| this.is_some() || by_hand);
 		self.updates.latest = Some(manifest);
 		if let Some(available) = &available
@@ -154,7 +175,7 @@ impl Rdm {
 		if self.updates.checking {
 			return "Checking".to_owned();
 		}
-		match (&self.updates.outcome, update::this_build()) {
+		match (&self.updates.outcome, self.updates.this) {
 			(None, _) => "Not checked yet".to_owned(),
 			(Some(Err(error)), _) => format!("Could not check: {error}"),
 			(Some(Ok(build)), Some(this)) if *build > this => format!("Build {build} is available"),

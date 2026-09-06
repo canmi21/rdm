@@ -843,7 +843,9 @@ fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppCont
 	)
 	.unwrap();
 	assert!(cx.debug_bounds("toast:update").is_none(), "nothing known, nothing shown");
-	// A hand build is shown a newer build only when it asked.
+	// A hand build is shown a newer build only when it asked. The test binary made in CI
+	// carries the run's number, so the test says which build it is.
+	rdm.update(&mut cx, |rdm, _| rdm.updates.this = None);
 	rdm.update(&mut cx, |rdm, cx| rdm.apply_manifest(manifest.clone(), false, cx));
 	cx.run_until_parked();
 	assert!(cx.debug_bounds("toast:update").is_none(), "a hand build was not asked");

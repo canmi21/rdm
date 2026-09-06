@@ -182,6 +182,7 @@ mod tests {
 		"assets": [
 			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "aa" },
 			{ "target": "linux-x64", "kind": "tar.gz", "file": "rdm-nightly-linux-x64.tar.gz", "size": 1, "sha256": "bb" },
+			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "ee" },
 			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "cc" },
 			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "dd" }
 		]
