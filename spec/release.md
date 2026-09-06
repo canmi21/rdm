@@ -94,8 +94,12 @@ the day and is what a person is told, while the run number that tells two builds
 apart appears only in Settings, after the version in brackets the way the system's own About
 windows put it; `Later` closes the card for that build, and the next build
 brings it back. When the manifest arrives while the window is not the active one, the system
-is told once per build through `notify-rust`: D-Bus on Linux, the notification centre on
-macOS, WinRT on Windows. On macOS a notification is delivered only for an installed bundle, so
+is told once per build and stage through `notify-rust`: D-Bus on Linux, the notification
+centre on macOS, WinRT on Windows. Pressing the notification brings the window to the front,
+where the card says what to do next: macOS activates the application the notification was
+delivered for by itself, on Linux the notification carries a default action the application
+waits on, and on Windows a press only closes the toast, since activation there needs an
+application registered with the shell, which a plain executable is not. On macOS a notification is delivered only for an installed bundle, so
 a binary run from the build tree shows none, quietly. A hand build has no number and is never
 behind on its own; only a check asked for shows it what is published, so the development
 window is not nagged. The settings row `Check for updates` says how the last check went:
@@ -132,7 +136,14 @@ the card says why.
 
 The install itself is a rename, on every system, because a running program keeps its old file
 under whatever name it has meanwhile. On macOS the dmg is mounted, its bundle copied beside
-the installed one with `ditto`, and the two swapped by rename, the old one removed after. On
+the installed one with `ditto`, cleared of the quarantine mark, and the two swapped by
+rename, the old one removed after. The clearing is a precaution: the mark is a browser's, put
+on what it downloads, and a file this application wrote carries none, nor does what is copied
+out of it, which is why an ad hoc signed build installed this way launches without Gatekeeper
+asking -- only the first one, downloaded by a browser, is the user's to allow by hand. A swap
+the user may not make, an application another user installed and root owns, is made again as
+the administrator through the system's own password dialog, and only then; every other update
+asks nothing. On
 Windows a running executable cannot be deleted or overwritten but can be renamed, so the
 `self-replace` crate moves the running one aside, puts the one from the zip under its name,
 and has the moved one go when it closes. On Linux the AppImage, or the binary from the

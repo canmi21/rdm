@@ -180,8 +180,9 @@ Add Task was tried as a sheet first and read better than the window it replaced,
 followed.
 
 **Settings is shaped for the many to come.** A rail down the left names the sections -- General,
-Transfers, Appearance -- with a search field above it, and the chosen section's rows fill the
-right. The card is a fixed size, so changing sections moves nothing. A search cuts across every
+Transfers, Appearance, About -- with a search field above it, and the chosen section's rows fill
+the right. About is where the name in full lives, with the version, the build number, the
+commit and the identifier, so what a build is can be read off it and told to someone. The card is a fixed size, so changing sections moves nothing. A search cuts across every
 section and shows each match under its section's name, since a setting is looked for by what it
 does, not by where it was filed; while a search is on, no section is lit. Escape in the field
 closes the sheet, like Escape anywhere on a sheet with nothing to lose. Every setting belongs
