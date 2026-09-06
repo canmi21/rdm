@@ -129,6 +129,19 @@ pub struct Preferences {
 	/// user's, and the machine can be asked. See src/proxy.rs.
 	#[serde(default)]
 	pub proxy_source: crate::proxy::Source,
+	/// Who resolves names, how they are asked, and what does the asking. Each its own answer,
+	/// because the reasons for changing one are not the reasons for changing the others. All
+	/// three are the system's to start with. See src/dns.rs.
+	#[serde(default)]
+	pub dns_servers: crate::dns::Servers,
+	#[serde(default)]
+	pub dns_transport: crate::dns::Transport,
+	#[serde(default)]
+	pub dns_stack: crate::dns::Stack,
+	/// The servers as the user wrote them. Empty means the pair offered for the transport in
+	/// use, which is Cloudflare and Google either way.
+	#[serde(default)]
+	pub dns_servers_written: String,
 	#[serde(default)]
 	pub max_redirects: Option<usize>,
 	#[serde(default = "yes")]
@@ -204,6 +217,20 @@ impl Preferences {
 		settings.headers = self.headers.clone();
 		// What the engine is given: the address typed, whatever was found, or nothing. `found` is
 		// what the last look came to and is None until it has looked. See src/app/network.rs.
+		settings.dns_servers = self.dns_servers;
+		settings.dns_transport = self.dns_transport;
+		settings.dns_stack = self.dns_stack;
+		// Empty is the pair offered for this transport: somebody who chose to name servers and
+		// then cleared the field meant the offered ones, not none at all. Nothing is filled in
+		// while the system's servers are the ones being asked, there being nothing to fill.
+		settings.dns_written = match (self.dns_servers, self.dns_servers_written.trim()) {
+			(crate::dns::Servers::System, _) => String::new(),
+			(_, "") if self.dns_transport == crate::dns::Transport::Https => {
+				crate::dns::DEFAULT_HTTPS.to_owned()
+			}
+			(_, "") => crate::dns::DEFAULT_PLAIN.to_owned(),
+			(_, written) => written.to_owned(),
+		};
 		settings.proxy = match self.proxy_source {
 			crate::proxy::Source::Direct => None,
 			crate::proxy::Source::Fixed => self.proxy.clone().filter(|a| !a.trim().is_empty()),
@@ -251,6 +278,10 @@ impl Default for Preferences {
 			headers: Vec::new(),
 			proxy: None,
 			proxy_source: crate::proxy::Source::default(),
+			dns_servers: crate::dns::Servers::default(),
+			dns_transport: crate::dns::Transport::default(),
+			dns_stack: crate::dns::Stack::default(),
+			dns_servers_written: String::new(),
 			max_redirects: None,
 			preallocate: true,
 		}

@@ -83,6 +83,14 @@ pub struct Settings {
 	pub headers: Vec<(String, String)>,
 	/// `http://`, `https://` or `socks5://`, with credentials in the URL; None uses the system's.
 	pub proxy: Option<String>,
+	/// Who resolves names and how. What this comes to is built once into a resolver and handed to
+	/// the client beside these; the built thing is not a setting and does not live here. See
+	/// src/dns.rs.
+	pub dns_servers: crate::dns::Servers,
+	pub dns_transport: crate::dns::Transport,
+	pub dns_stack: crate::dns::Stack,
+	/// The servers as the user wrote them: addresses for port 53, URLs for HTTPS.
+	pub dns_written: String,
 	pub max_redirects: usize,
 	/// The file is grown to its full length before the first byte lands, so a segment can be
 	/// written at its offset and a full disk fails the download at the start rather than the end.
@@ -104,6 +112,10 @@ impl Default for Settings {
 			user_agent: concat!("rdm/", env!("CARGO_PKG_VERSION")).to_owned(),
 			headers: Vec::new(),
 			proxy: None,
+			dns_servers: crate::dns::Servers::default(),
+			dns_transport: crate::dns::Transport::default(),
+			dns_stack: crate::dns::Stack::default(),
+			dns_written: String::new(),
 			max_redirects: 10,
 			preallocate: true,
 		}

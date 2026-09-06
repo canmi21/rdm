@@ -10,6 +10,7 @@ mod config;
 // A Unix socket, so a debug build on Windows has no control socket; the tests stand in for it there.
 #[cfg(all(debug_assertions, unix))]
 mod ctl;
+mod dns;
 mod download;
 mod engine;
 mod identity;

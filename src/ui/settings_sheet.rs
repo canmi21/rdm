@@ -33,7 +33,7 @@ pub struct SettingsSheet {
 }
 
 /// Every field there is: its row's label, its placeholder, and a word on what it takes.
-const FIELDS: [(&str, &str, &str); 13] = [
+const FIELDS: [(&str, &str, &str); 14] = [
 	("Concurrent downloads", "3", "How many run at once; the rest wait"),
 	("Speed limit", "Off", "KB/s, or with m or g; empty for none"),
 	("Connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
@@ -48,6 +48,11 @@ const FIELDS: [(&str, &str, &str); 13] = [
 		"Proxy",
 		"Address",
 		"http://, https:// or socks5://, credentials in the address",
+	),
+	(
+		"Name servers",
+		"Cloudflare, Google",
+		"Addresses for port 53, https:// URLs for HTTPS; empty for the offered pair",
 	),
 	("Headers", "", "Name: value, several apart by semicolons"),
 	("Redirects", "10", "How many a request follows"),
@@ -227,6 +232,7 @@ impl Rdm {
 			"Size limit" => size(p.max_size),
 			"User agent" => p.user_agent.clone().unwrap_or_default(),
 			"Proxy" => p.proxy.clone().unwrap_or_default(),
+			"Name servers" => p.dns_servers_written.clone(),
 			"Headers" => {
 				p.headers.iter().map(|(n, v)| format!("{n}: {v}")).collect::<Vec<_>>().join("; ")
 			}
@@ -272,6 +278,23 @@ impl Rdm {
 						return Err("A proxy starts with http://, https:// or socks5://.".to_owned());
 					}
 					self.preferences.proxy = (!text.is_empty()).then(|| text.to_owned());
+				}
+				"Name servers" => {
+					// Only what the transport in use can be given: an address where the question
+					// goes over 53, a URL where it goes over HTTPS. Writing one where the other
+					// belongs is the mistake worth catching, since it fails silently otherwise.
+					let https = self.preferences.dns_transport == crate::dns::Transport::Https;
+					let parts: Vec<&str> =
+						text.split([',', ' ', '\n']).map(str::trim).filter(|p| !p.is_empty()).collect();
+					for part in &parts {
+						if https && !part.starts_with("https://") {
+							return Err("Over HTTPS, a server is an https:// URL.".to_owned());
+						}
+						if !https && part.parse::<std::net::IpAddr>().is_err() {
+							return Err("On port 53, a server is an address like 1.1.1.1.".to_owned());
+						}
+					}
+					self.preferences.dns_servers_written = text.to_owned();
 				}
 				"Headers" => {
 					let mut headers = Vec::new();
@@ -440,6 +463,49 @@ impl Rdm {
 				},
 			},
 			self.field_row(Section::Network, "Proxy").under("Proxy"),
+			Row {
+				section: Section::Network,
+				group: "Names",
+				label: "Who is asked",
+				note: "The machine's own servers, or the ones named below.",
+				control: Control::Choice {
+					options: crate::dns::Servers::ALL.iter().map(|s| s.name()).collect(),
+					chosen: crate::dns::Servers::ALL
+						.iter()
+						.position(|s| *s == self.preferences.dns_servers)
+						.unwrap_or(0),
+					set: |this, index, cx| this.set_dns_servers(crate::dns::Servers::ALL[index], cx),
+				},
+			},
+			Row {
+				section: Section::Network,
+				group: "Names",
+				label: "How they are asked",
+				note: "Port 53 is in the clear; over HTTPS is not.",
+				control: Control::Choice {
+					options: crate::dns::Transport::ALL.iter().map(|t| t.name()).collect(),
+					chosen: crate::dns::Transport::ALL
+						.iter()
+						.position(|t| *t == self.preferences.dns_transport)
+						.unwrap_or(0),
+					set: |this, index, cx| this.set_dns_transport(crate::dns::Transport::ALL[index], cx),
+				},
+			},
+			self.field_row(Section::Network, "Name servers").under("Names"),
+			Row {
+				section: Section::Network,
+				group: "Names",
+				label: "What does the asking",
+				note: "The system knows your hosts file and your VPN; Hickory knows what it is told.",
+				control: Control::Choice {
+					options: crate::dns::Stack::ALL.iter().map(|s| s.name()).collect(),
+					chosen: crate::dns::Stack::ALL
+						.iter()
+						.position(|s| *s == self.preferences.dns_stack)
+						.unwrap_or(0),
+					set: |this, index, cx| this.set_dns_stack(crate::dns::Stack::ALL[index], cx),
+				},
+			},
 			Row {
 				section: Section::Network,
 				group: "Proxy",

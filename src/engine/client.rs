@@ -39,6 +39,18 @@ pub fn build(settings: &Settings, split: bool) -> Result<reqwest::Client> {
 	if let Some(proxy) = &settings.proxy {
 		builder = builder.proxy(reqwest::Proxy::all(proxy)?);
 	}
+	// Names are the system's to resolve unless the settings say otherwise; see src/dns.rs for
+	// what "otherwise" can mean and why each of the three parts is its own answer. The resolver
+	// is built here rather than kept: a client is built once a download, and a resolver that
+	// outlived the settings that made it would answer with the servers they used to name.
+	if let Some(resolver) = crate::dns::resolver(&crate::dns::Choice {
+		servers: settings.dns_servers,
+		transport: settings.dns_transport,
+		stack: settings.dns_stack,
+		written: settings.dns_written.clone(),
+	}) {
+		builder = builder.dns_resolver(resolver);
+	}
 	builder.build().map_err(Error::Http)
 }
 

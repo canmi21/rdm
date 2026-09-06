@@ -255,3 +255,31 @@ The look runs off the window's thread, at launch and whenever it is asked for. S
 at a tenth of a second each is most of a second in the worst case, which is nothing on a
 background thread and a visible stall on the main one. What it found is not written to
 `config.json`: it is a fact about the machine now rather than a choice somebody made.
+
+## A name is resolved three ways, and each is a separate question
+
+Who is asked, how they are asked, and what does the asking. They are three settings and not one
+because the reasons for changing them are not the same reason:
+
+- **Who.** The machine's own servers, which is what everything else on it uses, or a pair named
+  in Settings. A network that answers `github.com` with a lie is why anybody sets this, and the
+  pair offered is the pair such a person means: Cloudflare and Google.
+- **How.** Port 53, which anything between here and there can read and rewrite, or DNS over
+  HTTPS, which it cannot. The field holds addresses for one and URLs for the other, and changing
+  the transport clears it -- what was written for one is not an answer for the other.
+- **What.** The system's resolver, which knows the machine's search domains, its hosts file and
+  its VPN, or `hickory-resolver`, which knows only what it is told and can be told to ask anyone.
+  The system's is right far more often; the other exists because the system's cannot be pointed
+  at a server of one's choosing on every platform.
+
+All three are the system's to start with, which is what a download manager should do until
+somebody says otherwise, and in that case nothing is built at all -- reqwest already resolves
+through the system. The resolver is built where the client is built, once a download, rather than
+kept: one that outlived the settings that made it would answer with the servers they used to
+name. An address that will not parse is left out rather than taken as a reason to fail, a
+settings field being typed into a character at a time; a field with nothing usable in it is the
+same as having named nothing, and the system answers.
+
+A DoH server is named by its URL and its address is found the ordinary way, which is not a
+circle: the URL's host is resolved once, through whatever is already working, and every question
+after it goes over HTTPS.

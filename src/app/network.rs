@@ -67,6 +67,33 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// Settings' rows: who is asked, how, and by what. Each is written as it is chosen, and the
+	/// engine reads them when it builds the next client.
+	pub(crate) fn set_dns_servers(&mut self, servers: crate::dns::Servers, cx: &mut Context<Self>) {
+		self.preferences.dns_servers = servers;
+		self.save_config();
+		cx.notify();
+	}
+
+	pub(crate) fn set_dns_transport(
+		&mut self,
+		transport: crate::dns::Transport,
+		cx: &mut Context<Self>,
+	) {
+		self.preferences.dns_transport = transport;
+		// The field holds addresses for one and URLs for the other; what was written for the old
+		// transport is not an answer for the new one, so it goes back to the offered pair.
+		self.preferences.dns_servers_written.clear();
+		self.save_config();
+		cx.notify();
+	}
+
+	pub(crate) fn set_dns_stack(&mut self, stack: crate::dns::Stack, cx: &mut Context<Self>) {
+		self.preferences.dns_stack = stack;
+		self.save_config();
+		cx.notify();
+	}
+
 	/// What Settings says about the proxy: the address in use and where it came from, or why
 	/// there is none.
 	pub(crate) fn proxy_status(&self) -> String {

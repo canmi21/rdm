@@ -63,6 +63,10 @@ infer = "0.22"
 md-5 = "0.11"
 percent-encoding = "2"
 reqwest = { version = "0.13", features = ["stream", "http2", "socks", "system-proxy"] }
+# Resolving names without the system's stack: the servers the user names, over 53 or over HTTPS.
+# The version follows reqwest's own, which carries the same crate for its `hickory-dns` feature;
+# two versions of it would be two resolvers with two caches. See src/dns.rs.
+hickory-resolver = { version = "0.26", default-features = false, features = ["tokio", "https-ring", "webpki-roots", "system-config"] }
 sha2 = "0.11"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros", "io-util"] }
