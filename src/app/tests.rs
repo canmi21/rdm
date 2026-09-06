@@ -223,6 +223,49 @@ fn an_archive_in_the_folder_is_indexed_and_placed_by_what_it_holds(cx: &mut Test
 	});
 }
 
+/// The junk a download folder collects is kept out of the lists, and a torrent is the one kind
+/// that is filed rather than dropped: no row among the downloads, a row under Torrents.
+#[gpui::test]
+fn the_folders_junk_is_hidden_and_a_torrent_shows_under_its_own_category(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open_in(cx, "junk");
+	let directory = rdm.read_with(&cx, |rdm, _| rdm.paths.as_ref().unwrap().downloads.clone());
+	for stale in std::fs::read_dir(&directory).unwrap().flatten() {
+		let _ = std::fs::remove_file(stale.path()).or_else(|_| std::fs::remove_dir_all(stale.path()));
+	}
+	std::fs::write(directory.join("Thumbs.db"), b"junk").unwrap();
+	std::fs::write(directory.join("~$Report.docx"), b"junk").unwrap();
+	std::fs::write(directory.join("ubuntu-24.04.torrent"), b"d8:announce").unwrap();
+	std::fs::write(directory.join("notes.txt"), b"a real file").unwrap();
+	rdm.update(&mut cx, |rdm, _| rdm.scan_folder());
+	wait_for_folder(&rdm, &mut cx);
+	rdm.read_with(&cx, |rdm, _| {
+		let names: Vec<&str> = rdm.shown().iter().map(|d| d.name.as_str()).collect();
+		assert!(names.contains(&"notes.txt"), "a real file is a row: {names:?}");
+		assert!(!names.contains(&"Thumbs.db"), "the system's leavings are not");
+		assert!(!names.contains(&"~$Report.docx"), "nor an editor's scratch");
+		assert!(!names.contains(&"ubuntu-24.04.torrent"), "nor a torrent, among the downloads");
+	});
+	let torrents = rdm.read_with(&cx, |rdm, _| {
+		rdm.categories.iter().find(|c| c.name == "Torrents").map(|c| c.id)
+	});
+	let torrents = torrents.expect("Torrents is a preset");
+	rdm.update(&mut cx, |rdm, cx| rdm.set_filter(Filter::Category(torrents), cx));
+	rdm.read_with(&cx, |rdm, _| {
+		let names: Vec<&str> = rdm.shown().iter().map(|d| d.name.as_str()).collect();
+		assert!(names.contains(&"ubuntu-24.04.torrent"), "but a row under Torrents: {names:?}");
+		assert!(!names.contains(&"Thumbs.db"), "and the dropped kind stays dropped");
+	});
+	// Told to show it all, it shows it all.
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_filter(Filter::All, cx);
+		rdm.set_hide_junk(false, cx);
+	});
+	rdm.read_with(&cx, |rdm, _| {
+		let names: Vec<&str> = rdm.shown().iter().map(|d| d.name.as_str()).collect();
+		assert!(names.contains(&"Thumbs.db") && names.contains(&"ubuntu-24.04.torrent"), "{names:?}");
+	});
+}
+
 #[gpui::test]
 fn the_funnel_in_the_corner_lets_the_folder_files_into_every_list_they_fit(
 	cx: &mut TestAppContext,

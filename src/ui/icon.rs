@@ -63,6 +63,7 @@ pub enum Icon {
 	Magnet,
 	Box,
 	Cpu,
+	FolderOpen,
 	Info,
 }
 
@@ -82,6 +83,7 @@ impl Icon {
 			Icon::Magnet => "lucide/magnet.svg",
 			Icon::Box => "lucide/box.svg",
 			Icon::Cpu => "lucide/cpu.svg",
+			Icon::FolderOpen => "lucide/folder-open.svg",
 			Icon::Info => "lucide/info.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",

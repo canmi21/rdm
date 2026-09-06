@@ -57,15 +57,17 @@ const FIELDS: [(&str, &str, &str); 13] = [
 pub enum Section {
 	General,
 	Transfers,
+	Folder,
 	Notifications,
 	Appearance,
 	About,
 }
 
 impl Section {
-	pub const ALL: [Section; 5] = [
+	pub const ALL: [Section; 6] = [
 		Section::General,
 		Section::Transfers,
+		Section::Folder,
 		Section::Notifications,
 		Section::Appearance,
 		Section::About,
@@ -75,6 +77,7 @@ impl Section {
 		match self {
 			Section::General => "General",
 			Section::Transfers => "Transfers",
+			Section::Folder => "Folder",
 			Section::Notifications => "Notifications",
 			Section::Appearance => "Appearance",
 			Section::About => "About",
@@ -85,6 +88,7 @@ impl Section {
 		match self {
 			Section::General => Icon::SlidersHorizontal,
 			Section::Transfers => Icon::Download,
+			Section::Folder => Icon::FolderOpen,
 			Section::Notifications => Icon::Bell,
 			Section::Appearance => Icon::Palette,
 			Section::About => Icon::Info,
@@ -340,6 +344,14 @@ impl Rdm {
 					word: "Check now",
 					note: self.update_status(),
 					run: |this, cx| this.check_for_updates(true, cx),
+				},
+			},
+			Row {
+				section: Section::Folder,
+				label: "Hide the folder's junk",
+				control: Control::Switch {
+					on: self.preferences.hide_junk,
+					set: Rdm::set_hide_junk,
 				},
 			},
 			self.field_row(Section::Transfers, "Concurrent downloads"),

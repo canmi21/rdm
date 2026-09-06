@@ -363,7 +363,9 @@ impl Rdm {
 	pub(crate) fn shown(&self) -> Vec<&Download> {
 		let mut rows: Vec<&Download> = self
 			.rows()
-			.filter(|d| self.passes(self.filter, d) && self.status.is_none_or(|s| d.status == s))
+			.filter(|d| {
+				self.passes(self.filter, d) && self.status.is_none_or(|s| d.status == s) && self.worth_a_row(d)
+			})
 			.collect();
 		rows.sort_by(|a, b| {
 			let order = match self.sort {
@@ -377,6 +379,21 @@ impl Rdm {
 			if self.ascending { order } else { order.reverse() }
 		});
 		rows
+	}
+
+	/// Whether a row is worth showing at all in the list as it stands. Junk is not, while the
+	/// preference says so -- except a kind that is filed rather than dropped, which is worth a
+	/// row under the category it belongs to, since that is where somebody looking for one looks.
+	/// See `download::junk`.
+	fn worth_a_row(&self, download: &Download) -> bool {
+		if !self.preferences.hide_junk {
+			return true;
+		}
+		match crate::download::junk(&download.name) {
+			None => true,
+			Some(crate::download::Junk::Noise) => false,
+			Some(crate::download::Junk::Filed) => matches!(self.filter, Filter::Category(_)),
+		}
 	}
 
 	/// The categories a row is in: by its name, and for an archive that has been read, by what

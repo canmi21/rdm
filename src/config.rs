@@ -61,6 +61,12 @@ pub struct Preferences {
 	pub auto_update: bool,
 	#[serde(default)]
 	pub update_policy: Policy,
+	/// The download folder's junk is kept out of the lists: what the system leaves behind, what
+	/// an editor writes beside an open file, the pointers a browser saves instead of a file. On
+	/// to start with. A torrent is the exception it makes: filed rather than dropped, so it has a
+	/// row under Torrents and nowhere else. See `download::junk`.
+	#[serde(default = "yes")]
+	pub hide_junk: bool,
 	/// Where each kind of notice is said, one field an occasion so one can be turned down without
 	/// touching the others. Finished and failed downloads speak to the system, since the point of
 	/// them is to reach somebody who has looked away; the queue emptying says nothing to start
@@ -191,6 +197,7 @@ impl Default for Preferences {
 		Preferences {
 			colorful_categories: true,
 			dim_inactive: true,
+			hide_junk: true,
 			notice_finished: Style::System,
 			notice_failed: Style::System,
 			notice_queue: Style::Silent,

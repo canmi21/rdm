@@ -207,6 +207,18 @@ takes when the window is not active; off, the window keeps its colors in front o
 someone who keeps it beside another window and reads it there. See the palette in
 [framework.md](framework.md).
 
+**The folder's junk is kept out of the lists, and a torrent is filed rather than dropped.** A
+download folder collects a great deal nobody downloaded: what the operating system leaves behind
+(`.DS_Store`, `Thumbs.db`, `desktop.ini`), what an editor writes beside a file it has open
+(`~$Report.docx`), the pointers a browser saves instead of a file (`.lnk`, `.url`, `.webloc`),
+and what another downloader left half-finished (`.crdownload`, `.part`). None of it is worth a
+row, and a list of eighty rows of which nine are `.DS_Store` is a worse list than one of
+seventy-one; `Hide the folder's junk`, under Folder in Settings, is on to start with. A torrent
+is the one exception, and it is a different kind of exception: worth keeping and worth filing,
+but not worth a place among downloads, so it has a row under `Torrents` and nowhere else --
+which is where somebody looking for one would look. The name is judged whole and without its
+case, since most of these are known by their whole name rather than their extension.
+
 **The presets are the kinds a download folder actually fills with**, and three of them arrived
 after the first cut: `Torrents`, `3D Models` and `Firmware`. Firmware took `bin` and `hex` from
 `Disk Images`, which had been counting a chip's contents as a filesystem; a disk image is an

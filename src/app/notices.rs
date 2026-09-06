@@ -59,6 +59,13 @@ impl Rdm {
 		}
 	}
 
+	/// Settings' Folder row: whether the download folder's junk is kept out of the lists.
+	pub(crate) fn set_hide_junk(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.hide_junk = on;
+		self.save_config();
+		cx.notify();
+	}
+
 	/// Settings' Notifications rows: where this occasion is said from now on, kept in config.json.
 	pub(crate) fn set_notice(&mut self, occasion: Occasion, style: Style, cx: &mut Context<Self>) {
 		self.preferences.set_notice(occasion, style);

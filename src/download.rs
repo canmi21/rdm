@@ -134,6 +134,63 @@ impl Download {
 	}
 }
 
+/// Why a file in the download folder is not worth a row of its own. The folder collects things
+/// nobody downloaded and nobody wants listed: what the operating system leaves behind, what an
+/// editor writes beside a file it has open, and the small pointers a browser saves instead of a
+/// file. Hiding them is a preference and it is on to start with, since a list of eighty rows of
+/// which nine are `.DS_Store` is a worse list than one of seventy-one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Junk {
+	/// The system's leavings and an editor's scratch: never a row, whatever is being looked at.
+	Noise,
+	/// Worth keeping and worth filing, but not worth a place among downloads: a row only under
+	/// the category it belongs to, which is where somebody looking for one would look.
+	Filed,
+}
+
+/// What makes a file junk, or None if it is a file like any other. The name is judged whole,
+/// since most of these are known by their whole name rather than their extension.
+pub fn junk(name: &str) -> Option<Junk> {
+	let lower = name.to_ascii_lowercase();
+	// A torrent is the one kind that is filed rather than dropped: somebody who wants one goes
+	// to Torrents in the sidebar and finds it there.
+	if lower.ends_with(".torrent") {
+		return Some(Junk::Filed);
+	}
+	// Microsoft Office writes `~$name.docx` beside a document it has open, and leaves it behind
+	// when it does not close cleanly.
+	if lower.starts_with("~$") || lower.starts_with(".~lock.") {
+		return Some(Junk::Noise);
+	}
+	const NAMED: [&str; 10] = [
+		".ds_store",
+		"thumbs.db",
+		"ehthumbs.db",
+		"ehthumbs_vista.db",
+		"desktop.ini",
+		"icon\r",
+		".localized",
+		".directory",
+		"$recycle.bin",
+		".spotlight-v100",
+	];
+	if NAMED.contains(&lower.as_str()) {
+		return Some(Junk::Noise);
+	}
+	// A pointer to something rather than the something: what a browser or a desktop saves when
+	// what was dragged was a link.
+	const POINTERS: [&str; 6] = [".lnk", ".url", ".webloc", ".desktop", ".alias", ".symlink"];
+	if POINTERS.iter().any(|suffix| lower.ends_with(suffix)) {
+		return Some(Junk::Noise);
+	}
+	// What a download leaves behind when it is interrupted somewhere else.
+	const PARTIALS: [&str; 5] = [".crdownload", ".part", ".partial", ".download", ".tmp"];
+	if PARTIALS.iter().any(|suffix| lower.ends_with(suffix)) {
+		return Some(Junk::Noise);
+	}
+	None
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Filter {
 	All,
@@ -392,6 +449,31 @@ pub fn sample() -> Vec<Download> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// The folder collects what nobody downloaded. Most of it is never worth a row; a torrent is
+	/// worth one, but only under Torrents, which is what `Filed` means.
+	#[test]
+	fn the_folders_leavings_are_junk_and_a_torrent_is_the_filed_kind() {
+		for name in [
+			".DS_Store",
+			"Thumbs.db",
+			"desktop.ini",
+			"~$Report.docx",
+			".~lock.notes.odt#",
+			"Shortcut.lnk",
+			"Bookmark.webloc",
+			"debian.iso.crdownload",
+			"half.part",
+		] {
+			assert_eq!(junk(name), Some(Junk::Noise), "{name} is never a row");
+		}
+		assert_eq!(junk("ubuntu-24.04.torrent"), Some(Junk::Filed), "a row under Torrents alone");
+		for name in ["debian.iso", "notes.txt", "Report.docx", "firmware.hex", "model.stl"] {
+			assert_eq!(junk(name), None, "{name} is a file like any other");
+		}
+		assert_eq!(junk(".ds_store"), Some(Junk::Noise), "the name is judged without its case");
+	}
+
 
 	#[test]
 	fn a_rate_is_read_in_kilobytes_by_default_and_off_when_empty() {
