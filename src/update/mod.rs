@@ -265,6 +265,7 @@ pub async fn download(
 
 /// A client for these small requests: short timeouts, since a check is repeated soon anyway.
 pub fn client() -> reqwest::Client {
+	crate::tls::install();
 	reqwest::Client::builder()
 		.user_agent(format!("rdm/{}", identity::VERSION))
 		.connect_timeout(Duration::from_secs(10))
@@ -276,6 +277,7 @@ pub fn client() -> reqwest::Client {
 /// A client for the file itself: no whole-request timeout, since a build is minutes on a slow
 /// line, only the connect and a read that stalls.
 pub fn file_client() -> reqwest::Client {
+	crate::tls::install();
 	reqwest::Client::builder()
 		.user_agent(format!("rdm/{}", identity::VERSION))
 		.connect_timeout(Duration::from_secs(10))

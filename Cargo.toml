@@ -31,6 +31,16 @@ description = "A download manager for macOS."
 # the same process name as an installed one. Cargo names a binary once for every system;
 # packaging renames it back to rdm on Linux and to the name in full on Windows. Must equal
 # identity::DISPLAY_NAME, which a test holds. See spec/packaging.md.
+# Which crypto rustls runs on. One of these is always on; both is allowed and aws-lc-rs wins, so
+# that a `--features ring` that forgets `--no-default-features` builds rather than fails.
+[features]
+default = ["aws-lc-rs"]
+# AWS-LC through its Rust bindings: what this ships with, and what the release builds carry. A C
+# library built by cmake at build time, so a build needs a C toolchain.
+aws-lc-rs = ["rustls/aws-lc-rs", "hickory-resolver/https-aws-lc-rs"]
+# ring instead, for a build with no C toolchain to spend: `--no-default-features --features ring`.
+ring = ["rustls/ring", "hickory-resolver/https-ring"]
+
 [[bin]]
 name = "Downloads"
 path = "src/main.rs"
@@ -62,11 +72,23 @@ bytes = "1"
 infer = "0.22"
 md-5 = "0.11"
 percent-encoding = "2"
-reqwest = { version = "0.13", features = ["stream", "http2", "socks", "system-proxy"] }
+# TLS is rustls everywhere, and which crypto sits under it is this crate's choice, not each
+# dependency's: `rustls-no-provider` and a resolver with no provider feature of its own leave the
+# question open, and the `aws-lc-rs` and `ring` features below answer it in one place. Left to
+# themselves the two would bring one library each and the binary would carry both. See src/tls.rs.
+reqwest = { version = "0.13", default-features = false, features = [
+	"rustls-no-provider",
+	"charset",
+	"http2",
+	"system-proxy",
+	"stream",
+	"socks",
+] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging"] }
 # Resolving names without the system's stack: the servers the user names, over 53 or over HTTPS.
 # The version follows reqwest's own, which carries the same crate for its `hickory-dns` feature;
 # two versions of it would be two resolvers with two caches. See src/dns.rs.
-hickory-resolver = { version = "0.26", default-features = false, features = ["tokio", "https-ring", "webpki-roots", "system-config"] }
+hickory-resolver = { version = "0.26", default-features = false, features = ["tokio", "webpki-roots", "system-config"] }
 sha2 = "0.11"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros", "io-util"] }

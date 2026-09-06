@@ -24,6 +24,7 @@ mod reveal;
 mod startup;
 mod state;
 mod thumbnail;
+mod tls;
 mod store;
 #[cfg(test)]
 mod testing;

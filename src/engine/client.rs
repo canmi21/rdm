@@ -10,6 +10,7 @@ use crate::engine::settings::{HttpVersion, Settings};
 /// A client for one connection. `split` says the download has several, which forces HTTP/1.1
 /// whatever the setting says.
 pub fn build(settings: &Settings, split: bool) -> Result<reqwest::Client> {
+	crate::tls::install();
 	let mut headers = HeaderMap::new();
 	for (name, value) in &settings.headers {
 		if let (Ok(name), Ok(value)) =

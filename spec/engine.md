@@ -234,6 +234,37 @@ the page are read. The answer, or the failure's message, arrives on a channel th
 like the events, so the check never holds the window. The window uses it to say "this is a
 page" before saving one, and to offer the files behind it instead; see [ui.md](ui.md).
 
+## TLS is rustls, and the crypto under it is this crate's choice
+
+There is no OpenSSL in the tree: no `openssl-sys`, no `native-tls`, nothing linking `libssl`.
+Every connection that is encrypted -- a download, the update check, DNS over HTTPS -- goes through
+**rustls**. The one crate whose name looks like an exception is `openssl-probe`, which reads the
+paths a system keeps its CA bundle at and links nothing.
+
+Under rustls sits a provider, and **which one is decided here rather than by whichever dependency
+happened to ask first.** Left alone, reqwest's `default-tls` brings AWS-LC and the resolver's
+`https-ring` brings ring: two crypto libraries in one binary, doing one job, with the winner
+decided by installation order. So reqwest takes `rustls-no-provider` and the resolver takes no
+provider feature of its own, and the crate's own `aws-lc-rs` and `ring` features answer the
+question in one place.
+
+**AWS-LC is the default**, and it is what the release builds carry. It is a C library that cmake
+builds, which is a build dependency the release machines already have -- the nightly has been
+building it on macOS, Linux and Windows since before it was written down here, because reqwest's
+default brought it. Its lineage runs back through BoringSSL to OpenSSL, so the C is related, but
+it is not the OpenSSL library and none of it is linked as one.
+
+**ring is the other build**, with `--no-default-features --features ring`: no cmake, no C
+toolchain, for a machine or a target that has none to spend. Both features are additive, as
+Cargo's are, so AWS-LC wins when both are on and a `--features ring` that forgot
+`--no-default-features` builds the default rather than failing. Neither is a compile error, said
+in `src/tls.rs` rather than discovered as a missing symbol.
+
+The provider is installed once, by `tls::install`, and **every client asks for it before it is
+built** -- the engine's, the update check's twice over, and the resolver's. Not in `main`, because
+a test never runs `main` and would otherwise reach a connection with nothing to encrypt it; the
+two ignored network tests are what prove the arrangement, and they are run against both features.
+
 ## The proxy is looked for before it is asked for
 
 The machines this runs on usually have a proxy on them, and it is usually one of a handful of

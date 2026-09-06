@@ -121,6 +121,8 @@ pub fn resolver(choice: &Choice) -> Option<Arc<Resolver>> {
 	if choice.is_default() {
 		return None;
 	}
+	// DNS over HTTPS is TLS like any other, and this may be the first thing to want it.
+	crate::tls::install();
 	let provider = hickory_resolver::net::runtime::TokioRuntimeProvider::default();
 	let builder = match choice.servers {
 		// The system's servers, asked by hickory: what the machine is configured with, read the
