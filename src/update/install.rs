@@ -76,6 +76,45 @@ pub fn locate(exe: &Path, appimage: Option<&Path>, os: &str) -> Result<Place, St
 	}
 }
 
+/// The name in full, which the files carried until `identity::LEGACY_NAME_UNTIL`.
+const LEGACY_NAME: &str = "Refined Download Manager";
+
+/// Where a place under the old name should be, if this build came after a build that shipped
+/// under it: `previous` is the build that last ran here, None when nothing recorded one, which
+/// is what an older build or a fresh install leaves. A place the user named, or one that ran
+/// a newer build before, is left alone, and so is anything not called the old name exactly.
+pub fn legacy_name(path: &Path, previous: Option<u64>) -> Option<PathBuf> {
+	if previous.is_some_and(|build| build > crate::identity::LEGACY_NAME_UNTIL) {
+		return None;
+	}
+	let stem = path.file_stem()?.to_str()?;
+	if stem != LEGACY_NAME {
+		return None;
+	}
+	let name = match path.extension().and_then(|e| e.to_str()) {
+		Some(ext) => format!("{}.{ext}", crate::identity::DISPLAY_NAME),
+		None => crate::identity::DISPLAY_NAME.to_owned(),
+	};
+	Some(path.with_file_name(name))
+}
+
+/// Renames this application to `Downloads` once, at launch, where an older build left it
+/// under the name in full: the bundle on macOS, the executable on Windows, both of which a
+/// running program may rename. Says where it went; nothing when there was nothing to do.
+pub fn fix_legacy_name(previous: Option<u64>) -> Option<PathBuf> {
+	let place = place().ok()?;
+	let path = match &place {
+		Place::Bundle(p) | Place::Exe(p) => p,
+		Place::AppImage(_) | Place::Binary(_) => return None,
+	};
+	let wanted = legacy_name(path, previous)?;
+	if wanted.exists() {
+		return None;
+	}
+	std::fs::rename(path, &wanted).ok()?;
+	Some(wanted)
+}
+
 /// Installs the downloaded file over the place, and says what to launch afterwards.
 pub fn install(file: &Path, place: &Place) -> Result<PathBuf, String> {
 	match place {
@@ -354,6 +393,22 @@ mod tests {
 			Ok(Place::AppImage(image.to_path_buf())),
 			"a folder called target is not the build tree"
 		);
+	}
+
+	#[test]
+	fn the_old_name_is_renamed_once_after_an_old_build_and_never_after_a_new_one() {
+		let app = Path::new("/Applications/Refined Download Manager.app");
+		assert_eq!(legacy_name(app, None), Some(PathBuf::from("/Applications/Downloads.app")));
+		assert_eq!(
+			legacy_name(app, Some(crate::identity::LEGACY_NAME_UNTIL)),
+			Some(PathBuf::from("/Applications/Downloads.app"))
+		);
+		assert_eq!(legacy_name(app, Some(crate::identity::LEGACY_NAME_UNTIL + 1)), None, "the user's");
+		// Spelled with slashes, which both systems read; a backslash is a name on Unix.
+		let exe = Path::new("/Tools/Refined Download Manager.exe");
+		assert_eq!(legacy_name(exe, Some(8)), Some(PathBuf::from("/Tools/Downloads.exe")));
+		assert_eq!(legacy_name(Path::new("/Applications/Fetcher.app"), None), None, "another name");
+		assert_eq!(legacy_name(Path::new("/Applications/Downloads.app"), None), None);
 	}
 
 	#[test]

@@ -242,6 +242,16 @@ impl Rdm {
 		if !cfg!(test) {
 			this._checks = Some(this.start_update_checks(window, cx));
 		}
+		// A numbered build that an older one left under the old name takes the new one, once,
+		// and every numbered build records itself so the next knows what it came after.
+		if crate::update::this_build().is_some() {
+			if let Some(moved) = crate::update::install::fix_legacy_name(saved.last_build) {
+				eprintln!("renamed to {}", moved.display());
+			}
+			if saved.last_build != crate::update::this_build() {
+				this.schedule_save(cx);
+			}
+		}
 		this
 	}
 
@@ -414,6 +424,7 @@ impl Rdm {
 			maximized: self.maximized,
 			widths: Some(self.widths),
 			view: Some(self.view),
+			last_build: crate::update::this_build(),
 			..State::default()
 		}
 	}

@@ -78,11 +78,22 @@ pub struct State {
 	pub widths: Option<[f32; 5]>,
 	#[serde(default)]
 	pub view: Option<View>,
+	/// The build that last ran, so the next can tell what it came after: absent in a file an
+	/// older build wrote, or a hand build. See src/update/install.rs on the legacy names.
+	#[serde(default)]
+	pub last_build: Option<u64>,
 }
 
 impl Default for State {
 	fn default() -> Self {
-		State { version: VERSION, window: None, maximized: false, widths: None, view: None }
+		State {
+			version: VERSION,
+			window: None,
+			maximized: false,
+			widths: None,
+			view: None,
+			last_build: None,
+		}
 	}
 }
 

@@ -117,6 +117,19 @@ alone. Nothing restarts on its own, whatever the setting: a restart is a press. 
 takes no automatic step, having no number to be behind. The three are `check_updates`,
 `auto_update` and `update_policy` in `config.json`, each with its default.
 
+**The files were once called by the name in full, and a build that finds itself so renames
+itself, once.** Through build 11 the macOS bundle was `Refined Download Manager.app`, and
+through build 17 the Windows executable `Refined Download Manager.exe`; those builds update
+by putting the new one under their own path, so the new one arrives under the old name. At
+launch a numbered build reads `last_build` out of `state.json`, the build that last ran
+here, and when that is absent or no later than `identity::LEGACY_NAME_UNTIL`, 17, and its own
+bundle or executable is called exactly the name in full, it renames itself to `Downloads` with
+its extension kept, which a running program may do on both systems. Then it records itself.
+A later build that finds the old name leaves it, since only the user could have put it there;
+so does any name that is not the old one exactly, and so does Linux, whose desktop entry
+names the binary and would break with it. The constant is a fact about what was published
+and does not move.
+
 ## The application replaces itself, by a rename
 
 `Install` fetches the build's file for where this binary runs from -- `update::install::place`

@@ -18,6 +18,13 @@ pub const BUNDLE_ID: &str = "app.canmi.rdm";
 pub const NAME: &str = "Refined Download Manager";
 pub const DISPLAY_NAME: &str = "Downloads";
 
+/// The last nightly whose files were called by the name in full -- `Refined Download
+/// Manager.app` on macOS through build 11, `Refined Download Manager.exe` on Windows through
+/// this one -- before every file became `Downloads`. A build that finds itself under the old
+/// name after one of these renames itself once; a later one leaves whatever name it has, since
+/// that is the user's. See spec/release.md.
+pub const LEGACY_NAME_UNTIL: u64 = 17;
+
 /// Which build this is, read at compile time from the release workflow's environment: the run
 /// number, which only grows, and the commit. None in a build made by hand. Every build of one
 /// day's version differs in these alone, and the update check compares the number and nothing
