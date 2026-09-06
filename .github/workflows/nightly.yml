@@ -44,8 +44,10 @@ jobs:
 
       # What GPUI links against on Linux: the keyboard, the two display protocols, fonts,
       # sound and Vulkan. Nothing for the tray: it is a StatusNotifierItem spoken over the
-      # session bus, which is D-Bus wire protocol and links against nothing. Ubuntu's LTS is
-      # the glibc baseline a build asks of the machine it runs on.
+      # session bus, which is D-Bus wire protocol and links against nothing. Nothing for TLS
+      # either: aws-lc carries its own C and builds it with cmake and clang, which is what
+      # those two are here for -- there is no OpenSSL in the tree and no libssl to install.
+      # Ubuntu's LTS is the glibc baseline a build asks of the machine it runs on.
       - name: Linux libraries
         if: runner.os == 'Linux'
         run: |
@@ -53,7 +55,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libx11-xcb-dev \
             libxcb1-dev libfontconfig1-dev libfreetype-dev libasound2-dev libvulkan-dev \
-            libssl-dev pkg-config cmake clang
+            pkg-config cmake clang
 
       # aws-lc, under rustls, assembles part of itself and needs nasm to. Installed with the
       # runner's own package manager rather than a marketplace action: the action is a Node
