@@ -56,6 +56,7 @@ pub enum Icon {
 	SlidersHorizontal,
 	Download,
 	Palette,
+	Info,
 }
 
 impl Icon {
@@ -71,6 +72,7 @@ impl Icon {
 			Icon::SlidersHorizontal => "lucide/sliders-horizontal.svg",
 			Icon::Download => "lucide/download.svg",
 			Icon::Palette => "lucide/palette.svg",
+			Icon::Info => "lucide/info.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",
 			Icon::Trash => "lucide/trash.svg",

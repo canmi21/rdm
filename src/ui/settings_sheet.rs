@@ -8,6 +8,7 @@
 use gpui::{Context, Entity, IntoElement, Role, SharedString, deferred, div, prelude::*, px};
 
 use crate::app::Rdm;
+use crate::identity;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::{LeavesFocus, backdrop, icon_button};
@@ -28,16 +29,19 @@ pub enum Section {
 	General,
 	Transfers,
 	Appearance,
+	About,
 }
 
 impl Section {
-	pub const ALL: [Section; 3] = [Section::General, Section::Transfers, Section::Appearance];
+	pub const ALL: [Section; 4] =
+		[Section::General, Section::Transfers, Section::Appearance, Section::About];
 
 	pub fn name(self) -> &'static str {
 		match self {
 			Section::General => "General",
 			Section::Transfers => "Transfers",
 			Section::Appearance => "Appearance",
+			Section::About => "About",
 		}
 	}
 
@@ -46,6 +50,7 @@ impl Section {
 			Section::General => Icon::SlidersHorizontal,
 			Section::Transfers => Icon::Download,
 			Section::Appearance => Icon::Palette,
+			Section::About => Icon::Info,
 		}
 	}
 }
@@ -178,6 +183,35 @@ impl Rdm {
 					on: self.preferences.colorful_categories,
 					set: Rdm::set_colorful_categories,
 				},
+			},
+			// What this build is: the name in full lives here, and the numbers that tell one
+			// build from another. See spec/release.md.
+			Row {
+				section: Section::About,
+				label: "Application",
+				control: Control::Value(identity::NAME.to_owned()),
+			},
+			Row {
+				section: Section::About,
+				label: "Version",
+				control: Control::Value(match self.updates.this {
+					Some(build) => format!("{} ({build})", identity::VERSION),
+					None => format!("{}, built by hand", identity::VERSION),
+				}),
+			},
+			Row {
+				section: Section::About,
+				label: "Commit",
+				control: Control::Value(
+					identity::COMMIT
+						.map(|sha| sha[..sha.len().min(12)].to_owned())
+						.unwrap_or_else(|| "none".to_owned()),
+				),
+			},
+			Row {
+				section: Section::About,
+				label: "Identifier",
+				control: Control::Value(identity::BUNDLE_ID.to_owned()),
 			},
 		]
 	}

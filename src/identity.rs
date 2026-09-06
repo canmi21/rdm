@@ -15,7 +15,6 @@ pub const BUNDLE_ID: &str = "app.canmi.rdm";
 /// the Dock, Spotlight and the window title show, one word like the system's own. The code
 /// and the binary stay `rdm`. The bundle task reads both out of this source. See
 /// spec/packaging.md.
-#[allow(dead_code, reason = "read out of this source by the bundle task, not by the code")]
 pub const NAME: &str = "Refined Download Manager";
 pub const DISPLAY_NAME: &str = "Downloads";
 
