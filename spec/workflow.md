@@ -3,10 +3,18 @@
 ## The rebuild loop
 
 `mise run dev` is still's screen loop applied here: watchexec restarts `cargo run` on any change
-to a `.rs` or `.toml` file, so the window closes, rebuilds and reopens on its own. The
-`--project-origin .` flag and the extension filter are explained where they are set, in
-`mise.toml`; the short version is that watchexec would otherwise walk up to the workspace's
-`.gitignore`, which ignores this whole directory.
+to a `.rs` or `.toml` file under `src/` or in this directory itself, so the window closes,
+rebuilds and reopens on its own. The `--project-origin .` flag, the watch roots and the extension
+filter are explained where they are set, in `mise.toml`; the short version is that watchexec
+would otherwise walk up to the workspace's `.gitignore`, which ignores this whole directory, and
+that being ignored spares `target/` the filter but not the watch, which is why the roots are
+named rather than left to default to the whole tree.
+
+**A restart with no source change is the watcher, not the code.** Cargo says which it was:
+`Finished ... in 0.2s` above the relaunch means nothing recompiled, so nothing under the filter
+had really changed and the event came from the watcher itself -- a dropped-event rescan, which
+watchexec reads as a change. `[Command exited with 101]` in the same log is the other kind
+entirely: the application panicked and left, and the next line up says why.
 
 ## Driving the window without the mouse
 
