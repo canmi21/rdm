@@ -83,3 +83,22 @@ answer a question about what is on screen, not to confirm that a change typed is
 `check`, `lint`, `test` and `dev` depend on `icons`, so the assets the binary embeds are
 present before cargo runs. See [icons.md](icons.md) for why they are fetched rather than
 committed.
+
+## The local check sees one system and one profile
+
+`mise run check` is macOS in a debug build, and that is two blind spots rather than one. An
+import or a constant used only inside a `#[cfg(target_os = "macos")]` arm is used here and dead
+everywhere else; a method reached only from the control socket is reached here and dead in every
+release build, since the socket is `#[cfg(all(debug_assertions, unix))]`. Five such warnings had
+been accumulating in the nightly's logs unread, four of them from the day the code was written.
+
+So **anything behind a `cfg` carries the same `cfg` on whatever it needs**: the import beside the
+function, the constant beside its one reader, the method beside its callers. Written that way
+there is nothing to notice later. Written the other way it is invisible from here and shows up
+only in a log nobody opens.
+
+The nightly's four builds are the only place the whole picture exists, and it does not fail on a
+warning, so the warnings sit in the run's annotations while the run stays green. Reading them is
+part of reading the build. `cargo check --release` catches the profile half from here; the
+platform half cannot be cross-checked from a Mac, because both crypto backends compile C and
+neither has a Windows or Linux toolchain to compile it with. Docker covers Linux.

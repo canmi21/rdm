@@ -19,7 +19,11 @@ use gpui::RenderImage;
 /// How big the system is asked to draw. One size for every use: the thumbnails row draws it at
 /// twenty points and the grid at forty-eight, and asking for the larger and letting the smaller
 /// scale down is one trip to the system rather than two.
-pub const SIZE: usize = 128;
+///
+/// It belongs to the reader below, and macOS is the only system with one; the cfg widens the day
+/// Windows gets its `SHGetFileInfo`. See spec/ui.md.
+#[cfg(target_os = "macos")]
+const SIZE: usize = 128;
 
 /// What the grid can put on a card, beyond the category's glyph.
 #[derive(Clone)]

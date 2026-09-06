@@ -10,6 +10,8 @@
 //! The entry names itself after this build's identifier, so a development build and an installed
 //! one keep separate entries and neither turns the other on. See spec/state.md.
 
+// The entry is a file everywhere but Windows, where it is a registry value.
+#[cfg(not(windows))]
 use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
@@ -132,14 +134,12 @@ fn remove() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-
 	/// The entry is named after this build, so a development build and an installed one keep
 	/// separate ones and neither turns the other on.
 	#[cfg(not(windows))]
 	#[test]
 	fn the_entry_is_named_after_this_build() {
-		let Some(path) = entry() else { return };
+		let Some(path) = super::entry() else { return };
 		let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
 		assert!(name.starts_with(&crate::identity::id()), "{name}");
 		assert!(name.ends_with(".plist") || name.ends_with(".desktop"), "{name}");

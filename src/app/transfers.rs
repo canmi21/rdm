@@ -283,6 +283,10 @@ impl Rdm {
 
 	/// A new download from an address as typed; the sheet has already looked at it, so this is
 	/// for the control socket. What is not an address is dropped.
+	///
+	/// Compiled where its callers are and nowhere else: the socket is a debug build on a Unix,
+	/// and the tests. A release build has neither, and carried this unreachable. See src/ctl.rs.
+	#[cfg(any(test, all(debug_assertions, unix)))]
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
 		if let Some(parsed) = crate::ui::add_dialog::parse_address(url) {
 			let asked = Asked { connections: self.preferences.connections, ..Asked::default() };

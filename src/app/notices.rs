@@ -11,7 +11,6 @@ use gpui::{
 };
 
 use crate::app::Rdm;
-use crate::identity;
 use crate::notify::{Notice, Occasion, Style};
 use crate::ui::notice_window::{self, NoticeWindow};
 use crate::ui::status_bar;
@@ -201,7 +200,7 @@ fn system(title: &str, body: &str, cx: &mut Context<Rdm>) {
 			.background_executor()
 			.spawn(async move {
 				#[cfg(target_os = "macos")]
-				let _ = notify_rust::set_application(&identity::id());
+				let _ = notify_rust::set_application(&crate::identity::id());
 				let mut notification = notify_rust::Notification::new();
 				notification.summary(&summary).body(&body);
 				#[cfg(target_os = "linux")]
