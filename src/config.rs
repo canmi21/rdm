@@ -8,7 +8,7 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::category::{Category, Overrides, extensions_of_pattern};
+use crate::category::{Category, Overrides, Preset, extensions_of_pattern};
 use crate::engine::HttpVersion;
 use crate::notify::{Occasion, Style};
 use crate::state::{parse_versioned, write_json};
@@ -27,6 +27,14 @@ pub struct Config {
 	/// defaults.
 	#[serde(default)]
 	pub settings: Preferences,
+	/// Every preset this file has been offered, whether or not it is still among the categories.
+	/// A preset added to the application after this file was written is not in here, and is
+	/// seeded on the next load: without it a new category would exist only for somebody starting
+	/// fresh. With it, a preset the user took away stays away, since taking it away leaves the
+	/// name here. Absent in a file from before this, which is read as having been offered
+	/// whatever it holds. See spec/state.md.
+	#[serde(default)]
+	pub offered: Vec<String>,
 }
 
 /// The switches a user sets, as the file spells them. Every field has a default, so a file that
@@ -246,7 +254,35 @@ impl Config {
 			version: VERSION,
 			categories: Category::defaults().iter().map(CategoryConfig::from).collect(),
 			settings: Preferences::default(),
+			offered: Category::PRESETS.iter().map(|preset| preset.name.to_owned()).collect(),
 		}
+	}
+
+	/// Adds the presets this file has never been offered, before the catch-all at the end, and
+	/// says whether it added any -- the caller writes the file back when it did. A file that
+	/// predates the record is taken to have been offered the presets it holds, so nothing the
+	/// user removed comes back; only what the application has learned since arrives.
+	pub fn offer_new_presets(&mut self) -> bool {
+		if self.offered.is_empty() {
+			self.offered = self.categories.iter().map(|c| c.name.clone()).collect();
+		}
+		let new: Vec<&Preset> = Category::PRESETS
+			.iter()
+			.filter(|preset| !self.offered.iter().any(|name| name == preset.name))
+			.collect();
+		if new.is_empty() {
+			return false;
+		}
+		// Before the catch-all, which is last by rule: a category that matches everything after
+		// one that matches something is never reached.
+		let at = self.categories.iter().position(|c| c.pattern.is_empty()).unwrap_or(self.categories.len());
+		for (offset, preset) in new.iter().enumerate() {
+			let category = Category::from_preset(0, preset.name, Overrides::default())
+				.expect("a preset compiles");
+			self.categories.insert(at + offset, CategoryConfig::from(&category));
+			self.offered.push(preset.name.to_owned());
+		}
+		true
 	}
 
 	/// The categories in the file's order, ids assigned by position. A pattern that does not
@@ -312,6 +348,9 @@ impl Config {
 			version: VERSION,
 			categories: categories.iter().map(CategoryConfig::from).collect(),
 			settings: settings.clone(),
+			// Every preset has been offered by the time anything is saved: the load offers what
+			// the file had never seen, so there is nothing to carry through the window for this.
+			offered: Category::PRESETS.iter().map(|preset| preset.name.to_owned()).collect(),
 		}
 	}
 }
@@ -357,10 +396,22 @@ fn migrate(from: u64, _value: Value) -> Result<Value> {
 /// hand edit that went wrong is not overwritten by the application correcting it.
 pub fn load_or_seed(path: &Path) -> Config {
 	match std::fs::read_to_string(path) {
-		Ok(text) => parse(&text).unwrap_or_else(|error| {
-			eprintln!("ignoring {}: {error:#}", path.display());
-			Config::seed()
-		}),
+		Ok(text) => parse(&text)
+			.map(|mut config| {
+				// A preset the application learned since this file was written arrives now, and
+				// the file is rewritten so it is not offered a second time after the user removes
+				// it.
+				if config.offer_new_presets()
+					&& let Err(error) = write_json(path, &config)
+				{
+					eprintln!("could not write {}: {error:#}", path.display());
+				}
+				config
+			})
+			.unwrap_or_else(|error| {
+				eprintln!("ignoring {}: {error:#}", path.display());
+				Config::seed()
+			}),
 		Err(_) => {
 			let seed = Config::seed();
 			if let Err(error) = write_json(path, &seed) {
@@ -378,6 +429,29 @@ pub fn save(path: &Path, config: &Config) -> Result<()> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// A preset the application learned after a file was written has to reach that file, or the
+	/// category exists only for somebody starting fresh. What the user took away stays away: its
+	/// name is in the record of what has been offered, and only what is missing from that record
+	/// arrives.
+	#[test]
+	fn a_preset_added_since_a_file_was_written_arrives_and_a_removed_one_stays_away() {
+		let mut config = Config::seed();
+		let before = config.categories.len();
+		assert!(!config.offer_new_presets(), "a fresh file has been offered everything");
+		assert_eq!(config.categories.len(), before);
+		// The user takes one away; it is still on the record, so it does not come back.
+		config.categories.retain(|c| c.name != "Torrents");
+		assert!(!config.offer_new_presets(), "what was taken away stays away");
+		assert!(!config.categories.iter().any(|c| c.name == "Torrents"));
+		// A file from before the record is read as having been offered what it holds.
+		config.offered.clear();
+		config.categories.retain(|c| c.name != "Firmware");
+		assert!(config.offer_new_presets(), "Torrents and Firmware are both news to it now");
+		let names: Vec<&str> = config.categories.iter().map(|c| c.name.as_str()).collect();
+		assert!(names.contains(&"Torrents") && names.contains(&"Firmware"));
+		assert_eq!(names.last(), Some(&"Other"), "and the catch-all is still last");
+	}
 	use crate::testing::scratch;
 
 	#[test]

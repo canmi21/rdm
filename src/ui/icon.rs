@@ -60,6 +60,9 @@ pub enum Icon {
 	Download,
 	Palette,
 	Bell,
+	Magnet,
+	Box,
+	Cpu,
 	Info,
 }
 
@@ -76,6 +79,9 @@ impl Icon {
 			Icon::Download => "lucide/download.svg",
 			Icon::Palette => "lucide/palette.svg",
 			Icon::Bell => "lucide/bell.svg",
+			Icon::Magnet => "lucide/magnet.svg",
+			Icon::Box => "lucide/box.svg",
+			Icon::Cpu => "lucide/cpu.svg",
 			Icon::Info => "lucide/info.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",

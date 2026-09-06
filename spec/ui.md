@@ -207,6 +207,15 @@ takes when the window is not active; off, the window keeps its colors in front o
 someone who keeps it beside another window and reads it there. See the palette in
 [framework.md](framework.md).
 
+**The presets are the kinds a download folder actually fills with**, and three of them arrived
+after the first cut: `Torrents`, `3D Models` and `Firmware`. Firmware took `bin` and `hex` from
+`Disk Images`, which had been counting a chip's contents as a filesystem; a disk image is an
+optical image, an installer's image or a machine's disk, and a firmware image is neither. A
+preset the application learns after a `config.json` was written reaches that file on the next
+load, since a category that only exists for somebody starting fresh is not a category the user
+has. What they take away stays away: the file records every preset it has been offered, and only
+what is missing from that record arrives. See [state.md](state.md).
+
 **An archive is judged by what it holds as well as by its name.** Once the index has read it
 -- see [state.md](state.md) for which kinds, and the status bar's spinner while it runs -- an
 archive is in every category its own name matches, Archives for one, and also in every category

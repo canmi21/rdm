@@ -122,7 +122,7 @@ impl Category {
 	/// newer ones -- AVIF, JPEG XL, HEIF, Zstandard, MSIX -- that a list written a few years ago
 	/// would miss. A file that two lists describe is in both categories, so overlap is not a
 	/// problem to solve; a disk image is also a program when it installs one.
-	pub const PRESETS: [Preset; 12] = {
+	pub const PRESETS: [Preset; 15] = {
 		use crate::ui::theme::Tint;
 		use Icon;
 		[
@@ -206,8 +206,32 @@ impl Category {
 				name: "Disk Images",
 				icon: Icon::Disc,
 				tint: Tint::Navy,
-				extensions: "iso img dmg bin cue nrg mdf mds toast cdr vhd vhdx vmdk vdi qcow qcow2 wim \
+				// What holds a filesystem: an installer's image, an optical one, a machine's disk.
+				// `bin` and `hex` were here and are Firmware's now -- a firmware image is a chip's
+				// contents and not a filesystem, and the two were being counted as one thing.
+				extensions: "iso img dmg cue nrg mdf mds toast cdr vhd vhdx vmdk vdi qcow qcow2 wim \
 					esd hdd sparseimage sparsebundle",
+			},
+			Preset {
+				name: "Firmware",
+				icon: Icon::Cpu,
+				tint: Tint::Teal,
+				// A chip's contents, not a disk's: the formats a flasher takes, and the record
+				// formats an assembler emits.
+				extensions: "bin hex uf2 dfu srec s19 s28 s37 fw rom rbf bit bitstream elf axf",
+			},
+			Preset {
+				name: "3D Models",
+				icon: Icon::Box,
+				tint: Tint::Purple,
+				extensions: "stl obj 3mf step stp iges igs fbx dae ply gltf glb usd usda usdc usdz blend \
+					3ds max c4d skp scad amf wrl x3d off",
+			},
+			Preset {
+				name: "Torrents",
+				icon: Icon::Magnet,
+				tint: Tint::Orange,
+				extensions: "torrent",
 			},
 		]
 	};
