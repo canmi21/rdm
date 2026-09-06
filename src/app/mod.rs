@@ -299,6 +299,10 @@ impl Rdm {
 		this.engine.set_max_active(this.preferences.max_active);
 		this.import_strays();
 		this.load_archives();
+		// The funnel left lit last time reads the folder now, as a press would.
+		if this.folder_shown {
+			this.scan_folder();
+		}
 		this.queue_indexing();
 		// The headless tests have no network to ask and no build number to compare; a test
 		// that wants a manifest hands one in.
