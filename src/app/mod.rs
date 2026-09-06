@@ -114,6 +114,12 @@ pub(crate) struct FolderFile {
 	pub size: u64,
 	pub modified: Option<std::time::SystemTime>,
 	pub path: std::path::PathBuf,
+	/// How far inside the download folder it is: nothing at the top, one for a file in a folder
+	/// there, and so on. Zero unless the folders are being kept as folders, since flattening is
+	/// the whole point of not keeping them.
+	pub depth: u8,
+	/// Whether the row is the folder rather than a file in it.
+	pub directory: bool,
 }
 
 /// The folder read for `scan_folder`, off the window's thread: every plain file that is not
@@ -122,23 +128,100 @@ pub(crate) struct FolderFile {
 pub(crate) fn read_folder(
 	directory: &std::path::Path,
 	taken: &[(String, Option<std::path::PathBuf>)],
+	folders: crate::download::Folders,
 ) -> Vec<FolderFile> {
-	let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
-	let mut files: Vec<FolderFile> = entries
+	let mut files = Vec::new();
+	read_into(&mut files, directory, taken, folders, 0);
+	files
+}
+
+/// How deep the reader will go. A download folder is not a filesystem and a folder nested eight
+/// deep in one is not what anybody came for; the limit is there so a symlink loop or a checked
+/// out repository cannot hold the read open.
+const DEEPEST: u8 = 8;
+/// And how many rows it will make. A folder of a hundred thousand files is a folder to open in a
+/// file manager, not a list to draw.
+const AT_MOST: usize = 20_000;
+
+fn read_into(
+	files: &mut Vec<FolderFile>,
+	directory: &std::path::Path,
+	taken: &[(String, Option<std::path::PathBuf>)],
+	folders: crate::download::Folders,
+	depth: u8,
+) {
+	use crate::download::Folders;
+	let Ok(entries) = std::fs::read_dir(directory) else { return };
+	// How deep a row says it is. Only the tree draws anything from it: flattening puts what it
+	// finds at the top level, and a row that remembered being one down would then be hidden by
+	// the folder it is no longer shown inside.
+	let shown = if matches!(folders, Folders::Tree) { depth } else { 0 };
+	let mut here: Vec<FolderFile> = entries
 		.flatten()
 		.filter_map(|entry| {
 			let path = entry.path();
 			let name = path.file_name()?.to_str()?.to_owned();
 			let metadata = entry.metadata().ok()?;
+			if name.starts_with('.') {
+				return None;
+			}
+			if metadata.is_dir() {
+				// A bundle is a directory the system draws as one file, and it is one: reading
+				// inside a `.app` would list its whole contents where the application belongs.
+				let bundled = matches!(folders, Folders::Ignore) || is_bundle(&path);
+				return (!bundled).then(|| FolderFile {
+					name,
+					size: 0,
+					modified: metadata.modified().ok(),
+					path,
+					depth: shown,
+					directory: true,
+				});
+			}
 			(metadata.is_file()
-				&& !name.starts_with('.')
 				&& engine::control::target_of(&path).is_none()
 				&& !taken.iter().any(|(n, p)| *n == name || p.as_deref() == Some(path.as_path())))
-			.then(|| FolderFile { name, size: metadata.len(), modified: metadata.modified().ok(), path })
+			.then(|| FolderFile {
+				name,
+				size: metadata.len(),
+				modified: metadata.modified().ok(),
+				path,
+				depth: shown,
+				directory: false,
+			})
 		})
 		.collect();
-	files.sort_by(|a, b| a.name.cmp(&b.name));
-	files
+	// Folders first and then files, each in name order, which is what a file manager does.
+	here.sort_by(|a, b| b.directory.cmp(&a.directory).then_with(|| a.name.cmp(&b.name)));
+	for entry in here {
+		if files.len() >= AT_MOST {
+			return;
+		}
+		let inside = entry.directory.then(|| entry.path.clone());
+		// Flattening keeps no row for the folder itself; keeping them as folders keeps the row
+		// and puts what is inside under it.
+		let keep = !entry.directory || matches!(folders, Folders::Tree);
+		if keep {
+			files.push(entry);
+		}
+		if let Some(inside) = inside
+			&& depth < DEEPEST
+		{
+			read_into(files, &inside, taken, folders, depth + 1);
+		}
+	}
+}
+
+/// A directory the system draws as one thing: a macOS bundle, and the two Linux directories that
+/// are handed about as if they were files.
+fn is_bundle(path: &std::path::Path) -> bool {
+	const BUNDLES: [&str; 8] =
+		["app", "bundle", "framework", "kext", "plugin", "prefpane", "qlgenerator", "appdir"];
+	path
+		.extension()
+		.and_then(|e| e.to_str())
+		.map(str::to_ascii_lowercase)
+		.is_some_and(|e| BUNDLES.contains(&e.as_str()))
 }
 
 /// What a sidebar row carries while it is dragged: the category's id.
@@ -208,6 +291,14 @@ pub struct Rdm {
 	_tick: Task<()>,
 	/// The cards in the window's corner, oldest first: what has been said in the window and not
 	/// yet gone. See src/app/notices.rs.
+	/// How deep each folder row sits and whether it is a folder, by its id; empty unless the
+	/// folders are being kept as folders. A `Download` is the engine's row and has room for
+	/// neither, and the two are built and numbered together, so a table beside it is the
+	/// smaller lie. See `read_folder`.
+	pub(crate) folder_shape: HashMap<u64, (u8, bool)>,
+	/// The folder rows that have been opened, by path. Kept across a rescan, since a scan that
+	/// closed everything somebody had opened would be a scan nobody wanted.
+	pub(crate) opened: std::collections::HashSet<std::path::PathBuf>,
 	pub(crate) notices: Vec<notices::Shown>,
 	/// The notices that are windows of their own, while they are up. A handle stays here after
 	/// its window closes and is found dead on the next one, as the download windows' do.
@@ -317,6 +408,8 @@ impl Rdm {
 			maximized: saved.maximized,
 			save: None,
 			_tick: tick,
+			folder_shape: HashMap::new(),
+			opened: std::collections::HashSet::new(),
 			notices: Vec::new(),
 			notice_windows: Vec::new(),
 			updates: updates::Updates::default(),
@@ -364,7 +457,10 @@ impl Rdm {
 		let mut rows: Vec<&Download> = self
 			.rows()
 			.filter(|d| {
-				self.passes(self.filter, d) && self.status.is_none_or(|s| d.status == s) && self.worth_a_row(d)
+				self.passes(self.filter, d)
+					&& self.status.is_none_or(|s| d.status == s)
+					&& self.worth_a_row(d)
+					&& self.under_an_open_folder(d)
 			})
 			.collect();
 		rows.sort_by(|a, b| {
@@ -477,8 +573,11 @@ impl Rdm {
 			.iter()
 			.map(|d| (d.name.clone(), d.path.as_deref().map(std::path::PathBuf::from)))
 			.collect();
+		let folders = self.preferences.folders;
 		let receiver = self.engine.run(async move {
-			tokio::task::spawn_blocking(move || read_folder(&directory, &taken)).await.unwrap_or_default()
+			tokio::task::spawn_blocking(move || read_folder(&directory, &taken, folders))
+				.await
+				.unwrap_or_default()
 		});
 		self.folder_scan = Some((std::time::Instant::now(), receiver));
 	}
@@ -486,11 +585,62 @@ impl Rdm {
 	/// The rows a scan produced, in place of the last: each is a completed row with the file's
 	/// size and time and no address, in name order, numbered from `FOLDER_ID` so a press on one
 	/// finds it and nothing mistakes it for a download.
+	/// How deep a folder row sits and whether it is a folder, by its id. A `Download` is the
+	/// engine's row and has no room for either, and the two lists are built together and
+	/// numbered together, so a second list beside it is the smaller of the two lies.
+	pub(crate) fn folder_shape(&self, id: u64) -> Option<(u8, bool)> {
+		self.folder_shape.get(&id).copied()
+	}
+
+	/// Whether a row inside a folder is drawn: only where every folder between it and the
+	/// download folder has been opened. Nothing else can be hidden this way -- flattening and
+	/// ignoring make no folder rows, so nothing has a folder to be inside of.
+	fn under_an_open_folder(&self, download: &Download) -> bool {
+		let Some((depth, _)) = self.folder_shape(download.id) else { return true };
+		if depth == 0 {
+			return true;
+		}
+		let (Some(root), Some(path)) = (
+			self.paths.as_ref().map(|p| p.downloads.clone()),
+			download.path.as_deref().map(std::path::PathBuf::from),
+		) else {
+			return true;
+		};
+		let mut here = path.parent().map(std::path::Path::to_path_buf);
+		while let Some(folder) = here {
+			if folder == root {
+				return true;
+			}
+			if !self.opened.contains(&folder) {
+				return false;
+			}
+			here = folder.parent().map(std::path::Path::to_path_buf);
+		}
+		true
+	}
+
+	/// Opens a folder row, or closes it. Closing it closes what is under it by the same rule
+	/// that hid it, so nothing has to be walked.
+	pub(crate) fn toggle_folder(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(path) = self.download(id).and_then(|d| d.path.clone()) else { return };
+		let path = std::path::PathBuf::from(path);
+		if !self.opened.remove(&path) {
+			self.opened.insert(path);
+		}
+		cx.notify();
+	}
+
 	pub(crate) fn adopt_folder_files(&mut self, files: Vec<FolderFile>) {
 		let selected = self
 			.selected
 			.filter(|&id| Self::is_folder_file(id))
 			.and_then(|id| self.folder_files.iter().find(|d| d.id == id).map(|d| d.name.clone()));
+		self.folder_shape = files
+			.iter()
+			.enumerate()
+			.filter(|(_, file)| file.depth > 0 || file.directory)
+			.map(|(index, file)| (FOLDER_ID + index as u64, (file.depth, file.directory)))
+			.collect();
 		self.folder_files = files
 			.into_iter()
 			.enumerate()

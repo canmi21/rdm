@@ -59,6 +59,18 @@ impl Rdm {
 		}
 	}
 
+	/// Settings' Folder row: what the download folder's own directories become. The folder is
+	/// read again at once, since the answer is a different list rather than a different view of
+	/// the same one.
+	pub(crate) fn set_folders(&mut self, folders: crate::download::Folders, cx: &mut Context<Self>) {
+		self.preferences.folders = folders;
+		self.save_config();
+		if self.folder_shown {
+			self.scan_folder();
+		}
+		cx.notify();
+	}
+
 	/// Settings' Folder row: whether the download folder's junk is kept out of the lists.
 	pub(crate) fn set_hide_junk(&mut self, on: bool, cx: &mut Context<Self>) {
 		self.preferences.hide_junk = on;

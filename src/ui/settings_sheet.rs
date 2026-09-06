@@ -15,6 +15,7 @@ use crate::ui::{LeavesFocus, backdrop, icon_button};
 use std::collections::HashMap;
 
 use crate::engine::HttpVersion;
+use crate::download::Folders;
 use crate::notify::{Occasion, Style};
 use crate::update::Policy;
 
@@ -344,6 +345,15 @@ impl Rdm {
 					word: "Check now",
 					note: self.update_status(),
 					run: |this, cx| this.check_for_updates(true, cx),
+				},
+			},
+			Row {
+				section: Section::Folder,
+				label: "Folders in the download folder",
+				control: Control::Choice {
+					options: Folders::ALL.iter().map(|f| f.name()).collect(),
+					chosen: Folders::ALL.iter().position(|f| *f == self.preferences.folders).unwrap_or(0),
+					set: |this, index, cx| this.set_folders(Folders::ALL[index], cx),
 				},
 			},
 			Row {

@@ -223,6 +223,68 @@ fn an_archive_in_the_folder_is_indexed_and_placed_by_what_it_holds(cx: &mut Test
 	});
 }
 
+/// A download folder's own folders are ignored, flattened, or kept as folders. Flattening is the
+/// default: what somebody wants from a download folder is usually the files, and a folder of
+/// folders hides them.
+#[gpui::test]
+fn the_folders_own_folders_are_ignored_flattened_or_kept(cx: &mut TestAppContext) {
+	use crate::download::Folders;
+	let (rdm, mut cx) = open_in(cx, "folders");
+	let directory = rdm.read_with(&cx, |rdm, _| rdm.paths.as_ref().unwrap().downloads.clone());
+	for stale in std::fs::read_dir(&directory).unwrap().flatten() {
+		let _ = std::fs::remove_file(stale.path()).or_else(|_| std::fs::remove_dir_all(stale.path()));
+	}
+	std::fs::write(directory.join("loose.txt"), b"loose").unwrap();
+	std::fs::create_dir(directory.join("papers")).unwrap();
+	std::fs::write(directory.join("papers/inside.pdf"), b"paper").unwrap();
+	std::fs::create_dir(directory.join("papers/deeper")).unwrap();
+	std::fs::write(directory.join("papers/deeper/buried.txt"), b"deep").unwrap();
+	// A bundle is a directory the system draws as one file, and is left as one.
+	std::fs::create_dir(directory.join("Thing.app")).unwrap();
+	std::fs::write(directory.join("Thing.app/binary"), b"mach-o").unwrap();
+
+	let names = |rdm: &Rdm| -> Vec<String> {
+		rdm.shown().iter().map(|d| d.name.clone()).collect()
+	};
+	rdm.update(&mut cx, |rdm, cx| rdm.set_folders(Folders::Flatten, cx));
+	wait_for_folder(&rdm, &mut cx);
+	rdm.read_with(&cx, |rdm, _| {
+		let shown = names(rdm);
+		assert!(shown.contains(&"loose.txt".to_owned()));
+		assert!(shown.contains(&"inside.pdf".to_owned()), "flattened out: {shown:?}");
+		assert!(shown.contains(&"buried.txt".to_owned()), "however deep");
+		assert!(!shown.contains(&"papers".to_owned()), "and no row for the folder itself");
+		assert!(!shown.contains(&"binary".to_owned()), "a bundle is one file, not its contents");
+	});
+
+	rdm.update(&mut cx, |rdm, cx| rdm.set_folders(Folders::Ignore, cx));
+	wait_for_folder(&rdm, &mut cx);
+	rdm.read_with(&cx, |rdm, _| {
+		let shown = names(rdm);
+		assert_eq!(shown.iter().filter(|n| *n == "loose.txt").count(), 1);
+		assert!(!shown.contains(&"inside.pdf".to_owned()), "nothing from inside: {shown:?}");
+	});
+
+	rdm.update(&mut cx, |rdm, cx| rdm.set_folders(Folders::Tree, cx));
+	wait_for_folder(&rdm, &mut cx);
+	let papers = rdm.read_with(&cx, |rdm, _| {
+		let shown = names(rdm);
+		assert!(shown.contains(&"papers".to_owned()), "the folder is a row: {shown:?}");
+		assert!(!shown.contains(&"inside.pdf".to_owned()), "and what is inside waits to be opened");
+		rdm.shown().iter().find(|d| d.name == "papers").map(|d| d.id).expect("the folder's row")
+	});
+	rdm.update(&mut cx, |rdm, cx| rdm.toggle_folder(papers, cx));
+	rdm.read_with(&cx, |rdm, _| {
+		let shown = names(rdm);
+		assert!(shown.contains(&"inside.pdf".to_owned()), "opened: {shown:?}");
+		assert!(!shown.contains(&"buried.txt".to_owned()), "but not what is inside the next one");
+	});
+	rdm.update(&mut cx, |rdm, cx| rdm.toggle_folder(papers, cx));
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(!names(rdm).contains(&"inside.pdf".to_owned()), "and closed again");
+	});
+}
+
 /// The junk a download folder collects is kept out of the lists, and a torrent is the one kind
 /// that is filed rather than dropped: no row among the downloads, a row under Torrents.
 #[gpui::test]

@@ -215,7 +215,11 @@ impl Rdm {
 			.when(selected, |s| s.bg(p.selection))
 			.when(!selected, move |s| s.hover(move |s| s.bg(p.hover)))
 			.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-				if event.click_count() == 2 {
+				// A folder row is a door and nothing else: it has no window of its own to open
+				// and nothing to act on, so one press opens it and a second closes it.
+				if this.folder_shape(id).is_some_and(|(_, directory)| directory) {
+					this.toggle_folder(id, cx);
+				} else if event.click_count() == 2 {
 					this.open_download(id, cx);
 				} else {
 					this.select(id, cx);
@@ -246,6 +250,7 @@ impl Rdm {
 			.items_center()
 			.h(px(26.0))
 			.px_2()
+			.child(self.folder_indent(download))
 			.child(tinted_icon(self.category_icon(download)).size_3p5())
 			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child(download.name.clone()))
 			.child(
@@ -267,6 +272,32 @@ impl Rdm {
 					.text_color(p.muted)
 					.child(div().truncate().child(format_added(download.added))),
 			)
+	}
+
+	/// What sits before a row's icon while the folders are kept as folders: a step of space for
+	/// every folder it is inside, and for a folder row a chevron that opens it. Nothing at all in
+	/// the other two modes, where no row is inside anything.
+	fn folder_indent(&self, download: &Download) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let (depth, directory) = self.folder_shape(download.id).unwrap_or((0, false));
+		div()
+			.flex()
+			.flex_none()
+			.items_center()
+			.w(px(f32::from(depth) * 14.0 + if directory { 14.0 } else { 0.0 }))
+			.when(directory, |s| {
+				s.justify_end().child(
+					icon(
+						if self.opened.contains(std::path::Path::new(download.path.as_deref().unwrap_or(""))) {
+							Icon::ChevronDown
+						} else {
+							Icon::ChevronRight
+						},
+						p.muted,
+					)
+					.size_3(),
+				)
+			})
 	}
 
 	fn compact(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {

@@ -134,6 +134,34 @@ impl Download {
 	}
 }
 
+/// What the download folder's own directories become in the list. Nothing here moves a file: it
+/// is how the folder reads, not how it is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Folders {
+	/// Nothing at all: a directory is not a download, and what is inside it is somebody else's
+	/// business.
+	Ignore,
+	/// Every file inside, listed at the top level beside the loose ones. What somebody wants from
+	/// a download folder is usually the files, and a folder of folders hides them.
+	#[default]
+	Flatten,
+	/// The directory itself, as a row that opens onto what it holds.
+	Tree,
+}
+
+impl Folders {
+	pub const ALL: [Folders; 3] = [Folders::Ignore, Folders::Flatten, Folders::Tree];
+
+	pub fn name(self) -> &'static str {
+		match self {
+			Folders::Ignore => "Ignore them",
+			Folders::Flatten => "Show what is inside",
+			Folders::Tree => "Keep them as folders",
+		}
+	}
+}
+
 /// Why a file in the download folder is not worth a row of its own. The folder collects things
 /// nobody downloaded and nobody wants listed: what the operating system leaves behind, what an
 /// editor writes beside a file it has open, and the small pointers a browser saves instead of a

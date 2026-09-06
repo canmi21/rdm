@@ -228,6 +228,22 @@ shade the application adds later reaches a file that never touched one; an exten
 back to the category's colour is written as an empty string, which is the only way to tell
 "inherit, deliberately" from "never said".
 
+**A download folder's own folders are ignored, flattened, or kept as folders**, under Folder in
+Settings. Flattening is what it does to start with: what somebody wants from a download folder is
+usually the files, and a folder of folders hides them, so every file inside is listed at the top
+level beside the loose ones. Nothing moves on disk -- this is how the folder reads, not how it
+is. `Ignore them` leaves a directory and its contents out entirely. `Keep them as folders` gives
+the directory a row of its own that opens onto what it holds: one press opens, a second closes,
+and a row inside is drawn only while every folder between it and the download folder is open. A
+folder row is a door and nothing else, having no window of its own and nothing to act on.
+
+Two limits are the reader's, not the list's: it will not go more than eight folders deep, and it
+will not make more than twenty thousand rows. A download folder is not a filesystem, and a folder
+nested eight deep in one is not what anybody came for; the depth limit is also what stops a
+symlink loop holding the read open. A bundle -- `.app`, `.framework` and the rest -- is a
+directory the system draws as one file, and is left as one: reading inside a `.app` would list
+its whole contents where the application belongs.
+
 **The folder's junk is kept out of the lists, and a torrent is filed rather than dropped.** A
 download folder collects a great deal nobody downloaded: what the operating system leaves behind
 (`.DS_Store`, `Thumbs.db`, `desktop.ini`), what an editor writes beside a file it has open

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::category::{Category, Overrides, Preset, extensions_of_pattern};
+use crate::download::Folders;
 use crate::engine::HttpVersion;
 use crate::notify::{Occasion, Style};
 use crate::state::{parse_versioned, write_json};
@@ -62,6 +63,9 @@ pub struct Preferences {
 	pub auto_update: bool,
 	#[serde(default)]
 	pub update_policy: Policy,
+	/// What the download folder's own directories become in the list. See `Folders`.
+	#[serde(default)]
+	pub folders: Folders,
 	/// The download folder's junk is kept out of the lists: what the system leaves behind, what
 	/// an editor writes beside an open file, the pointers a browser saves instead of a file. On
 	/// to start with. A torrent is the exception it makes: filed rather than dropped, so it has a
@@ -198,6 +202,7 @@ impl Default for Preferences {
 		Preferences {
 			colorful_categories: true,
 			dim_inactive: true,
+			folders: Folders::default(),
 			hide_junk: true,
 			notice_finished: Style::System,
 			notice_failed: Style::System,
