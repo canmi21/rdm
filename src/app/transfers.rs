@@ -88,7 +88,7 @@ impl Rdm {
 	}
 
 	/// Every event the engine has sent since the last look, applied to the rows.
-	pub(super) fn pump_events(&mut self, cx: &mut Context<Self>) {
+	pub(crate) fn pump_events(&mut self, cx: &mut Context<Self>) {
 		let mut changed = false;
 		while let Ok(event) = self.events.try_recv() {
 			self.apply(event);
@@ -105,6 +105,23 @@ impl Rdm {
 			if self.folder_shown {
 				self.scan_folder();
 				changed = true;
+			}
+		}
+		// The folder's rows, once the read is done; while it runs past a moment, a redraw so the
+		// status bar starts its spinner.
+		if let Some((since, receiver)) = &self.folder_scan {
+			match receiver.try_recv() {
+				Ok(files) => {
+					self.folder_scan = None;
+					if self.folder_shown {
+						self.adopt_folder_files(files);
+					}
+					changed = true;
+				}
+				Err(std::sync::mpsc::TryRecvError::Disconnected) => self.folder_scan = None,
+				Err(std::sync::mpsc::TryRecvError::Empty) => {
+					changed |= since.elapsed() >= crate::app::SPINNER_AFTER;
+				}
 			}
 		}
 		if changed {

@@ -86,6 +86,43 @@ pub struct Resize {
 /// hands out from one.
 pub(crate) const FOLDER_ID: u64 = 1 << 62;
 
+/// How long something may run behind the window before the status bar spins for it.
+pub(crate) const SPINNER_AFTER: Duration = Duration::from_millis(300);
+
+/// One of the folder's files as the scan found it, before it is a row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FolderFile {
+	pub name: String,
+	pub size: u64,
+	pub modified: Option<std::time::SystemTime>,
+	pub path: std::path::PathBuf,
+}
+
+/// The folder read for `scan_folder`, off the window's thread: every plain file that is not
+/// hidden, not one of a download's two files meanwhile, and not named or placed by a download
+/// in `taken`, in name order.
+pub(crate) fn read_folder(
+	directory: &std::path::Path,
+	taken: &[(String, Option<std::path::PathBuf>)],
+) -> Vec<FolderFile> {
+	let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
+	let mut files: Vec<FolderFile> = entries
+		.flatten()
+		.filter_map(|entry| {
+			let path = entry.path();
+			let name = path.file_name()?.to_str()?.to_owned();
+			let metadata = entry.metadata().ok()?;
+			(metadata.is_file()
+				&& !name.starts_with('.')
+				&& engine::control::target_of(&path).is_none()
+				&& !taken.iter().any(|(n, p)| *n == name || p.as_deref() == Some(path.as_path())))
+			.then(|| FolderFile { name, size: metadata.len(), modified: metadata.modified().ok(), path })
+		})
+		.collect();
+	files.sort_by(|a, b| a.name.cmp(&b.name));
+	files
+}
+
 /// What a sidebar row carries while it is dragged: the category's id.
 #[derive(Clone, Copy, Debug)]
 pub struct DraggedCategory(pub u64);
@@ -123,6 +160,8 @@ pub struct Rdm {
 	/// The folder's other files as rows, read when the funnel is lit and whenever the folder
 	/// changes while it is; empty otherwise. Their ids start at `FOLDER_ID`.
 	pub(crate) folder_files: Vec<Download>,
+	/// A read of the folder under way: when it started, and where its rows will arrive.
+	pub(crate) folder_scan: Option<(std::time::Instant, std::sync::mpsc::Receiver<Vec<FolderFile>>)>,
 	pub(crate) sort: SortKey,
 	pub(crate) ascending: bool,
 	pub(crate) view: View,
@@ -230,6 +269,7 @@ impl Rdm {
 			filter_open: false,
 			folder_shown: saved.folder_shown,
 			folder_files: Vec::new(),
+			folder_scan: None,
 			sort: SortKey::Added,
 			ascending: false,
 			view: saved.view.unwrap_or(View::Detailed),
@@ -345,6 +385,7 @@ impl Rdm {
 			self.scan_folder();
 		} else {
 			self.folder_files.clear();
+			self.folder_scan = None;
 			if self.selected.is_some_and(Self::is_folder_file) {
 				self.selected = None;
 			}
@@ -354,28 +395,26 @@ impl Rdm {
 	}
 
 	/// The download folder's files that are not a download's: not hidden, not one of the two
-	/// files a download keeps meanwhile, and not named by any row. Each becomes a completed row
-	/// with the file's size and time and no address, in the folder's order, numbered from
-	/// `FOLDER_ID` so a press on one finds it and nothing mistakes it for a download.
+	/// files a download keeps meanwhile, and not named by any row. Read on the engine's
+	/// runtime, since a folder of thousands takes longer than a frame; the rows arrive through
+	/// `pump_events`, and the status bar shows a spinner if they take more than a moment.
 	pub(crate) fn scan_folder(&mut self) {
 		let Some(directory) = self.paths.as_ref().map(|p| p.downloads.clone()) else { return };
-		let Ok(entries) = std::fs::read_dir(&directory) else { return };
-		let mut files: Vec<(String, std::fs::Metadata, std::path::PathBuf)> = entries
-			.flatten()
-			.filter_map(|entry| {
-				let path = entry.path();
-				let name = path.file_name()?.to_str()?.to_owned();
-				let metadata = entry.metadata().ok()?;
-				(metadata.is_file()
-					&& !name.starts_with('.')
-					&& engine::control::target_of(&path).is_none()
-					&& !self.downloads.iter().any(|d| {
-						d.name == name || d.path.as_deref().is_some_and(|p| std::path::Path::new(p) == path)
-					}))
-				.then_some((name, metadata, path))
-			})
+		let taken: Vec<(String, Option<std::path::PathBuf>)> = self
+			.downloads
+			.iter()
+			.map(|d| (d.name.clone(), d.path.as_deref().map(std::path::PathBuf::from)))
 			.collect();
-		files.sort_by(|a, b| a.0.cmp(&b.0));
+		let receiver = self.engine.run(async move {
+			tokio::task::spawn_blocking(move || read_folder(&directory, &taken)).await.unwrap_or_default()
+		});
+		self.folder_scan = Some((std::time::Instant::now(), receiver));
+	}
+
+	/// The rows a scan produced, in place of the last: each is a completed row with the file's
+	/// size and time and no address, in name order, numbered from `FOLDER_ID` so a press on one
+	/// finds it and nothing mistakes it for a download.
+	pub(crate) fn adopt_folder_files(&mut self, files: Vec<FolderFile>) {
 		let selected = self
 			.selected
 			.filter(|&id| Self::is_folder_file(id))
@@ -383,17 +422,17 @@ impl Rdm {
 		self.folder_files = files
 			.into_iter()
 			.enumerate()
-			.map(|(index, (name, metadata, path))| Download {
+			.map(|(index, file)| Download {
 				id: FOLDER_ID + index as u64,
-				name,
+				name: file.name,
 				url: String::new(),
-				size: metadata.len(),
-				received: metadata.len(),
+				size: file.size,
+				received: file.size,
 				speed: 0,
 				status: Status::Completed,
-				added: metadata.modified().map_or_else(|_| chrono::Local::now(), chrono::DateTime::from),
+				added: file.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
 				source: None,
-				path: Some(path.to_string_lossy().into_owned()),
+				path: Some(file.path.to_string_lossy().into_owned()),
 				error: None,
 				connections: None,
 				directory: None,
@@ -409,6 +448,26 @@ impl Rdm {
 		} else if self.selected.is_some_and(Self::is_folder_file) {
 			self.selected = None;
 		}
+	}
+
+	/// What is going on behind the window, for the status bar's spinner: the update check or
+	/// a build on its way, and a read of the folder that has taken more than a moment -- one
+	/// that finishes within it is not worth a spinner that would only flash.
+	pub(crate) fn activities(&self) -> Vec<String> {
+		let mut list = Vec::new();
+		let build = self.updates.available.as_ref().map(|a| a.build).unwrap_or_default();
+		if self.updates.checking {
+			list.push("Checking for updates".to_owned());
+		}
+		match self.updates.stage {
+			updates::Stage::Downloading { .. } => list.push(format!("Getting build {build}")),
+			updates::Stage::Installing => list.push(format!("Installing build {build}")),
+			_ => {}
+		}
+		if self.folder_scan.as_ref().is_some_and(|(since, _)| since.elapsed() >= SPINNER_AFTER) {
+			list.push("Reading the folder".to_owned());
+		}
+		list
 	}
 
 	pub(crate) fn selected(&self) -> Option<&Download> {

@@ -37,6 +37,21 @@ fn open_in(cx: &mut TestAppContext, name: &str) -> (Entity<Rdm>, VisualTestConte
 	(rdm, cx)
 }
 
+/// Runs the window's ticks until the folder's rows have arrived from the background read, or
+/// gives up after a few seconds: the read is a real thread, so the test clock cannot hurry it.
+fn wait_for_folder(rdm: &Entity<Rdm>, cx: &mut VisualTestContext) {
+	let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+	while std::time::Instant::now() < deadline {
+		rdm.update(cx, |rdm, cx| rdm.pump_events(cx));
+		cx.run_until_parked();
+		if rdm.read_with(cx, |rdm, _| rdm.folder_scan.is_none()) {
+			return;
+		}
+		std::thread::sleep(std::time::Duration::from_millis(20));
+	}
+	panic!("the folder was not read in time");
+}
+
 fn click(cx: &mut VisualTestContext, selector: &'static str) {
 	let bounds = cx.debug_bounds(selector).unwrap_or_else(|| panic!("nothing drawn as {selector}"));
 	cx.simulate_click(bounds.center(), Modifiers::default());
@@ -133,6 +148,31 @@ fn reset_under_appearance_puts_every_column_width_back(cx: &mut TestAppContext) 
 }
 
 #[gpui::test]
+fn the_status_bar_spins_while_something_runs_behind_the_window(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	assert!(cx.debug_bounds("activity").is_none(), "at rest the bar is the count alone");
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.updates.checking = true;
+		cx.notify();
+	});
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("activity").is_some());
+	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.activities(), ["Checking for updates"]));
+	rdm.update(&mut cx, |rdm, _| {
+		rdm.updates.checking = false;
+		// A read of the folder that has only just started is not yet worth a spinner.
+		let (_, receiver) = std::sync::mpsc::channel();
+		rdm.folder_scan = Some((std::time::Instant::now(), receiver));
+		assert!(rdm.activities().is_empty());
+		rdm.folder_scan = Some((
+			std::time::Instant::now() - crate::app::SPINNER_AFTER * 2,
+			rdm.folder_scan.take().unwrap().1,
+		));
+		assert_eq!(rdm.activities(), ["Reading the folder"]);
+	});
+}
+
+#[gpui::test]
 fn the_funnel_in_the_corner_lets_the_folder_files_into_every_list_they_fit(
 	cx: &mut TestAppContext,
 ) {
@@ -149,6 +189,7 @@ fn the_funnel_in_the_corner_lets_the_folder_files_into_every_list_they_fit(
 	std::fs::write(directory.join(&sample), b"already a row").unwrap();
 	let downloads = rdm.read_with(&cx, |rdm, _| rdm.shown().len());
 	click(&mut cx, "button:Folder files");
+	wait_for_folder(&rdm, &mut cx);
 	rdm.read_with(&cx, |rdm, _| {
 		let shown = rdm.shown();
 		let extra: Vec<&Download> =

@@ -83,7 +83,14 @@ list for the session and leaves the file where it is, since a file that was neve
 here is not this application's to delete. The corner held the column widths' reset before,
 shown only while the pointer rested on it; that moved to `Reset` under `Column widths` in
 Settings' Appearance, so a table dragged out of shape still has one way home rather than five
-drags, and the corner could hold something consulted more often. A funnel at the
+drags, and the corner could hold something consulted more often. **The status bar's left is the count, and what runs behind the window.** At rest it says how
+many downloads there are, or how many are moving; while something runs that the list does not
+show -- the update check, a build on its way in or being installed, a read of the folder --
+a spinner turns after the count with the first such thing named beside it, and every one of
+them in its tooltip, since they stack. A read of the folder that finishes within a moment,
+three tenths of a second, earns no spinner: one that only flashed would read as a glitch. The
+folder is read off the window's thread for the same reason, so a folder of thousands never
+holds a frame. A funnel at the
 status bar's corner opens a menu of statuses that cuts within whatever the sidebar selected --
 one at a time, with All to clear it -- and the funnel stays lit, naming the status, while one is
 chosen. The statuses were a row of chips above the list first, then a row in the status bar, and

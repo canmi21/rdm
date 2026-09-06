@@ -1,17 +1,47 @@
+use std::time::Duration;
+
 use gpui::{
-	Anchor, AnchoredPositionMode, Context, IntoElement, Role, SharedString, anchored, deferred, div,
-	point, prelude::*, px,
+	Anchor, AnchoredPositionMode, Animation, AnimationExt, Context, IntoElement, Role, SharedString,
+	Transformation, anchored, deferred, div, percentage, point, prelude::*, px,
 };
 
 use crate::app::{Rdm, View};
 use crate::download::{Status, format_speed};
-use crate::ui::icon::{Icon, hover_icon};
+use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::theme::Tint;
 use crate::ui::tooltip::tooltip;
 use crate::ui::{icon_button, menu_row, sidebar};
 
 /// The status bar's height, which the filter menu sits just above.
 pub const HEIGHT: f32 = 24.0;
+
+impl Rdm {
+	/// What runs behind the window, after the summary: a spinner, and the first thing it is
+	/// for, with every one of them in the tooltip. Nothing while nothing runs, so at rest the
+	/// bar is the count alone. The spinner turns once a second for as long as it is drawn.
+	fn activity(&self, _cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+		let p = self.palette;
+		let activities = self.activities();
+		let first = activities.first()?.clone();
+		let all = activities.join(", ");
+		Some(
+			div()
+				.id("activity")
+				.debug_selector(|| "activity".to_owned())
+				.flex()
+				.items_center()
+				.gap_1()
+				.whitespace_nowrap()
+				.tooltip(tooltip(all))
+				.child(icon(Icon::Loader, p.muted).size_3().with_animation(
+					"activity-spin",
+					Animation::new(Duration::from_secs(1)).repeat(),
+					|svg, delta| svg.with_transformation(Transformation::rotate(percentage(delta))),
+				))
+				.child(first),
+		)
+	}
+}
 
 /// One line across the whole window, the way an editor keeps its status. Under the sidebar, the
 /// four actions as icons, always drawn and enabled by the selection. Under the list, from left
@@ -92,6 +122,7 @@ impl Rdm {
 					.px_2()
 					.child(div().whitespace_nowrap().child(summary))
 					.when(speed > 0, |s| s.child(div().whitespace_nowrap().child(format_speed(speed))))
+					.children(self.activity(cx))
 					.child(div().flex_1())
 					.child(self.funnel(cx))
 					.children(self.view_switch(cx))

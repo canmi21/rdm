@@ -33,6 +33,8 @@ pub enum Icon {
 	List,
 	CircleDashed,
 	Funnel,
+	/// The status bar's spinner, turned by an animation.
+	Loader,
 	X,
 	Code,
 	Image,
@@ -94,6 +96,7 @@ impl Icon {
 			Icon::List => "lucide/list.svg",
 			Icon::CircleDashed => "lucide/circle-dashed.svg",
 			Icon::Funnel => "lucide/funnel.svg",
+			Icon::Loader => "lucide/loader-circle.svg",
 			Icon::X => "lucide/x.svg",
 			Icon::Code => "lucide/file-braces.svg",
 			Icon::Image => "lucide/image.svg",
