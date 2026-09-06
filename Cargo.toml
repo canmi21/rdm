@@ -69,6 +69,16 @@ tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "m
 tokio-util = "0.7"
 url = "2"
 
+# Installing an update: the Windows executable comes in a zip and a running one can only be
+# renamed, which self-replace knows; the Linux binary comes in a tarball. See spec/release.md.
+[target.'cfg(windows)'.dependencies]
+self-replace = "1"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+flate2 = "1"
+tar = "0.4"
+
 # Windows carries the icon inside the executable; build.rs embeds it there. See spec/release.md.
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

@@ -1,11 +1,16 @@
-//! Whether a newer build is published: the nightly's `latest.json`, read every few minutes from
-//! wherever answers, compared by build number with the one this binary was made as. Only the
-//! noticing is here; fetching the file and replacing the binary are not written yet. See
-//! spec/release.md.
+//! Whether a newer build is published, and getting it: the nightly's `latest.json`, read every
+//! few minutes from wherever answers, compared by build number with the one this binary was
+//! made as; then the file for this system, fetched by the same addresses and checked against
+//! the manifest's sha256 before `install` puts it in place. See spec/release.md.
 
+pub mod install;
+
+use std::io::Write;
+use std::path::Path;
 use std::time::Duration;
 
 use serde::Deserialize;
+use sha2::Digest;
 
 use crate::identity;
 
@@ -59,12 +64,6 @@ impl Manifest {
 	pub fn parse(text: &str) -> Result<Manifest, String> {
 		serde_json::from_str(text).map_err(|e| format!("latest.json: {e}"))
 	}
-
-	/// The file for this system, the first named for it: the dmg, the zip, the AppImage. The
-	/// Linux tarball is listed after the AppImage, so the AppImage is what a Linux build gets.
-	pub fn asset_for(&self, target: &str) -> Option<&Asset> {
-		self.assets.iter().find(|a| a.target == target)
-	}
 }
 
 /// Where the reader is, as far as choosing a route goes.
@@ -106,13 +105,19 @@ pub fn this_build() -> Option<u64> {
 	identity::BUILD.and_then(|b| b.parse().ok())
 }
 
-/// A build newer than this one, and where its file for this system is.
+/// A build newer than this one, and its files for this system.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Available {
 	pub build: u64,
 	pub version: String,
-	pub file: String,
-	pub sha256: String,
+	pub assets: Vec<Asset>,
+}
+
+impl Available {
+	/// The file of one kind, the one the place this runs from is replaced with.
+	pub fn asset(&self, kind: &str) -> Option<&Asset> {
+		self.assets.iter().find(|a| a.kind == kind)
+	}
 }
 
 /// What a manifest means for this binary: a newer build, or nothing to do. A hand build has no
@@ -121,13 +126,12 @@ pub fn compare(manifest: &Manifest, this: Option<u64>) -> Option<Available> {
 	if manifest.build <= this.unwrap_or(0) {
 		return None;
 	}
-	let asset = manifest.asset_for(identity::TARGET)?;
-	Some(Available {
-		build: manifest.build,
-		version: manifest.version.clone(),
-		file: asset.file.clone(),
-		sha256: asset.sha256.clone(),
-	})
+	let assets: Vec<Asset> =
+		manifest.assets.iter().filter(|a| a.target == identity::TARGET).cloned().collect();
+	if assets.is_empty() {
+		return None;
+	}
+	Some(Available { build: manifest.build, version: manifest.version.clone(), assets })
 }
 
 /// Asks the traces where the reader is, the first that answers. No answer is elsewhere: GitHub
@@ -163,12 +167,73 @@ pub async fn fetch(
 	Err(last)
 }
 
+/// Fetches one file by the first address that delivers it whole, into `dest`, and checks it
+/// against `sha256` as it lands; `progress` is told the bytes so far and the total when the
+/// server said one. A file that does not match is removed and the next address tried, since
+/// a mirror can be stale; the last error is the one reported.
+pub async fn download(
+	client: &reqwest::Client,
+	urls: &[String],
+	dest: &Path,
+	sha256: &str,
+	progress: &(dyn Fn(u64, Option<u64>) + Send + Sync),
+) -> Result<(), String> {
+	use futures::StreamExt;
+	let mut last = String::from("no address");
+	for url in urls {
+		let attempt: Result<(), String> = async {
+			let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+			if !response.status().is_success() {
+				return Err(format!("{url}: {}", response.status()));
+			}
+			let total = response.content_length();
+			let mut file = std::fs::File::create(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+			let mut hasher = sha2::Sha256::new();
+			let mut done = 0u64;
+			let mut stream = response.bytes_stream();
+			while let Some(chunk) = stream.next().await {
+				let chunk = chunk.map_err(|e| e.to_string())?;
+				file.write_all(&chunk).map_err(|e| format!("{}: {e}", dest.display()))?;
+				hasher.update(&chunk);
+				done += chunk.len() as u64;
+				progress(done, total);
+			}
+			file.flush().map_err(|e| e.to_string())?;
+			let digest: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+			if digest != sha256 {
+				return Err(format!("{url}: the file is not the one the manifest names"));
+			}
+			Ok(())
+		}
+		.await;
+		match attempt {
+			Ok(()) => return Ok(()),
+			Err(error) => {
+				let _ = std::fs::remove_file(dest);
+				last = error;
+			}
+		}
+	}
+	Err(last)
+}
+
 /// A client for these small requests: short timeouts, since a check is repeated soon anyway.
 pub fn client() -> reqwest::Client {
 	reqwest::Client::builder()
 		.user_agent(format!("rdm/{}", identity::VERSION))
 		.connect_timeout(Duration::from_secs(10))
 		.timeout(Duration::from_secs(20))
+		.build()
+		.expect("a client with no proxy settings to fail on")
+}
+
+/// A client for the file itself: no whole-request timeout, since a build is minutes on a slow
+/// line, only the connect and a read that stalls.
+pub fn file_client() -> reqwest::Client {
+	reqwest::Client::builder()
+		.user_agent(format!("rdm/{}", identity::VERSION))
+		.connect_timeout(Duration::from_secs(10))
+		.read_timeout(Duration::from_secs(60))
 		.build()
 		.expect("a client with no proxy settings to fail on")
 }
@@ -189,12 +254,12 @@ mod tests {
 	}"#;
 
 	#[test]
-	fn the_manifest_names_one_file_per_system_and_linux_gets_the_appimage() {
+	fn the_manifest_names_the_files_of_every_system_by_target_and_kind() {
 		let manifest = Manifest::parse(MANIFEST).unwrap();
 		assert_eq!(manifest.build, 8);
-		assert_eq!(manifest.asset_for("linux-x64").unwrap().kind, "AppImage");
-		assert_eq!(manifest.asset_for("macos-arm64").unwrap().file, "rdm-nightly-macos-arm64.dmg");
-		assert!(manifest.asset_for("macos-x64").is_none());
+		let of = |target: &str| manifest.assets.iter().filter(|a| a.target == target).count();
+		assert_eq!((of("linux-x64"), of("macos-arm64"), of("macos-x64")), (2, 1, 0));
+		assert_eq!(manifest.assets[3].file, "rdm-nightly-macos-arm64.dmg");
 	}
 
 	#[test]
@@ -202,7 +267,11 @@ mod tests {
 		let manifest = Manifest::parse(MANIFEST).unwrap();
 		let newer = compare(&manifest, Some(7)).expect("8 is newer than 7");
 		assert_eq!((newer.build, newer.version.as_str()), (8, "2026.9.5"));
-		assert!(newer.file.contains(identity::TARGET));
+		assert!(newer.assets.iter().all(|a| a.target == identity::TARGET));
+		assert!(
+			newer.asset(install::Place::Bundle(Default::default()).kind()).is_some()
+				|| !cfg!(target_os = "macos")
+		);
 		assert!(compare(&manifest, Some(8)).is_none());
 		assert!(compare(&manifest, Some(9)).is_none());
 		assert!(compare(&manifest, None).is_some(), "a hand build has no number to be ahead of");
@@ -236,7 +305,34 @@ mod tests {
 		let region = region(&client).await;
 		let manifest = fetch(&client, Channel::Nightly, region).await.unwrap();
 		assert_eq!(manifest.channel, "nightly");
-		assert!(manifest.build > 0 && manifest.asset_for(identity::TARGET).is_some(), "{manifest:?}");
+		assert!(
+			manifest.build > 0 && manifest.assets.iter().any(|a| a.target == identity::TARGET),
+			"{manifest:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_file_is_fetched_by_the_first_address_that_delivers_what_the_manifest_names() {
+		use crate::engine::testing::{Options, TestServer, body};
+		let data = body(50_000);
+		let server = TestServer::start(data.clone(), Options::default());
+		let dir = crate::testing::scratch("update-download");
+		let dest = dir.join("file.bin");
+		let digest: String = sha2::Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect();
+		let dead = "http://127.0.0.1:1/file.bin".to_owned();
+		let good = server.url("/file.bin").to_string();
+		let client = file_client();
+		let seen = std::sync::Mutex::new(0u64);
+		let progress = |done: u64, _total: Option<u64>| *seen.lock().unwrap() = done;
+		download(&client, &[dead.clone(), good.clone()], &dest, &digest, &progress).await.unwrap();
+		assert_eq!(std::fs::read(&dest).unwrap(), data, "the dead address was passed over");
+		assert_eq!(*seen.lock().unwrap(), data.len() as u64);
+		let wrong = "0".repeat(64);
+		let error = download(&client, &[good], &dest, &wrong, &progress).await.unwrap_err();
+		assert!(error.contains("not the one the manifest names"), "{error}");
+		assert!(!dest.exists(), "a file that does not match is not kept");
+		let error = download(&client, &[dead], &dest, &digest, &progress).await.unwrap_err();
+		assert!(!error.is_empty());
 	}
 
 	#[test]
