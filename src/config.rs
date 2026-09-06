@@ -124,6 +124,11 @@ pub struct Preferences {
 	pub headers: Vec<(String, String)>,
 	#[serde(default)]
 	pub proxy: Option<String>,
+	/// Where the proxy comes from: nothing, whatever is running on this machine, or the address
+	/// above. Looking is the default -- the address a proxy listens on is its choice and not the
+	/// user's, and the machine can be asked. See src/proxy.rs.
+	#[serde(default)]
+	pub proxy_source: crate::proxy::Source,
 	#[serde(default)]
 	pub max_redirects: Option<usize>,
 	#[serde(default = "yes")]
@@ -172,8 +177,9 @@ impl Preferences {
 	}
 
 	/// The engine's settings for a new download: its own defaults, with what the user set
-	/// written over them.
-	pub fn engine_settings(&self) -> crate::engine::Settings {
+	/// written over them. `found` is the proxy the last look turned up, which only matters when
+	/// the source is what is running on this machine.
+	pub fn engine_settings(&self, found: Option<&str>) -> crate::engine::Settings {
 		let mut settings = crate::engine::Settings::default();
 		if let Some(n) = self.min_segment {
 			settings.min_segment = n;
@@ -196,7 +202,13 @@ impl Preferences {
 			settings.user_agent = agent.clone();
 		}
 		settings.headers = self.headers.clone();
-		settings.proxy = self.proxy.clone();
+		// What the engine is given: the address typed, whatever was found, or nothing. `found` is
+		// what the last look came to and is None until it has looked. See src/app/network.rs.
+		settings.proxy = match self.proxy_source {
+			crate::proxy::Source::Direct => None,
+			crate::proxy::Source::Fixed => self.proxy.clone().filter(|a| !a.trim().is_empty()),
+			crate::proxy::Source::Found => found.map(str::to_owned),
+		};
 		if let Some(n) = self.max_redirects {
 			settings.max_redirects = n;
 		}
@@ -238,6 +250,7 @@ impl Default for Preferences {
 			user_agent: None,
 			headers: Vec::new(),
 			proxy: None,
+			proxy_source: crate::proxy::Source::default(),
 			max_redirects: None,
 			preallocate: true,
 		}
@@ -624,7 +637,7 @@ mod tests {
 
 	#[test]
 	fn the_engine_settings_are_its_own_with_the_user_written_over() {
-		let plain = Preferences::default().engine_settings();
+		let plain = Preferences::default().engine_settings(None);
 		assert_eq!(plain, crate::engine::Settings::default());
 		let set = Preferences {
 			retries: Some(9),
@@ -633,9 +646,20 @@ mod tests {
 			headers: vec![("X-A".into(), "b".into())],
 			..Preferences::default()
 		};
-		let settings = set.engine_settings();
+		let settings = set.engine_settings(None);
 		assert_eq!((settings.retries, settings.http), (9, HttpVersion::Http1));
-		assert_eq!(settings.proxy.as_deref(), Some("socks5://h:1080"));
+		// An address alone is not enough now: the source says whether to use it, and what is
+		// running on the machine is what a fresh preferences file asks for.
+		assert_eq!(settings.proxy, None, "the address is set but the source is not This address");
+		let typed = Preferences { proxy_source: crate::proxy::Source::Fixed, ..set.clone() };
+		assert_eq!(typed.engine_settings(None).proxy.as_deref(), Some("socks5://h:1080"));
+		let looked = Preferences { proxy_source: crate::proxy::Source::Found, ..set.clone() };
+		assert_eq!(
+			looked.engine_settings(Some("http://127.0.0.1:7890")).proxy.as_deref(),
+			Some("http://127.0.0.1:7890"),
+			"and what was found is used in its place"
+		);
+		assert_eq!(looked.engine_settings(None).proxy, None, "nothing found is straight out");
 		assert_eq!(settings.headers.len(), 1);
 		assert_eq!(settings.user_agent, crate::engine::Settings::default().user_agent);
 		let text = serde_json::to_string(&Config::from_parts(&[], &set)).unwrap();

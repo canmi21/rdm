@@ -25,6 +25,7 @@ use crate::ui::theme::{self, Palette};
 
 mod categories;
 mod indexing;
+mod network;
 mod notices;
 #[cfg(test)]
 mod tests;
@@ -310,6 +311,11 @@ pub struct Rdm {
 	/// drawing is the only thing that asks and drawing has the window by shared reference; the
 	/// alternative is asking the window server once a row a frame. See src/thumbnail.rs.
 	pub(crate) thumbnails: std::cell::RefCell<crate::thumbnail::Thumbnails>,
+	/// The proxy the last look found, None until it has looked or when it found none. Not kept
+	/// in the config: it is a fact about the machine now rather than a choice. See src/proxy.rs.
+	pub(crate) found_proxy: Option<String>,
+	pub(crate) looking_for_proxy: bool,
+	proxy_look: Option<std::sync::mpsc::Receiver<Option<String>>>,
 	pub(crate) notices: Vec<notices::Shown>,
 	/// The notices that are windows of their own, while they are up. A handle stays here after
 	/// its window closes and is found dead on the next one, as the download windows' do.
@@ -422,6 +428,9 @@ impl Rdm {
 			folder_shape: HashMap::new(),
 			opened: std::collections::HashSet::new(),
 			thumbnails: std::cell::RefCell::default(),
+			found_proxy: None,
+			looking_for_proxy: false,
+			proxy_look: None,
 			notices: Vec::new(),
 			notice_windows: Vec::new(),
 			updates: updates::Updates::default(),
@@ -429,6 +438,10 @@ impl Rdm {
 		};
 		this.engine.set_speed_limit(this.preferences.speed_limit);
 		this.engine.set_max_active(this.preferences.max_active);
+		// The machine is asked what proxy it is running, once, off this thread.
+		if this.preferences.proxy_source == crate::proxy::Source::Found {
+			this.look_for_proxy(cx);
+		}
 		this.import_strays();
 		this.load_archives();
 		// The funnel left lit last time reads the folder now, as a press would.

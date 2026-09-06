@@ -46,8 +46,8 @@ const FIELDS: [(&str, &str, &str); 13] = [
 	("User agent", "rdm/version", "Sent with every request; empty for the engine's own"),
 	(
 		"Proxy",
-		"System",
-		"http://, https:// or socks5://, credentials in the address; empty for the system's",
+		"Address",
+		"http://, https:// or socks5://, credentials in the address",
 	),
 	("Headers", "", "Name: value, several apart by semicolons"),
 	("Redirects", "10", "How many a request follows"),
@@ -60,17 +60,19 @@ pub enum Section {
 	Transfers,
 	Folder,
 	Notifications,
+	Network,
 	Updates,
 	Appearance,
 	About,
 }
 
 impl Section {
-	pub const ALL: [Section; 7] = [
+	pub const ALL: [Section; 8] = [
 		Section::General,
 		Section::Transfers,
 		Section::Folder,
 		Section::Notifications,
+		Section::Network,
 		Section::Updates,
 		Section::Appearance,
 		Section::About,
@@ -82,6 +84,7 @@ impl Section {
 			Section::Transfers => "Transfers",
 			Section::Folder => "Folder",
 			Section::Notifications => "Notifications",
+			Section::Network => "Network",
 			Section::Updates => "Updates",
 			Section::Appearance => "Appearance",
 			Section::About => "About",
@@ -94,6 +97,7 @@ impl Section {
 			Section::Transfers => Icon::Download,
 			Section::Folder => Icon::FolderOpen,
 			Section::Notifications => Icon::Bell,
+			Section::Network => Icon::Globe,
 			Section::Updates => Icon::Download,
 			Section::Appearance => Icon::Palette,
 			Section::About => Icon::Info,
@@ -124,6 +128,15 @@ enum Control {
 	Field { input: Entity<TextInput>, note: &'static str },
 	/// One of a few words, the chosen one lit.
 	Choice { options: Vec<&'static str>, chosen: usize, set: fn(&mut Rdm, usize, &mut Context<Rdm>) },
+}
+
+impl Row {
+	/// Puts a row under a heading. The rows written out in full name their own; this is for the
+	/// ones built by a helper, which cannot know where they are going.
+	fn under(mut self, group: &'static str) -> Row {
+		self.group = group;
+		self
+	}
 }
 
 struct Row {
@@ -296,6 +309,7 @@ impl Rdm {
 	}
 
 	/// A row for one of the fields: the field while the sheet is up, its value otherwise.
+	/// A row whose control is a text field, in a group of its own choosing.
 	fn field_row(&self, section: Section, key: &'static str) -> Row {
 		let (_, _, note) = FIELDS.iter().find(|(k, _, _)| *k == key).copied().unwrap_or((key, "", ""));
 		let control = match self.settings.as_ref().and_then(|s| s.fields.get(key)) {
@@ -411,6 +425,32 @@ impl Rdm {
 					set: Rdm::set_hide_junk,
 				},
 			},
+			Row {
+				section: Section::Network,
+				group: "Proxy",
+				label: "Where the proxy comes from",
+				note: "The address a proxy listens on is its choice, so the machine is asked.",
+				control: Control::Choice {
+					options: crate::proxy::Source::ALL.iter().map(|s| s.name()).collect(),
+					chosen: crate::proxy::Source::ALL
+						.iter()
+						.position(|s| *s == self.preferences.proxy_source)
+						.unwrap_or(0),
+					set: |this, index, cx| this.set_proxy_source(crate::proxy::Source::ALL[index], cx),
+				},
+			},
+			self.field_row(Section::Network, "Proxy").under("Proxy"),
+			Row {
+				section: Section::Network,
+				group: "Proxy",
+				label: "In use",
+				note: "What every download goes through.",
+				control: Control::Action {
+					word: "Look again",
+					note: self.proxy_status(),
+					run: |this, cx| this.look_for_proxy(cx),
+				},
+			},
 			self.field_row(Section::Transfers, "Concurrent downloads"),
 			self.field_row(Section::Transfers, "Speed limit"),
 			self.field_row(Section::Transfers, "Connections"),
@@ -441,7 +481,6 @@ impl Rdm {
 				},
 			},
 			self.field_row(Section::Transfers, "User agent"),
-			self.field_row(Section::Transfers, "Proxy"),
 			self.field_row(Section::Transfers, "Headers"),
 			self.field_row(Section::Transfers, "Redirects"),
 			Row {

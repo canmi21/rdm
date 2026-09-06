@@ -233,3 +233,25 @@ this misses -- links built by script -- no parser would find either. At most two
 the page are read. The answer, or the failure's message, arrives on a channel the window polls
 like the events, so the check never holds the window. The window uses it to say "this is a
 page" before saving one, and to offer the files behind it instead; see [ui.md](ui.md).
+
+## The proxy is looked for before it is asked for
+
+The machines this runs on usually have a proxy on them, and it is usually one of a handful of
+programs on one of a handful of ports. The address a proxy listens on is the program's choice --
+mihomo picked 7890, not the user -- so asking somebody to type it is asking them to know
+something about their own machine that the machine can be asked instead. `Whatever is running`
+is the default: a socket is opened to each known address in turn and the first that answers is
+the one every download goes through; nothing answering is the same as no proxy at all.
+
+`src/proxy.rs` holds the list, in the order it is tried: mihomo and Clash's mixed port on its old
+and new defaults, Clash's separate SOCKS port, V2Ray and sing-box as their templates ship them,
+the address a SOCKS proxy has had since before any of them, and Privoxy. Only loopback addresses
+are probed, and a connection opening is all that is asked -- speaking the protocol to find out
+whether it is really a proxy would mean sending a request through a program the user has not
+agreed to send anything through. What is found is shown in Settings and can be overruled by an
+address typed there, or turned off entirely.
+
+The look runs off the window's thread, at launch and whenever it is asked for. Seven connections
+at a tenth of a second each is most of a second in the worst case, which is nothing on a
+background thread and a visible stall on the main one. What it found is not written to
+`config.json`: it is a fact about the machine now rather than a choice somebody made.

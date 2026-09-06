@@ -153,6 +153,7 @@ impl Rdm {
 		if changed {
 			cx.notify();
 		}
+		self.poll_proxy_look(cx);
 		self.expire_notices(cx);
 		self.poll_add(cx);
 	}
@@ -308,7 +309,7 @@ impl Rdm {
 		request.mirrors = download.mirrors.iter().filter_map(|m| reqwest::Url::parse(m).ok()).collect();
 		request.range =
 			download.range.as_deref().and_then(|r| crate::download::parse_range(r).ok().flatten());
-		request.settings = self.preferences.engine_settings();
+		request.settings = self.preferences.engine_settings(self.proxy_in_use().as_deref());
 		request.settings.connections = connections_for(download.connections);
 		request.settings.speed_limit = download.speed_limit;
 		let checksum = download.checksum.as_deref().and_then(engine::Checksum::parse);

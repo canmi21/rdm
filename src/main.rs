@@ -15,6 +15,7 @@ mod engine;
 mod identity;
 mod index;
 mod notify;
+mod proxy;
 mod reveal;
 mod state;
 mod thumbnail;
