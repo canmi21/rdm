@@ -510,17 +510,52 @@ fn word_button(
 		.child(word)
 }
 
-/// Tells the system. Failing to is nothing to report: the card is still there when the window
-/// is.
+/// Tells the system, and brings the window to the front when the notification is pressed:
+/// the card is there, saying what to do next. On macOS the notification is delivered on the
+/// application's behalf and the system activates the application on a press by itself; on
+/// Linux the notification carries a default action and is waited on for it; on Windows a
+/// press does nothing beyond closing the toast, since activation there needs an application
+/// registered with the shell, which a plain executable is not. Failing to notify is nothing
+/// to report: the card is still there when the window is.
 fn notify(body: &str, cx: &mut Context<Rdm>) {
 	let body = body.to_owned();
-	cx.background_executor()
-		.spawn(async move {
-			// macOS delivers a notification only on behalf of an installed bundle; a binary
-			// run from the build tree has none, and the call fails quietly.
-			#[cfg(target_os = "macos")]
-			let _ = notify_rust::set_application(identity::BUNDLE_ID);
-			let _ = notify_rust::Notification::new().summary(identity::DISPLAY_NAME).body(&body).show();
-		})
-		.detach();
+	cx.spawn(async move |this, cx| {
+		let pressed = cx
+			.background_executor()
+			.spawn(async move {
+				// macOS delivers a notification only on behalf of an installed bundle; a
+				// binary run from the build tree has none, and the call fails quietly.
+				#[cfg(target_os = "macos")]
+				let _ = notify_rust::set_application(identity::BUNDLE_ID);
+				let mut notification = notify_rust::Notification::new();
+				notification.summary(identity::DISPLAY_NAME).body(&body);
+				#[cfg(target_os = "linux")]
+				{
+					notification.action("default", "Open");
+					match notification.show() {
+						Ok(handle) => {
+							let mut pressed = false;
+							handle.wait_for_action(|action| pressed = action == "default");
+							pressed
+						}
+						Err(_) => false,
+					}
+				}
+				#[cfg(not(target_os = "linux"))]
+				{
+					let _ = notification.show();
+					false
+				}
+			})
+			.await;
+		if pressed {
+			let _ = this.update(cx, |_, cx| cx.activate(true));
+			cx.update(|cx| {
+				for handle in cx.windows() {
+					let _ = handle.update(cx, |_, window, _| window.activate_window());
+				}
+			});
+		}
+	})
+	.detach();
 }
