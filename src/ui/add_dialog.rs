@@ -32,6 +32,15 @@ pub struct AddSheet {
 	pub found: Option<Found>,
 	pub auto: bool,
 	pub count: Entity<TextInput>,
+	/// The rest of what can be asked for, behind More: the name to save under, the folder,
+	/// other addresses of the same file, a checksum, a range and a limit of its own.
+	pub more: bool,
+	pub name: Entity<TextInput>,
+	pub folder: Option<std::path::PathBuf>,
+	pub mirrors: Entity<TextInput>,
+	pub checksum: Entity<TextInput>,
+	pub range: Entity<TextInput>,
+	pub limit: Entity<TextInput>,
 	pub error: Option<String>,
 }
 
@@ -109,6 +118,22 @@ impl Rdm {
 					count
 				});
 				cx.observe(&count, |_, _, cx| cx.notify()).detach();
+				let mut field = |placeholder: &'static str| {
+					let confirm = cx.entity();
+					let field = cx.new(|cx| {
+						TextInput::new(placeholder, cx)
+							.on_confirm(move |_, _, cx| confirm.update(cx, |this, cx| this.submit_add(cx)))
+					});
+					cx.observe(&field, |_, _, cx| cx.notify()).detach();
+					field
+				};
+				let (name, mirrors, checksum, range, limit) = (
+					field("As the server names it"),
+					field("Other addresses of the same file, apart by spaces"),
+					field("sha256, sha512 or md5 hex; the length says which"),
+					field("start-end, in bytes"),
+					field("Off"),
+				);
 				self.adding = Some(AddSheet {
 					input: input.clone(),
 					checking: None,
@@ -116,6 +141,13 @@ impl Rdm {
 					found: None,
 					auto: self.preferences.connections.is_none(),
 					count,
+					more: false,
+					name,
+					folder: None,
+					mirrors,
+					checksum,
+					range,
+					limit,
 					error: None,
 				});
 				input
@@ -168,8 +200,22 @@ impl Rdm {
 					}
 				}
 			};
-			let (url, name) = (found.url.clone(), found.probe.file_name.clone());
-			self.add_request(url, Some(name), None, connections, cx);
+			let asked = match self.asked(connections, cx) {
+				Ok(asked) => asked,
+				Err(message) => {
+					if let Some(sheet) = &mut self.adding {
+						sheet.error = Some(message);
+					}
+					cx.notify();
+					return;
+				}
+			};
+			let Some(sheet) = &self.adding else { return };
+			let Some(found) = &sheet.found else { return };
+			let typed = sheet.name.read(cx).content.trim().to_owned();
+			let name = if typed.is_empty() { found.probe.file_name.clone() } else { typed };
+			let url = found.url.clone();
+			self.add_request(url, Some(name), None, asked, cx);
 			self.close_add(cx);
 			return;
 		}
@@ -187,6 +233,88 @@ impl Rdm {
 		sheet.found = None;
 		sheet.checking = Some((url.clone(), self.engine.inspect(url)));
 		cx.notify();
+	}
+
+	/// What the sheet's fields ask for, read and checked: each empty when it was left so.
+	fn asked(
+		&self,
+		connections: Option<u16>,
+		cx: &Context<Self>,
+	) -> Result<crate::app::Asked, String> {
+		let Some(sheet) = &self.adding else { return Ok(crate::app::Asked::default()) };
+		let text = |field: &Entity<TextInput>| field.read(cx).content.trim().to_owned();
+		let mirrors: Vec<String> = text(&sheet.mirrors).split_whitespace().map(str::to_owned).collect();
+		for mirror in &mirrors {
+			if parse_address(mirror).is_none() {
+				return Err(format!("{mirror} is not a web address."));
+			}
+		}
+		let checksum = text(&sheet.checksum);
+		let checksum = if checksum.is_empty() {
+			None
+		} else {
+			crate::engine::Checksum::parse(&checksum)
+				.map(|_| checksum)
+				.ok_or_else(|| {
+					"A checksum is sha256, sha512 or md5 hex, its length saying which.".to_owned()
+				})
+				.map(Some)?
+		};
+		let range = text(&sheet.range);
+		let range = if range.is_empty() {
+			None
+		} else {
+			crate::download::parse_range(&range)?;
+			Some(range)
+		};
+		let speed_limit = crate::download::parse_rate(&text(&sheet.limit))?;
+		Ok(crate::app::Asked {
+			connections,
+			directory: sheet.folder.as_ref().map(|p| p.display().to_string()),
+			mirrors,
+			checksum,
+			range,
+			speed_limit,
+		})
+	}
+
+	/// More, or less: the rest of the fields, shown or put away.
+	pub(crate) fn toggle_add_more(&mut self, cx: &mut Context<Self>) {
+		if let Some(sheet) = &mut self.adding {
+			sheet.more = !sheet.more;
+			cx.notify();
+		}
+	}
+
+	/// The system's folder picker, for where the file goes; nothing chosen leaves the download
+	/// folder.
+	pub(crate) fn choose_add_folder(&mut self, cx: &mut Context<Self>) {
+		let receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
+			files: false,
+			directories: true,
+			multiple: false,
+			prompt: Some("Save here".into()),
+		});
+		cx.spawn(async move |this, cx| {
+			if let Ok(Ok(Some(paths))) = receiver.await
+				&& let Some(path) = paths.into_iter().next()
+			{
+				let _ = this.update(cx, |this, cx| {
+					if let Some(sheet) = &mut this.adding {
+						sheet.folder = Some(path);
+						cx.notify();
+					}
+				});
+			}
+		})
+		.detach();
+	}
+
+	pub(crate) fn clear_add_folder(&mut self, cx: &mut Context<Self>) {
+		if let Some(sheet) = &mut self.adding {
+			sheet.folder = None;
+			cx.notify();
+		}
 	}
 
 	/// The engine's judgement, or the number in the field.
@@ -222,8 +350,9 @@ impl Rdm {
 	fn add_page_anyway(&mut self, cx: &mut Context<Self>) {
 		let Some(page) = self.adding.as_ref().and_then(|s| s.page.as_ref()) else { return };
 		let url = page.url.clone();
-		let connections = self.preferences.connections;
-		self.add_request(url, None, None, connections, cx);
+		let asked =
+			crate::app::Asked { connections: self.preferences.connections, ..Default::default() };
+		self.add_request(url, None, None, asked, cx);
 		self.close_add(cx);
 	}
 
@@ -236,8 +365,9 @@ impl Rdm {
 		}
 		let source = page.url.to_string();
 		page.added.push(index);
-		let connections = self.preferences.connections;
-		self.add_request(link.url, Some(link.name), Some(source), connections, cx);
+		let asked =
+			crate::app::Asked { connections: self.preferences.connections, ..Default::default() };
+		self.add_request(link.url, Some(link.name), Some(source), asked, cx);
 	}
 
 	/// Drawn over everything from the window root; a click outside the sheet closes it.
@@ -389,6 +519,85 @@ impl Rdm {
 						}),
 				)
 			})
+			.child(
+				div()
+					.id("add-more")
+					.role(gpui::Role::Button)
+					.aria_label(if sheet.more { "Less" } else { "More" })
+					.debug_selector(|| "button:More".to_owned())
+					.text_xs()
+					.text_color(p.muted)
+					.cursor_pointer()
+					.hover(move |s| s.text_color(p.text))
+					.on_click(cx.listener(|this, _, _, cx| this.toggle_add_more(cx)))
+					.child(if sheet.more { "Less" } else { "More" }),
+			)
+			.when(sheet.more, |s| s.child(self.more_fields(sheet, cx)))
+	}
+
+	/// The rest of what can be asked for, one labelled field each, and the folder as a word
+	/// that opens the system's picker.
+	fn more_fields(&self, sheet: &AddSheet, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let row = |label: &'static str, field: gpui::AnyElement| {
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.text_xs()
+				.child(div().w(px(72.0)).flex_none().text_color(p.muted).child(label))
+				.child(div().flex_1().min_w_0().child(field))
+		};
+		let folder = sheet
+			.folder
+			.as_ref()
+			.map(|f| f.display().to_string())
+			.unwrap_or_else(|| "Download folder".to_owned());
+		div()
+			.debug_selector(|| "add-more".to_owned())
+			.flex()
+			.flex_col()
+			.gap_1p5()
+			.pt_1()
+			.child(row("Save as", sheet.name.clone().into_any_element()))
+			.child(row(
+				"Folder",
+				div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(div().min_w_0().truncate().text_color(p.muted).child(folder))
+					.child(
+						div()
+							.id("add-folder")
+							.role(gpui::Role::Button)
+							.aria_label("Choose folder")
+							.debug_selector(|| "button:Choose folder".to_owned())
+							.flex_none()
+							.text_color(p.accent)
+							.cursor_pointer()
+							.on_click(cx.listener(|this, _, _, cx| this.choose_add_folder(cx)))
+							.child("Choose"),
+					)
+					.when(sheet.folder.is_some(), |s| {
+						s.child(
+							div()
+								.id("add-folder-clear")
+								.role(gpui::Role::Button)
+								.aria_label("Download folder")
+								.flex_none()
+								.text_color(p.muted)
+								.cursor_pointer()
+								.on_click(cx.listener(|this, _, _, cx| this.clear_add_folder(cx)))
+								.child("Reset"),
+						)
+					})
+					.into_any_element(),
+			))
+			.child(row("Mirrors", sheet.mirrors.clone().into_any_element()))
+			.child(row("Checksum", sheet.checksum.clone().into_any_element()))
+			.child(row("Range", sheet.range.clone().into_any_element()))
+			.child(row("Speed limit", sheet.limit.clone().into_any_element()))
 	}
 
 	/// The address is a page: say so, offer the files it links to, and let the page itself be

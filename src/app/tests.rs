@@ -928,12 +928,35 @@ fn a_file_is_shown_before_it_is_added_and_the_connections_are_chosen_there(
 	click(&mut cx, "button:Add");
 	assert!(cx.debug_bounds("add-error").is_some(), "999 is more than the most");
 	cx.update(|_, cx| count.update(cx, |i, cx| i.set_content("8", cx)));
+	// More: the rest of what can be asked, each checked before anything is added.
+	click(&mut cx, "button:More");
+	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
+	let (name, mirrors, checksum, range, limit) = rdm.read_with(&cx, |rdm, _| {
+		let s = rdm.adding.as_ref().unwrap();
+		(s.name.clone(), s.mirrors.clone(), s.checksum.clone(), s.range.clone(), s.limit.clone())
+	});
+	cx.update(|_, cx| checksum.update(cx, |i, cx| i.set_content("not-a-hash", cx)));
+	click(&mut cx, "button:Add");
+	assert!(cx.debug_bounds("add-error").is_some(), "a checksum that is none is refused");
+	let mirror = server.url("/mirror.bin").to_string();
+	cx.update(|_, cx| {
+		name.update(cx, |i, cx| i.set_content("renamed.bin", cx));
+		mirrors.update(cx, |i, cx| i.set_content(&mirror, cx));
+		checksum.update(cx, |i, cx| i.set_content("d41d8cd98f00b204e9800998ecf8427e", cx));
+		range.update(cx, |i, cx| i.set_content("0-1000", cx));
+		limit.update(cx, |i, cx| i.set_content("500", cx));
+	});
 	click(&mut cx, "button:Add");
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(rdm.adding.is_none(), "added and closed");
 		let row = rdm.downloads.iter().find(|d| d.url == address).expect("the download");
 		assert_eq!(row.connections, Some(8));
+		assert_eq!(row.name, "renamed.bin");
+		assert_eq!(row.mirrors, vec![mirror.clone()]);
+		assert_eq!(row.checksum.as_deref(), Some("d41d8cd98f00b204e9800998ecf8427e"));
+		assert_eq!(row.range.as_deref(), Some("0-1000"));
+		assert_eq!(row.speed_limit, Some(500 * 1024));
 	});
 }
 

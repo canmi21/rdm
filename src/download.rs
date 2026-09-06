@@ -80,6 +80,41 @@ pub struct Download {
 	pub error: Option<String>,
 	/// How many connections were asked for at Add Task; None is the engine's own judgement.
 	pub connections: Option<u16>,
+	/// The rest of what Add Task can ask for, each empty when it was not: where the file goes
+	/// instead of the download folder, other addresses of the same file, a checksum the result
+	/// must match, the part of the file wanted as `start-end`, and a limit of its own.
+	pub directory: Option<String>,
+	pub mirrors: Vec<String>,
+	pub checksum: Option<String>,
+	pub range: Option<String>,
+	pub speed_limit: Option<u64>,
+}
+
+/// A part of a file as a person writes it, `start-end` in bytes with either side optional,
+/// `1000-` to the end and `-1000` for the first thousand; empty is the whole file. Read back
+/// out of the row as written, so what it means is the engine's `range`.
+pub fn parse_range(text: &str) -> Result<Option<(u64, Option<u64>)>, String> {
+	let text = text.trim().replace(' ', "");
+	if text.is_empty() {
+		return Ok(None);
+	}
+	let Some((start, end)) = text.split_once('-') else {
+		return Err("A range is start-end, in bytes.".to_owned());
+	};
+	let start = if start.is_empty() {
+		0
+	} else {
+		start.parse().map_err(|_| "A range is start-end, in bytes.".to_owned())?
+	};
+	let end = if end.is_empty() {
+		None
+	} else {
+		Some(end.parse().map_err(|_| "A range is start-end, in bytes.".to_owned())?)
+	};
+	if end.is_some_and(|e| e <= start) {
+		return Err("A range ends after it starts.".to_owned());
+	}
+	Ok(Some((start, end)))
 }
 
 impl Download {
@@ -263,6 +298,11 @@ pub fn sample() -> Vec<Download> {
 		path: None,
 		error: None,
 		connections: None,
+		directory: None,
+		mirrors: Vec::new(),
+		checksum: None,
+		range: None,
+		speed_limit: None,
 	};
 	vec![
 		entry(
@@ -368,5 +408,10 @@ mod tests {
 		assert_eq!(parse_size(""), Ok(None));
 		assert_eq!(parse_number(" 12 "), Ok(Some(12)));
 		assert!(parse_number("twelve").is_err());
+		assert_eq!(parse_range("1000-2000"), Ok(Some((1000, Some(2000)))));
+		assert_eq!(parse_range("1000-"), Ok(Some((1000, None))));
+		assert_eq!(parse_range("-500"), Ok(Some((0, Some(500)))));
+		assert_eq!(parse_range(""), Ok(None));
+		assert!(parse_range("9-3").is_err() && parse_range("abc").is_err());
 	}
 }

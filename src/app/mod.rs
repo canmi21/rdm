@@ -27,6 +27,7 @@ mod categories;
 #[cfg(test)]
 mod tests;
 mod transfers;
+pub(crate) use transfers::Asked;
 mod updates;
 
 /// How the list is drawn. Detailed is the default because it is the one that shows progress,
@@ -483,7 +484,7 @@ impl Rdm {
 		// reads this entity, which is still being updated by the click that got us here.
 		let rdm = cx.entity();
 		cx.defer(move |cx| {
-			let options = child_window(cx, "Download", size(px(440.0), px(230.0)));
+			let options = child_window(cx, "Download", size(px(480.0), px(360.0)));
 			let view = rdm.clone();
 			if let Ok(handle) =
 				cx.open_window(options, |_, cx| cx.new(|cx| DownloadWindow::new(view, id, cx)))

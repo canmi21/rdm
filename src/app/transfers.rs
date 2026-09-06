@@ -7,6 +7,17 @@ use crate::app::Rdm;
 use crate::download::{Download, Status};
 use crate::engine::{self, Event, TaskId};
 
+/// What Add Task asks for beyond the address, each empty when it did not.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Asked {
+	pub connections: Option<u16>,
+	pub directory: Option<String>,
+	pub mirrors: Vec<String>,
+	pub checksum: Option<String>,
+	pub range: Option<String>,
+	pub speed_limit: Option<u64>,
+}
+
 /// The engine's shape for what a row asked: its own judgement, or exactly this many.
 pub(crate) fn connections_for(asked: Option<u16>) -> engine::Connections {
 	match asked {
@@ -64,6 +75,11 @@ impl Rdm {
 				path: None,
 				error: None,
 				connections: None,
+				directory: None,
+				mirrors: Vec::new(),
+				checksum: None,
+				range: None,
+				speed_limit: None,
 			});
 			self.persist(id);
 			added = true;
@@ -170,8 +186,50 @@ impl Rdm {
 	/// for the control socket. What is not an address is dropped.
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
 		if let Some(parsed) = crate::ui::add_dialog::parse_address(url) {
-			self.add_request(parsed, None, None, self.preferences.connections, cx);
+			let asked = Asked { connections: self.preferences.connections, ..Asked::default() };
+			self.add_request(parsed, None, None, asked, cx);
 		}
+	}
+
+	/// The engine's request for a row, from what the row asked: the folder or the download
+	/// folder, the name, the mirrors that still parse, the range, the engine's defaults with
+	/// the row's connections and limit over them. The checksum rides beside it.
+	fn request_for(
+		&self,
+		download: &Download,
+	) -> Option<(engine::Request, Option<engine::Checksum>)> {
+		let url = reqwest::Url::parse(&download.url).ok()?;
+		let directory = download
+			.directory
+			.as_ref()
+			.map(std::path::PathBuf::from)
+			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))
+			.unwrap_or_else(|| std::path::PathBuf::from("."));
+		let mut request = engine::Request::new(url, directory);
+		request.file_name = Some(download.name.clone());
+		request.mirrors = download.mirrors.iter().filter_map(|m| reqwest::Url::parse(m).ok()).collect();
+		request.range =
+			download.range.as_deref().and_then(|r| crate::download::parse_range(r).ok().flatten());
+		request.settings = self.preferences.engine_settings();
+		request.settings.connections = connections_for(download.connections);
+		request.settings.speed_limit = download.speed_limit;
+		let checksum = download.checksum.as_deref().and_then(engine::Checksum::parse);
+		Some((request, checksum))
+	}
+
+	/// A running download's own limit, changed live and kept.
+	pub(crate) fn set_task_speed_limit(
+		&mut self,
+		id: u64,
+		limit: Option<u64>,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
+			download.speed_limit = limit;
+		}
+		self.engine.set_task_speed_limit(TaskId(id), limit);
+		self.persist(id);
+		cx.notify();
 	}
 
 	/// A new download, handed to the engine and shown at once under `name` or the address's
@@ -183,24 +241,15 @@ impl Rdm {
 		url: reqwest::Url,
 		name: Option<String>,
 		source: Option<String>,
-		connections: Option<u16>,
+		asked: Asked,
 		cx: &mut Context<Self>,
 	) {
-		let directory = self
-			.paths
-			.as_ref()
-			.map(|p| p.downloads.clone())
-			.unwrap_or_else(|| std::path::PathBuf::from("."));
 		let id = self
 			.store
 			.as_ref()
 			.and_then(|s| s.next_id().ok())
 			.unwrap_or(0)
 			.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
-		let mut request = engine::Request::new(url.clone(), directory);
-		request.settings = self.preferences.engine_settings();
-		request.settings.connections = connections_for(connections);
-		self.engine.add_with_id(TaskId(id), request, None);
 		let name = name.unwrap_or_else(|| {
 			url
 				.path_segments()
@@ -221,8 +270,16 @@ impl Rdm {
 			source,
 			path: None,
 			error: None,
-			connections,
+			connections: asked.connections,
+			directory: asked.directory,
+			mirrors: asked.mirrors,
+			checksum: asked.checksum,
+			range: asked.range,
+			speed_limit: asked.speed_limit,
 		});
+		if let Some((request, checksum)) = self.downloads.last().and_then(|d| self.request_for(d)) {
+			self.engine.add_with_id(TaskId(id), request, checksum);
+		}
 		self.persist(id);
 		self.selected = Some(id);
 		cx.notify();
@@ -259,28 +316,17 @@ impl Rdm {
 	}
 
 	pub(crate) fn resume(&mut self, id: u64, cx: &mut Context<Self>) {
-		let directory = self
-			.paths
-			.as_ref()
-			.map(|p| p.downloads.clone())
-			.unwrap_or_else(|| std::path::PathBuf::from("."));
-		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
-			download.status = Status::Queued;
-			download.error = None;
-			// A row from an earlier run is not in the engine yet; it is queued afresh and the
-			// engine picks up the plan beside its partial file.
-			if self.engine.contains(TaskId(id)) {
-				self.engine.resume(TaskId(id));
-			} else if let Ok(url) = reqwest::Url::parse(&download.url) {
-				let mut request = engine::Request::new(url, directory);
-				request.file_name = Some(download.name.clone());
-				request.settings = self.preferences.engine_settings();
-				request.settings.connections = connections_for(download.connections);
-				self.engine.add_with_id(TaskId(id), request, None);
-			}
-			self.persist(id);
-			cx.notify();
+		let Some(index) = self.downloads.iter().position(|d| d.id == id) else { return };
+		self.downloads[index].status = Status::Queued;
+		self.downloads[index].error = None;
+		let row = self.downloads[index].clone();
+		if self.engine.contains(TaskId(id)) {
+			self.engine.resume(TaskId(id));
+		} else if let Some((request, checksum)) = self.request_for(&row) {
+			self.engine.add_with_id(TaskId(id), request, checksum);
 		}
+		self.persist(id);
+		cx.notify();
 	}
 
 	/// The row goes, and with it a partial file and its plan; a finished file stays where it

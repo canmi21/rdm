@@ -140,7 +140,11 @@ the first byte is a server ignoring ranges, and harmless for that segment alone.
 
 ## Connections grow one at a time, and each failure is retried on its own
 
-A download asks for connections in one of two shapes, `Connections::auto` or
+Every setting here reaches the window: the ones that hold for every download are the
+Transfers section of Settings, kept in `config.json` and written over the engine's defaults
+for each new request, and the ones a download can have of its own -- the connections, the
+folder, the name, the mirrors, the checksum, the range and a limit -- are Add Task's, kept on
+the row. A download asks for connections in one of two shapes, `Connections::auto` or
 `Connections::fixed(n)`, and never more than `Connections::MAX`, 256, whatever it asks. In
 automatic mode a download starts with `min` connections and is allowed one more each time a
 connection delivers its first byte, up to `max`: a server that accepts the first is asked for a

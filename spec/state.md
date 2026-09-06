@@ -26,9 +26,11 @@ Three files, because three kinds of writing:
   and then renamed over the old file, so a crash mid-write leaves the previous state rather than
   half of the new one. It is written on change and not at quit, because a forced quit gives no
   moment to write in, and losing a drag's worth of change is the most that can be lost.
-- **`internal.sqlite`** holds the downloads, one row each, at schema version 2: version 1's
-  columns and `connections`, how many a row asked for at Add Task, NULL for the engine's own;
-  a version 1 file gains the column on open. See [engine.md](engine.md) and the store.
+- **`internal.sqlite`** holds the downloads, one row each, at schema version 3: version 1's
+  columns, `connections` from version 2, and from version 3 `directory`, `mirrors` as a JSON
+  list, `checksum`, `range` as written and `speed_limit`, everything Add Task can ask for, NULL
+  where it did not; an older file gains the columns on open. See [engine.md](engine.md) and
+  the store.
 - **`config.json`**, in the platform's *configuration* directory rather than its state directory,
   is the user's: the categories, and the switches the settings sheet offers, each with a default
   so a file from before a switch reads as if it had been left alone. It is seeded with the built-in

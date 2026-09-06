@@ -14,7 +14,7 @@ use crate::download::{Download, Status};
 
 /// The schema's version, in SQLite's `user_version`. Bumped only when a database written before
 /// can no longer be read as it is; the same rule as state.json's.
-pub const VERSION: i64 = 2;
+pub const VERSION: i64 = 3;
 
 pub struct Store {
 	connection: Connection,
@@ -46,7 +46,12 @@ impl Store {
 					added TEXT NOT NULL,
 					path TEXT,
 					error TEXT,
-					connections INTEGER
+					connections INTEGER,
+					directory TEXT,
+					mirrors TEXT,
+					checksum TEXT,
+					range TEXT,
+					speed_limit INTEGER
 				);",
 			)?;
 			connection.pragma_update(None, "user_version", VERSION)?;
@@ -57,13 +62,25 @@ impl Store {
 			connection.execute_batch("ALTER TABLE downloads ADD COLUMN connections INTEGER;")?;
 			connection.pragma_update(None, "user_version", 2)?;
 		}
+		if version <= 2 && version != 0 {
+			// The rest of what Add Task can ask for; mirrors as a JSON list of addresses.
+			connection.execute_batch(
+				"ALTER TABLE downloads ADD COLUMN directory TEXT;
+				 ALTER TABLE downloads ADD COLUMN mirrors TEXT;
+				 ALTER TABLE downloads ADD COLUMN checksum TEXT;
+				 ALTER TABLE downloads ADD COLUMN range TEXT;
+				 ALTER TABLE downloads ADD COLUMN speed_limit INTEGER;",
+			)?;
+			connection.pragma_update(None, "user_version", 3)?;
+		}
 		Ok(Store { connection })
 	}
 
 	/// Every row, oldest first.
 	pub fn load(&self) -> Result<Vec<Download>> {
 		let mut statement = self.connection.prepare(
-			"SELECT id, name, url, source, size, received, status, added, path, error, connections
+			"SELECT id, name, url, source, size, received, status, added, path, error, connections,
+			        directory, mirrors, checksum, range, speed_limit
 			 FROM downloads ORDER BY id",
 		)?;
 		let rows = statement.query_map([], |row| {
@@ -84,6 +101,14 @@ impl Store {
 				path: row.get(8)?,
 				error: row.get(9)?,
 				connections: row.get::<_, Option<i64>>(10)?.map(|n| n as u16),
+				directory: row.get(11)?,
+				mirrors: row
+					.get::<_, Option<String>>(12)?
+					.and_then(|text| serde_json::from_str(&text).ok())
+					.unwrap_or_default(),
+				checksum: row.get(13)?,
+				range: row.get(14)?,
+				speed_limit: row.get::<_, Option<i64>>(15)?.map(|n| n as u64),
 			})
 		})?;
 		rows.map(|r| r.context("read a download")).collect()
@@ -92,13 +117,16 @@ impl Store {
 	/// Writes the row, new or changed. Speed is not kept: it is a number about now.
 	pub fn save(&self, download: &Download) -> Result<()> {
 		self.connection.execute(
-			"INSERT INTO downloads (id, name, url, source, size, received, status, added, path, error, connections)
-			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+			"INSERT INTO downloads (id, name, url, source, size, received, status, added, path, error, connections,
+			                        directory, mirrors, checksum, range, speed_limit)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
 			 ON CONFLICT(id) DO UPDATE SET
 				name = excluded.name, url = excluded.url, source = excluded.source,
 				size = excluded.size, received = excluded.received, status = excluded.status,
 				added = excluded.added, path = excluded.path, error = excluded.error,
-				connections = excluded.connections",
+				connections = excluded.connections, directory = excluded.directory,
+				mirrors = excluded.mirrors, checksum = excluded.checksum, range = excluded.range,
+				speed_limit = excluded.speed_limit",
 			params![
 				download.id as i64,
 				download.name,
@@ -111,6 +139,11 @@ impl Store {
 				download.path,
 				download.error,
 				download.connections.map(|n| n as i64),
+				download.directory,
+				(!download.mirrors.is_empty()).then(|| serde_json::to_string(&download.mirrors).unwrap_or_default()),
+				download.checksum,
+				download.range,
+				download.speed_limit.map(|n| n as i64),
 			],
 		)?;
 		Ok(())
@@ -152,6 +185,11 @@ mod tests {
 			path: None,
 			error: None,
 			connections: Some(8),
+			directory: None,
+			mirrors: vec!["https://m/file.bin".into()],
+			checksum: Some("md5:d41d8cd98f00b204e9800998ecf8427e".into()),
+			range: Some("100-".into()),
+			speed_limit: Some(4096),
 		}
 	}
 
@@ -201,7 +239,9 @@ mod tests {
 		let rows = store.load().unwrap();
 		assert_eq!((rows.len(), rows[0].connections), (1, None));
 		store.save(&row(2, Status::Queued)).unwrap();
-		assert_eq!(store.load().unwrap()[1].connections, Some(8));
+		let kept = &store.load().unwrap()[1];
+		assert_eq!((kept.connections, kept.speed_limit), (Some(8), Some(4096)));
+		assert_eq!((kept.mirrors.len(), kept.range.as_deref()), (1, Some("100-")));
 		let version: i64 =
 			store.connection.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
 		assert_eq!(version, VERSION);
