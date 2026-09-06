@@ -339,7 +339,18 @@ impl Rdm {
 			}
 			Ok(inspection) => {
 				// A file: say what it is and what can be done with it, and wait for the second step.
+				// The name it will be saved under is filled in from what the look turned up, so
+				// the user is changing a name rather than being asked to invent one -- the field
+				// was empty before, and an empty field beside a resolved address reads as though
+				// nothing was resolved.
+				let name = inspection.probe.file_name.clone();
 				sheet.found = Some(Found { url, probe: inspection.probe });
+				let field = sheet.name.clone();
+				field.update(cx, |input, cx| {
+					if input.content.to_string().trim().is_empty() {
+						input.set_content(&name, cx);
+					}
+				});
 			}
 			Err(message) => sheet.error = Some(message),
 		}
@@ -499,6 +510,19 @@ impl Rdm {
 					.child(div().flex_none().text_color(p.muted).child(size)),
 			)
 			.child(div().text_xs().text_color(p.muted).child(capability))
+			// The name it will be saved under, on the face rather than behind More: it is filled
+			// in from what the look turned up, and a name somebody may want to change is not a
+			// thing to hide behind a word. Everything else behind More is a thing most people
+			// never touch; this is not.
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.text_xs()
+					.child(div().flex_none().text_color(p.muted).child("Save as"))
+					.child(div().flex_1().min_w_0().child(sheet.name.clone())),
+			)
 			.when(probe.ranges, |s| {
 				s.child(
 					div()
@@ -559,7 +583,6 @@ impl Rdm {
 			.flex_col()
 			.gap_1p5()
 			.pt_1()
-			.child(row("Save as", sheet.name.clone().into_any_element()))
 			.child(row(
 				"Folder",
 				div()

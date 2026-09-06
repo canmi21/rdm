@@ -74,8 +74,20 @@ impl Render for DownloadWindow {
 		let resume = rdm.clone();
 		let remove = rdm.clone();
 		// The name is the window's title; the body starts with what the title cannot hold.
+		// Where it came from, which is the first thing anybody opening this window wants. A row
+		// with no address was not downloaded here: it is a file the folder already held, and
+		// saying so is better than showing an empty line.
+		let came_from = if download.url.is_empty() {
+			"Already in the download folder".to_owned()
+		} else {
+			download.url.clone()
+		};
 		frame
-			.child(field(p.muted, "URL", download.url.clone()))
+			.child(field(p.muted, "From", came_from))
+			.when_some(download.source.clone(), |s, page| {
+				// The page it was found on, where it was found on one rather than typed in.
+				s.child(field(p.muted, "Found on", page))
+			})
 			.child(field(p.muted, "Size", format_bytes(download.size)))
 			.child(field(
 				p.muted,

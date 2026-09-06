@@ -245,6 +245,18 @@ will take every point it is given, and a control clipped to nothing cannot be pr
 learned the hard way -- the switches stopped answering, and a row with a long path in it grew to
 fifteen hundred points because the note beside it was left a character wide.
 
+**A resolved address fills in the name it will be saved under.** Add Task looks at an address
+before anything is fetched -- what it is, how big, whether it can be split -- and the name the
+server gave it, or the address's last segment, is written into `Save as` on the face rather than
+behind `More`. An empty field beside a resolved address reads as though nothing was resolved, and
+a name somebody may want to change is not a thing to hide behind a word; everything else behind
+`More` is something most people never touch, and this is not.
+
+**A download remembers where it came from.** The window a row opens says `From`, which is the
+address it was fetched from, and `Found on` where it came from a page rather than being typed in.
+A row with no address was not downloaded here -- it is a file the folder already held -- and the
+window says so rather than showing an empty line.
+
 **An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
 front", under Appearance and on to start with, is the switch behind the monochrome the palette
 takes when the window is not active; off, the window keeps its colors in front or not, for
