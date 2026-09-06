@@ -27,8 +27,12 @@ license.workspace = true
 repository.workspace = true
 description = "A download manager for macOS."
 
+# The executable is named what the Dock and the window say, so a build run from the tree is
+# the same process name as an installed one. Cargo names a binary once for every system;
+# packaging renames it back to rdm on Linux and to the name in full on Windows. Must equal
+# identity::DISPLAY_NAME, which a test holds. See spec/packaging.md.
 [[bin]]
-name = "rdm"
+name = "Downloads"
 path = "src/main.rs"
 
 [dependencies]

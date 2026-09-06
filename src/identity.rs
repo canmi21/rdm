@@ -54,4 +54,9 @@ mod tests {
 	fn the_bundle_id_is_the_three_words_joined() {
 		assert_eq!(BUNDLE_ID, format!("{QUALIFIER}.{ORGANIZATION}.{APPLICATION}"));
 	}
+
+	#[test]
+	fn the_executable_is_named_what_the_window_is() {
+		assert_eq!(env!("CARGO_BIN_NAME"), DISPLAY_NAME, "Cargo.toml's [[bin]] name");
+	}
 }

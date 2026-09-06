@@ -4,7 +4,7 @@
 Contents/Resources, and an Info.plist naming both. The plist is pkgs/macos/Info.plist with
 its placeholders filled: the version out of Cargo.toml, the build number out of the CI run
 that ordered the build (0 by hand), the bundle identifier and the two names out of src/identity.rs, so each
-has one home. The .app is named in full; the binary inside it stays rdm. See spec/packaging.md.
+has one home. The .app is named in full; the binary inside it is Downloads, as Cargo built it. See spec/packaging.md.
 """
 
 import os
@@ -32,7 +32,7 @@ def main() -> int:
 	name = read(r'^pub const NAME: &str = "([^"]+)";', identity)
 	display_name = read(r'^pub const DISPLAY_NAME: &str = "([^"]+)";', identity)
 	icns = ROOT / "target" / "icon" / "rdm.icns"
-	binary = ROOT / "target" / "release" / NAME
+	binary = ROOT / "target" / "release" / display_name
 	if not icns.is_file():
 		raise SystemExit("error: no icon; `mise run icon` first")
 	if not binary.is_file():
@@ -42,7 +42,7 @@ def main() -> int:
 	contents = app / "Contents"
 	(contents / "MacOS").mkdir(parents=True)
 	(contents / "Resources").mkdir()
-	shutil.copy2(binary, contents / "MacOS" / NAME)
+	shutil.copy2(binary, contents / "MacOS" / display_name)
 	shutil.copy2(icns, contents / "Resources" / f"{NAME}.icns")
 	build = os.environ.get("GITHUB_RUN_NUMBER", "0")
 	template = (ROOT / "pkgs" / "macos" / "Info.plist").read_text()

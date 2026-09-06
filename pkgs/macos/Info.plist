@@ -16,7 +16,7 @@
 	<key>CFBundleVersion</key>
 	<string>{{BUILD}}</string>
 	<key>CFBundleExecutable</key>
-	<string>rdm</string>
+	<string>{{DISPLAY_NAME}}</string>
 	<key>CFBundleIconFile</key>
 	<string>rdm.icns</string>
 	<key>CFBundlePackageType</key>
