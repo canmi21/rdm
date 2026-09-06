@@ -159,6 +159,16 @@ Command on macOS and Control on Windows and Linux, bound once in `text_input.rs`
 field bound to Command alone could not be pasted into anywhere else, which is how it shipped
 first.
 
+**Add Task looks, shows what it found, and asks one thing before it adds.** An address that
+turns out to be a file is not added on the spot: the sheet shows its name and size, whether
+the server serves ranges -- resumable, and splittable across connections -- or not, and,
+when it does, a choice of `Auto` or `Fixed` with a field for the number, one to 256, offered
+as the settings' default. Enter or Add again adds it, and the count travels with the row to
+the engine and into the database, so a resume after a restart opens what was asked for.
+Without ranges there is nothing to choose and the notice says so. A page's links and the page
+itself take the settings' default. `Auto` is the engine's own judgement, in
+[engine.md](engine.md).
+
 **Add Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
 clipboard, and if what is there is under a thousand characters and reads as an address --
 with a scheme, or without one and tried as https -- the field starts with it; anything else
@@ -189,8 +199,12 @@ closes the sheet, like Escape anywhere on a sheet with nothing to lose. Every se
 to exactly one section; a setting with nothing behind it yet is shown as a value that cannot
 be changed, marked `TODO` where it lives, rather than left out and rediscovered later. A row
 can also be a word that does something -- `Check now` under `Latest build` -- with a note
-beside it on how it last went, or a choice of a few words with the chosen one lit -- `When a
-build is found`; like a switch, neither takes the keyboard. A row that only means something
+beside it on how it last went, a choice of a few words with the chosen one lit -- `When a
+build is found` -- or a field applied on Enter with a word on what it takes -- `Speed limit`
+and `Connections` under Transfers, the first in kilobytes a second unless `m` or `g` says
+otherwise and empty for none, the second `Auto` or a number up to 256; what a field says no to
+is said under its row. Like a switch, a word and a choice do not take the keyboard; a field
+does, being a field. A row that only means something
 under another is shown only then: the choice under `Automatic updates` goes when the switch
 is off. See [release.md](release.md) for what the three update rows do.
 

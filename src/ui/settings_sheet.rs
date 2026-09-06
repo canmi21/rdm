@@ -21,6 +21,11 @@ use crate::update::Policy;
 pub struct SettingsSheet {
 	pub section: Section,
 	pub search: Entity<TextInput>,
+	/// The two fields of Transfers: each applies on Enter and reads back what was kept.
+	pub speed: Entity<TextInput>,
+	pub connections: Entity<TextInput>,
+	/// What the last field said no to, under the row.
+	pub complaint: Option<(&'static str, String)>,
 }
 
 /// The sections down the rail, in their order. A setting belongs to exactly one.
@@ -63,6 +68,8 @@ enum Control {
 	Switch { on: bool, set: fn(&mut Rdm, bool, &mut Context<Rdm>) },
 	/// A word that does something when pressed, with a note on how it last went.
 	Action { word: &'static str, note: String, run: fn(&mut Rdm, &mut Context<Rdm>) },
+	/// A field, applied on Enter, with a word on what it takes.
+	Field { input: Entity<TextInput>, note: &'static str },
 	/// One of a few words, the chosen one lit.
 	Choice { options: Vec<&'static str>, chosen: usize, set: fn(&mut Rdm, usize, &mut Context<Rdm>) },
 }
@@ -89,7 +96,34 @@ impl Rdm {
 					.with_leading(Icon::Search)
 					.on_cancel(move |_, cx| rdm.update(cx, |this, cx| this.close_settings(cx)))
 			});
-			self.settings = Some(SettingsSheet { section: Section::General, search });
+			let (speed_rdm, count_rdm) = (cx.entity(), cx.entity());
+			let speed = cx.new(|cx| {
+				let mut field = TextInput::new("Off", cx).on_confirm(move |text, _, cx| {
+					let text = text.to_owned();
+					speed_rdm.update(cx, |this, cx| this.set_speed_limit_text(&text, cx))
+				});
+				if let Some(limit) = self.preferences.speed_limit {
+					field.set_content(&crate::download::format_rate(Some(limit)), cx);
+				}
+				field
+			});
+			let connections = cx.new(|cx| {
+				let mut field = TextInput::new("Auto", cx).on_confirm(move |text, _, cx| {
+					let text = text.to_owned();
+					count_rdm.update(cx, |this, cx| this.set_default_connections_text(&text, cx))
+				});
+				if let Some(count) = self.preferences.connections {
+					field.set_content(&count.to_string(), cx);
+				}
+				field
+			});
+			self.settings = Some(SettingsSheet {
+				section: Section::General,
+				search,
+				speed,
+				connections,
+				complaint: None,
+			});
 		}
 		cx.notify();
 	}
@@ -110,6 +144,57 @@ impl Rdm {
 			sheet.section = section;
 			cx.notify();
 		}
+	}
+
+	/// The speed limit as typed: applied to the engine and kept, or refused under the row.
+	pub(crate) fn set_speed_limit_text(&mut self, text: &str, cx: &mut Context<Self>) {
+		match crate::download::parse_rate(text) {
+			Ok(limit) => {
+				self.preferences.speed_limit = limit;
+				self.engine.set_speed_limit(limit);
+				self.save_config();
+				if let Some(sheet) = &mut self.settings {
+					sheet.complaint = None;
+					let shown = crate::download::format_rate(limit);
+					sheet.speed.update(cx, |field, cx| {
+						field.set_content(if limit.is_none() { "" } else { &shown }, cx)
+					});
+				}
+			}
+			Err(message) => {
+				if let Some(sheet) = &mut self.settings {
+					sheet.complaint = Some(("Speed limit", message));
+				}
+			}
+		}
+		cx.notify();
+	}
+
+	/// The connections Add Task offers first, as typed: `auto` or a number.
+	pub(crate) fn set_default_connections_text(&mut self, text: &str, cx: &mut Context<Self>) {
+		let text = text.trim();
+		let parsed = if text.is_empty() || text.eq_ignore_ascii_case("auto") {
+			Ok(None)
+		} else {
+			crate::ui::add_dialog::parse_count(text).map(Some)
+		};
+		match parsed {
+			Ok(count) => {
+				self.preferences.connections = count;
+				self.save_config();
+				if let Some(sheet) = &mut self.settings {
+					sheet.complaint = None;
+					let shown = count.map(|n| n.to_string()).unwrap_or_default();
+					sheet.connections.update(cx, |field, cx| field.set_content(&shown, cx));
+				}
+			}
+			Err(message) => {
+				if let Some(sheet) = &mut self.settings {
+					sheet.complaint = Some(("Connections", message));
+				}
+			}
+		}
+		cx.notify();
 	}
 
 	/// Every setting there is, in the rail's order, with what it shows now.
@@ -174,7 +259,30 @@ impl Rdm {
 			Row {
 				section: Section::Transfers,
 				label: "Speed limit",
-				control: Control::Value("Off".to_owned()),
+				control: match &self.settings {
+					Some(sheet) => Control::Field {
+						input: sheet.speed.clone(),
+						note: "KB/s, or with m or g; empty for none",
+					},
+					None => Control::Value(crate::download::format_rate(self.preferences.speed_limit)),
+				},
+			},
+			Row {
+				section: Section::Transfers,
+				label: "Connections",
+				control: match &self.settings {
+					Some(sheet) => Control::Field {
+						input: sheet.connections.clone(),
+						note: "Auto, or a number up to 256, offered first at Add Task",
+					},
+					None => Control::Value(
+						self
+							.preferences
+							.connections
+							.map(|n| n.to_string())
+							.unwrap_or_else(|| "Auto".to_owned()),
+					),
+				},
 			},
 			Row {
 				section: Section::Appearance,
@@ -282,6 +390,7 @@ impl Rdm {
 				}
 			})
 			.collect();
+		let complaint = sheet.complaint.clone();
 		let mut pane = div().flex().flex_col().flex_1().min_w_0().p_4().gap_1();
 		if searching && shown.is_empty() {
 			pane = pane.child(div().text_color(p.muted).child(format!("Nothing matches \"{query}\"")));
@@ -299,6 +408,17 @@ impl Rdm {
 			pane = pane.child(section_title(p, sheet.section.name()));
 			for row in shown {
 				pane = pane.child(self.setting_row(row, cx));
+				if let Some((label, message)) = &complaint
+					&& *label == row.label
+				{
+					pane = pane.child(
+						div()
+							.text_xs()
+							.text_color(p.failure)
+							.debug_selector(|| "settings-complaint".to_owned())
+							.child(message.clone()),
+					);
+				}
 			}
 		}
 
@@ -401,6 +521,14 @@ impl Rdm {
 					}))
 					.into_any_element()
 			}
+			Control::Field { input, note } => div()
+				.flex()
+				.items_center()
+				.gap_3()
+				.min_w_0()
+				.child(div().text_xs().text_color(p.muted).truncate().child(*note))
+				.child(div().w(px(112.0)).flex_none().child(input.clone()))
+				.into_any_element(),
 			Control::Action { word, note, run } => {
 				let (word, run) = (*word, *run);
 				div()

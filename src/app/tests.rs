@@ -893,3 +893,72 @@ fn the_update_settings_are_switches_and_a_choice_that_follows_the_switch(cx: &mu
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.check_updates));
 }
+
+#[gpui::test]
+fn a_file_is_shown_before_it_is_added_and_the_connections_are_chosen_there(
+	cx: &mut TestAppContext,
+) {
+	use crate::engine::testing::{Options, TestServer, body};
+	let server = TestServer::start(body(300_000), Options::default());
+	let (rdm, mut cx) = open(cx);
+	click(&mut cx, "button:Add Task");
+	let input = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().input.clone());
+	let address = server.url("/tool.bin").to_string();
+	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
+	click(&mut cx, "button:Add");
+	let mut seen = false;
+	for _ in 0..200 {
+		std::thread::sleep(Duration::from_millis(10));
+		rdm.update(&mut cx, |rdm, cx| rdm.poll_add(cx));
+		cx.run_until_parked();
+		if rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().is_some_and(|s| s.found.is_some())) {
+			seen = true;
+			break;
+		}
+	}
+	assert!(seen, "the address was looked at and found to be a file");
+	assert!(cx.debug_bounds("add-found").is_some(), "the file is shown before it is added");
+	assert!(cx.debug_bounds("connections:Auto").is_some(), "ranges, so connections are a choice");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.downloads.iter().all(|d| d.url != address), "not added yet")
+	});
+	click(&mut cx, "connections:Fixed");
+	let count = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().count.clone());
+	cx.update(|_, cx| count.update(cx, |i, cx| i.set_content("999", cx)));
+	click(&mut cx, "button:Add");
+	assert!(cx.debug_bounds("add-error").is_some(), "999 is more than the most");
+	cx.update(|_, cx| count.update(cx, |i, cx| i.set_content("8", cx)));
+	click(&mut cx, "button:Add");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.adding.is_none(), "added and closed");
+		let row = rdm.downloads.iter().find(|d| d.url == address).expect("the download");
+		assert_eq!(row.connections, Some(8));
+	});
+}
+
+#[gpui::test]
+fn the_transfer_fields_apply_on_enter_and_say_no_to_nonsense(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
+	cx.run_until_parked();
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_speed_limit_text("2m", cx);
+		rdm.set_default_connections_text("32", cx);
+	});
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.preferences.speed_limit, Some(2 * 1024 * 1024));
+		assert_eq!(rdm.preferences.connections, Some(32));
+	});
+	rdm.update(&mut cx, |rdm, cx| rdm.set_default_connections_text("lots", cx));
+	cx.run_until_parked();
+	click(&mut cx, "section:Transfers");
+	assert!(cx.debug_bounds("settings-complaint").is_some(), "nonsense is said no to under its row");
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_default_connections_text("auto", cx);
+		rdm.set_speed_limit_text("", cx);
+	});
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!((rdm.preferences.connections, rdm.preferences.speed_limit), (None, None));
+	});
+}
