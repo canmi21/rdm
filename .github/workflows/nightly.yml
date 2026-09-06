@@ -43,9 +43,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # What GPUI links against on Linux: the keyboard, the two display protocols, fonts,
-      # sound and Vulkan; and gtk 3 for the tray icon, whose indicator library is loaded at
-      # run time and not needed here. Ubuntu's LTS is the glibc baseline a build asks of the
-      # machine it runs on.
+      # sound and Vulkan. Nothing for the tray: it is a StatusNotifierItem spoken over the
+      # session bus, which is D-Bus wire protocol and links against nothing. Ubuntu's LTS is
+      # the glibc baseline a build asks of the machine it runs on.
       - name: Linux libraries
         if: runner.os == 'Linux'
         run: |
@@ -53,7 +53,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libx11-xcb-dev \
             libxcb1-dev libfontconfig1-dev libfreetype-dev libasound2-dev libvulkan-dev \
-            libssl-dev pkg-config cmake clang libgtk-3-dev
+            libssl-dev pkg-config cmake clang
 
       # aws-lc, under rustls, assembles part of itself and needs nasm to. Installed with the
       # runner's own package manager rather than a marketplace action: the action is a Node

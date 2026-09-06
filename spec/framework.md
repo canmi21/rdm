@@ -27,25 +27,34 @@ records the exact release. A major here means a Zed 2.0.
 `gpui_platform`, so the entry point is `gpui_platform::application()` and `Application::new()`
 no longer exists. The mirror's readme still says one dependency is enough; it is not.
 
-## The tray drags gtk3 in, and gtk3 pins glib to an advisory
+## The tray speaks StatusNotifierItem, so gtk3 is not in the tree
 
-On Linux the tray is `tray-icon`, whose only backend there is `libappindicator`, which is gtk3;
-`src/tray.rs` runs a gtk loop of its own for it. That puts `gtk 0.18.2` in the tree, which
-requires `glib ^0.18`, and `glib` before 0.20 carries RUSTSEC's unsoundness in
-`VariantStrIter::impl_get` -- a `&p` passed where a C function writes through the pointer, which
-recent compilers optimise away into a null dereference.
+`tray-icon` is the tray on macOS and Windows and is not a dependency on Linux, where the tray
+is `ksni` instead: the application puts a StatusNotifierItem on the session bus itself. This is
+not a preference. `tray-icon`'s only Linux backend is `libappindicator`, which is gtk3, and it
+reaches gtk3 a second way through `muda`, which is not an optional dependency of it -- so
+turning a feature off does not help and the crate has to leave the Linux graph entirely.
 
-**No version bump reaches the fix, and trying is time spent twice.** `gtk 0.18.2` is the last
-of the gtk3 bindings -- gtk-rs ended that line and 0.20 onwards belongs to gtk4 -- so
-`cargo update -p glib --precise 0.20.0` is refused by the resolver, naming `gtk` as the reason.
-`tray-icon` is already at its newest and has no other Linux backend. The same tree reaches
-press through Tauri, which is gtk3 on Linux for the same reason, so this is the workspace's
-situation and not one project's mistake.
+**What gtk3 brought with it was an advisory with no exit.** `gtk 0.18.2` requires `glib ^0.18`,
+and `glib` before 0.20 carries RUSTSEC's unsoundness in `VariantStrIter::impl_get` -- a `&p`
+passed where a C function writes through the pointer, which recent compilers optimise away into
+a null dereference. No version bump reached the fix: `gtk 0.18.2` is the last of the gtk3
+bindings, gtk-rs having ended that line, so `cargo update -p glib --precise 0.20.0` is refused
+by the resolver naming `gtk` as the reason. The choice was to carry the advisory or to stop
+speaking gtk, and StatusNotifierItem is what the desktops read now in any case --
+libappindicator is a deprecated shim in front of it.
 
-What would actually end it is dropping gtk3: a StatusNotifierItem tray over D-Bus, which is
-what the desktops speak now and what libappindicator itself is a deprecated shim for. Until
-then the exposure is Linux only -- none of it compiles on macOS or Windows -- and the advisory
-stays open on purpose.
+`ksni` brings `zbus` and no C binding at all, so the Linux build links against nothing for the
+tray and `libgtk-3-dev` is gone from the workflow. `Cargo.lock` holds no `glib`, `gtk`, `atk`,
+`gdk` or `libappindicator` for any target. **press is a separate matter**: it reaches the same
+gtk3 through Tauri, which is gtk3 on Linux by design, and nothing here fixes that.
+
+Two things about ksni that are not obvious. It insists on an async runtime feature even for
+the blocking face -- `blocking` alone does not build -- so the dependency keeps the default
+`tokio` and adds `blocking` to it, which suits an application whose own loop is gpui's and not
+tokio's. And a StatusNotifierItem carries ARGB32 in network byte order while the PNG decoder
+hands back RGBA, a difference that is invisible on any machine that does not run a Linux
+desktop; `src/tray.rs` converts, and tests the conversion everywhere.
 
 ## Text needs a feature flag
 

@@ -69,9 +69,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "m
 tokio-util = "0.7"
 url = "2"
 
-# The tray icon on every system; the menu is the system's own. Without libxdo, which only the
-# predefined edit items need. See src/tray.rs.
-tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
 # Decodes the tray's PNG, rendered from the artwork by `mise run icon`.
 png = "0.18"
 # What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
@@ -87,9 +84,18 @@ flate2 = "1"
 [target.'cfg(windows)'.dependencies]
 self-replace = "1"
 
-# The tray on Linux lives on a gtk loop of its own thread; gtk 3 is what tray-icon speaks.
+# The tray on macOS and Windows, where the menu is the system's own. Without libxdo, which only
+# the predefined edit items need. Not on Linux: it reaches gtk3 there through muda, which is not
+# an optional dependency of it, and gtk3 pins glib to an advisory with no patched release in
+# reach. See src/tray.rs and spec/framework.md.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tray-icon = { version = "0.24", default-features = false }
+
+# The tray on Linux is StatusNotifierItem on the session bus, spoken directly. ksni brings zbus
+# and nothing of gtk; "blocking" is the face that runs the service on a thread of its own, which
+# suits a gpui loop that is not tokio's. See src/tray.rs.
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk = "0.18"
+ksni = { version = "0.3", features = ["blocking"] }
 
 # Windows carries the icon inside the executable; build.rs embeds it there. See spec/release.md.
 [target.'cfg(windows)'.build-dependencies]

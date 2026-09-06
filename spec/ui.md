@@ -156,8 +156,9 @@ points; elsewhere the full icon, since those trays draw an icon as it is. A left
 Windows or Linux shows the window as the first item would; on macOS a click opens the menu,
 which is how the menu bar works. Closing the window still quits, as before: the tray is a way
 back to the window and a way out, not a place the window hides. A tray that cannot be made --
-no indicator library on a Linux desktop, say -- is reported and done without. See
-[packaging.md](packaging.md) for the two rendered icons.
+a Linux desktop with no host for a StatusNotifierItem, say, which is a GNOME without the
+extension for it -- is reported and done without. See [packaging.md](packaging.md) for the two
+rendered icons and [framework.md](framework.md) for why Linux speaks the bus directly.
 
 **An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
 front", under Appearance and on to start with, is the switch behind the monochrome the palette
