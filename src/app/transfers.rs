@@ -198,6 +198,7 @@ impl Rdm {
 			.unwrap_or(0)
 			.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
 		let mut request = engine::Request::new(url.clone(), directory);
+		request.settings = self.preferences.engine_settings();
 		request.settings.connections = connections_for(connections);
 		self.engine.add_with_id(TaskId(id), request, None);
 		let name = name.unwrap_or_else(|| {
@@ -273,6 +274,7 @@ impl Rdm {
 			} else if let Ok(url) = reqwest::Url::parse(&download.url) {
 				let mut request = engine::Request::new(url, directory);
 				request.file_name = Some(download.name.clone());
+				request.settings = self.preferences.engine_settings();
 				request.settings.connections = connections_for(download.connections);
 				self.engine.add_with_id(TaskId(id), request, None);
 			}

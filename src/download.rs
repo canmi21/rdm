@@ -185,6 +185,40 @@ pub fn parse_rate(text: &str) -> Result<Option<u64>, String> {
 	}
 }
 
+/// A size as a person writes it: bytes, or with `k`, `m` or `g`; empty is none.
+pub fn parse_size(text: &str) -> Result<Option<u64>, String> {
+	let text = text.trim().to_ascii_lowercase();
+	if text.is_empty() || text == "off" || text == "none" {
+		return Ok(None);
+	}
+	let digits: String = text.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+	let unit = text[digits.len()..].trim().trim_end_matches('b').trim();
+	let number: f64 =
+		digits.parse().map_err(|_| "A size is a number, like 512k or 2m.".to_owned())?;
+	let scale = match unit {
+		"" => 1.0,
+		"k" => 1024.0,
+		"m" => 1024.0 * 1024.0,
+		"g" => 1024.0 * 1024.0 * 1024.0,
+		_ => return Err("A size is a number with k, m or g after it.".to_owned()),
+	};
+	let bytes = (number * scale) as u64;
+	if bytes == 0 {
+		Err("A size is more than nothing; leave it empty for none.".to_owned())
+	} else {
+		Ok(Some(bytes))
+	}
+}
+
+/// A count or a number of seconds as a person writes it; empty is none.
+pub fn parse_number(text: &str) -> Result<Option<u64>, String> {
+	let text = text.trim();
+	if text.is_empty() {
+		return Ok(None);
+	}
+	text.parse::<u64>().map(Some).map_err(|_| "A whole number.".to_owned())
+}
+
 /// A limit as the settings show it: `Off`, or the rate.
 pub fn format_rate(limit: Option<u64>) -> String {
 	match limit {
@@ -329,5 +363,10 @@ mod tests {
 		assert!(parse_rate("fast").is_err());
 		assert!(parse_rate("0").is_err());
 		assert_eq!(format_rate(None), "Off");
+		assert_eq!(parse_size("2m"), Ok(Some(2 * 1024 * 1024)));
+		assert_eq!(parse_size("4096"), Ok(Some(4096)));
+		assert_eq!(parse_size(""), Ok(None));
+		assert_eq!(parse_number(" 12 "), Ok(Some(12)));
+		assert!(parse_number("twelve").is_err());
 	}
 }

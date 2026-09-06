@@ -943,20 +943,20 @@ fn the_transfer_fields_apply_on_enter_and_say_no_to_nonsense(cx: &mut TestAppCon
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
 	rdm.update(&mut cx, |rdm, cx| {
-		rdm.set_speed_limit_text("2m", cx);
-		rdm.set_default_connections_text("32", cx);
+		rdm.apply_setting("Speed limit", "2m", cx);
+		rdm.apply_setting("Connections", "32", cx);
 	});
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.preferences.speed_limit, Some(2 * 1024 * 1024));
 		assert_eq!(rdm.preferences.connections, Some(32));
 	});
-	rdm.update(&mut cx, |rdm, cx| rdm.set_default_connections_text("lots", cx));
+	rdm.update(&mut cx, |rdm, cx| rdm.apply_setting("Connections", "lots", cx));
 	cx.run_until_parked();
 	click(&mut cx, "section:Transfers");
 	assert!(cx.debug_bounds("settings-complaint").is_some(), "nonsense is said no to under its row");
 	rdm.update(&mut cx, |rdm, cx| {
-		rdm.set_default_connections_text("auto", cx);
-		rdm.set_speed_limit_text("", cx);
+		rdm.apply_setting("Connections", "auto", cx);
+		rdm.apply_setting("Speed limit", "", cx);
 	});
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!((rdm.preferences.connections, rdm.preferences.speed_limit), (None, None));

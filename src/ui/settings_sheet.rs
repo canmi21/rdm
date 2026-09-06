@@ -12,6 +12,9 @@ use crate::identity;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::{LeavesFocus, backdrop, icon_button};
+use std::collections::HashMap;
+
+use crate::engine::HttpVersion;
 use crate::update::Policy;
 
 // TODO: every value row here is a label until there is a setting behind it and a store to keep it
@@ -21,12 +24,32 @@ use crate::update::Policy;
 pub struct SettingsSheet {
 	pub section: Section,
 	pub search: Entity<TextInput>,
-	/// The two fields of Transfers: each applies on Enter and reads back what was kept.
-	pub speed: Entity<TextInput>,
-	pub connections: Entity<TextInput>,
+	/// The fields, by their row's label: each applies on Enter and reads back what was kept.
+	pub fields: HashMap<&'static str, Entity<TextInput>>,
 	/// What the last field said no to, under the row.
 	pub complaint: Option<(&'static str, String)>,
 }
+
+/// Every field there is: its row's label, its placeholder, and a word on what it takes.
+const FIELDS: [(&str, &str, &str); 13] = [
+	("Concurrent downloads", "3", "How many run at once; the rest wait"),
+	("Speed limit", "Off", "KB/s, or with m or g; empty for none"),
+	("Connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
+	("Smallest segment", "1m", "A file below this is never split; bytes, or with k, m or g"),
+	("Connect timeout", "30", "Seconds to establish a connection"),
+	("Idle timeout", "60", "Seconds without a byte before a connection is dropped and retried"),
+	("Retries", "5", "Times a failing connection is tried again"),
+	("Retry wait", "1", "Seconds before the first retry, doubling each time"),
+	("Size limit", "Off", "A file the server declares larger is refused; empty for none"),
+	("User agent", "rdm/version", "Sent with every request; empty for the engine's own"),
+	(
+		"Proxy",
+		"System",
+		"http://, https:// or socks5://, credentials in the address; empty for the system's",
+	),
+	("Headers", "", "Name: value, several apart by semicolons"),
+	("Redirects", "10", "How many a request follows"),
+];
 
 /// The sections down the rail, in their order. A setting belongs to exactly one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,34 +119,24 @@ impl Rdm {
 					.with_leading(Icon::Search)
 					.on_cancel(move |_, cx| rdm.update(cx, |this, cx| this.close_settings(cx)))
 			});
-			let (speed_rdm, count_rdm) = (cx.entity(), cx.entity());
-			let speed = cx.new(|cx| {
-				let mut field = TextInput::new("Off", cx).on_confirm(move |text, _, cx| {
-					let text = text.to_owned();
-					speed_rdm.update(cx, |this, cx| this.set_speed_limit_text(&text, cx))
+			let mut fields = HashMap::new();
+			for (key, placeholder, _) in FIELDS {
+				let rdm = cx.entity();
+				let shown = self.setting_text(key);
+				let field = cx.new(|cx| {
+					let mut field = TextInput::new(placeholder, cx).on_confirm(move |text, _, cx| {
+						let text = text.to_owned();
+						rdm.update(cx, |this, cx| this.apply_setting(key, &text, cx))
+					});
+					if !shown.is_empty() {
+						field.set_content(&shown, cx);
+					}
+					field
 				});
-				if let Some(limit) = self.preferences.speed_limit {
-					field.set_content(&crate::download::format_rate(Some(limit)), cx);
-				}
-				field
-			});
-			let connections = cx.new(|cx| {
-				let mut field = TextInput::new("Auto", cx).on_confirm(move |text, _, cx| {
-					let text = text.to_owned();
-					count_rdm.update(cx, |this, cx| this.set_default_connections_text(&text, cx))
-				});
-				if let Some(count) = self.preferences.connections {
-					field.set_content(&count.to_string(), cx);
-				}
-				field
-			});
-			self.settings = Some(SettingsSheet {
-				section: Section::General,
-				search,
-				speed,
-				connections,
-				complaint: None,
-			});
+				fields.insert(key, field);
+			}
+			self.settings =
+				Some(SettingsSheet { section: Section::General, search, fields, complaint: None });
 		}
 		cx.notify();
 	}
@@ -146,55 +159,113 @@ impl Rdm {
 		}
 	}
 
-	/// The speed limit as typed: applied to the engine and kept, or refused under the row.
-	pub(crate) fn set_speed_limit_text(&mut self, text: &str, cx: &mut Context<Self>) {
-		match crate::download::parse_rate(text) {
-			Ok(limit) => {
-				self.preferences.speed_limit = limit;
-				self.engine.set_speed_limit(limit);
+	/// What a field shows for its setting now: empty where the engine's own value stands.
+	fn setting_text(&self, key: &str) -> String {
+		use crate::download::{format_bytes, format_rate};
+		let p = &self.preferences;
+		let size = |n: Option<u64>| n.map(format_bytes).unwrap_or_default();
+		let number = |n: Option<u64>| n.map(|n| n.to_string()).unwrap_or_default();
+		match key {
+			"Concurrent downloads" => p.max_active.to_string(),
+			"Speed limit" => p.speed_limit.map(|l| format_rate(Some(l))).unwrap_or_default(),
+			"Connections" => number(p.connections.map(u64::from)),
+			"Smallest segment" => size(p.min_segment),
+			"Connect timeout" => number(p.connect_timeout),
+			"Idle timeout" => number(p.idle_timeout),
+			"Retries" => number(p.retries.map(u64::from)),
+			"Retry wait" => number(p.retry_wait),
+			"Size limit" => size(p.max_size),
+			"User agent" => p.user_agent.clone().unwrap_or_default(),
+			"Proxy" => p.proxy.clone().unwrap_or_default(),
+			"Headers" => {
+				p.headers.iter().map(|(n, v)| format!("{n}: {v}")).collect::<Vec<_>>().join("; ")
+			}
+			"Redirects" => number(p.max_redirects.map(|n| n as u64)),
+			_ => String::new(),
+		}
+	}
+
+	/// A field's text, applied: parsed for its setting, kept, handed to the engine where the
+	/// engine takes it live, and read back into the field as kept; or refused under its row.
+	pub(crate) fn apply_setting(&mut self, key: &'static str, text: &str, cx: &mut Context<Self>) {
+		use crate::download::{parse_number, parse_rate, parse_size};
+		let text = text.trim();
+		let result: Result<(), String> = (|| {
+			match key {
+				"Concurrent downloads" => {
+					let n = parse_number(text)?.unwrap_or(3).clamp(1, 64) as usize;
+					self.preferences.max_active = n;
+					self.engine.set_max_active(n);
+				}
+				"Speed limit" => {
+					let limit = parse_rate(text)?;
+					self.preferences.speed_limit = limit;
+					self.engine.set_speed_limit(limit);
+				}
+				"Connections" => {
+					self.preferences.connections = if text.is_empty() || text.eq_ignore_ascii_case("auto") {
+						None
+					} else {
+						Some(crate::ui::add_dialog::parse_count(text)?)
+					};
+				}
+				"Smallest segment" => self.preferences.min_segment = parse_size(text)?,
+				"Connect timeout" => self.preferences.connect_timeout = parse_number(text)?,
+				"Idle timeout" => self.preferences.idle_timeout = parse_number(text)?,
+				"Retries" => self.preferences.retries = parse_number(text)?.map(|n| n as u32),
+				"Retry wait" => self.preferences.retry_wait = parse_number(text)?,
+				"Size limit" => self.preferences.max_size = parse_size(text)?,
+				"User agent" => self.preferences.user_agent = (!text.is_empty()).then(|| text.to_owned()),
+				"Proxy" => {
+					let schemed = ["http://", "https://", "socks5://"].iter().any(|s| text.starts_with(s));
+					if !text.is_empty() && !schemed {
+						return Err("A proxy starts with http://, https:// or socks5://.".to_owned());
+					}
+					self.preferences.proxy = (!text.is_empty()).then(|| text.to_owned());
+				}
+				"Headers" => {
+					let mut headers = Vec::new();
+					for part in text.split(';').map(str::trim).filter(|p| !p.is_empty()) {
+						let Some((name, value)) = part.split_once(':') else {
+							return Err("A header is Name: value.".to_owned());
+						};
+						headers.push((name.trim().to_owned(), value.trim().to_owned()));
+					}
+					self.preferences.headers = headers;
+				}
+				"Redirects" => self.preferences.max_redirects = parse_number(text)?.map(|n| n as usize),
+				_ => {}
+			}
+			Ok(())
+		})();
+		match result {
+			Ok(()) => {
 				self.save_config();
+				let shown = self.setting_text(key);
 				if let Some(sheet) = &mut self.settings {
 					sheet.complaint = None;
-					let shown = crate::download::format_rate(limit);
-					sheet.speed.update(cx, |field, cx| {
-						field.set_content(if limit.is_none() { "" } else { &shown }, cx)
-					});
+					if let Some(field) = sheet.fields.get(key) {
+						field.update(cx, |field, cx| field.set_content(&shown, cx));
+					}
 				}
 			}
 			Err(message) => {
 				if let Some(sheet) = &mut self.settings {
-					sheet.complaint = Some(("Speed limit", message));
+					sheet.complaint = Some((key, message));
 				}
 			}
 		}
 		cx.notify();
 	}
 
-	/// The connections Add Task offers first, as typed: `auto` or a number.
-	pub(crate) fn set_default_connections_text(&mut self, text: &str, cx: &mut Context<Self>) {
-		let text = text.trim();
-		let parsed = if text.is_empty() || text.eq_ignore_ascii_case("auto") {
-			Ok(None)
-		} else {
-			crate::ui::add_dialog::parse_count(text).map(Some)
+	/// A row for one of the fields: the field while the sheet is up, its value otherwise.
+	fn field_row(&self, section: Section, key: &'static str) -> Row {
+		let (_, _, note) = FIELDS.iter().find(|(k, _, _)| *k == key).copied().unwrap_or((key, "", ""));
+		let control = match self.settings.as_ref().and_then(|s| s.fields.get(key)) {
+			Some(input) => Control::Field { input: input.clone(), note },
+			None => Control::Value(self.setting_text(key)),
 		};
-		match parsed {
-			Ok(count) => {
-				self.preferences.connections = count;
-				self.save_config();
-				if let Some(sheet) = &mut self.settings {
-					sheet.complaint = None;
-					let shown = count.map(|n| n.to_string()).unwrap_or_default();
-					sheet.connections.update(cx, |field, cx| field.set_content(&shown, cx));
-				}
-			}
-			Err(message) => {
-				if let Some(sheet) = &mut self.settings {
-					sheet.complaint = Some(("Connections", message));
-				}
-			}
-		}
-		cx.notify();
+		Row { section, label: key, control }
 	}
 
 	/// Every setting there is, in the rail's order, with what it shows now.
@@ -251,37 +322,47 @@ impl Rdm {
 					run: |this, cx| this.check_for_updates(true, cx),
 				},
 			},
+			self.field_row(Section::Transfers, "Concurrent downloads"),
+			self.field_row(Section::Transfers, "Speed limit"),
+			self.field_row(Section::Transfers, "Connections"),
+			self.field_row(Section::Transfers, "Smallest segment"),
+			self.field_row(Section::Transfers, "Connect timeout"),
+			self.field_row(Section::Transfers, "Idle timeout"),
+			self.field_row(Section::Transfers, "Retries"),
+			self.field_row(Section::Transfers, "Retry wait"),
+			self.field_row(Section::Transfers, "Size limit"),
 			Row {
 				section: Section::Transfers,
-				label: "Concurrent downloads",
-				control: Control::Value("3".to_owned()),
-			},
-			Row {
-				section: Section::Transfers,
-				label: "Speed limit",
-				control: match &self.settings {
-					Some(sheet) => Control::Field {
-						input: sheet.speed.clone(),
-						note: "KB/s, or with m or g; empty for none",
+				label: "HTTP version",
+				control: Control::Choice {
+					options: vec!["Auto", "HTTP/1.1", "HTTP/2"],
+					chosen: match self.preferences.http {
+						HttpVersion::Auto => 0,
+						HttpVersion::Http1 => 1,
+						HttpVersion::Http2 => 2,
 					},
-					None => Control::Value(crate::download::format_rate(self.preferences.speed_limit)),
+					set: |this, index, cx| {
+						this.preferences.http =
+							[HttpVersion::Auto, HttpVersion::Http1, HttpVersion::Http2][index];
+						this.save_config();
+						cx.notify();
+					},
 				},
 			},
+			self.field_row(Section::Transfers, "User agent"),
+			self.field_row(Section::Transfers, "Proxy"),
+			self.field_row(Section::Transfers, "Headers"),
+			self.field_row(Section::Transfers, "Redirects"),
 			Row {
 				section: Section::Transfers,
-				label: "Connections",
-				control: match &self.settings {
-					Some(sheet) => Control::Field {
-						input: sheet.connections.clone(),
-						note: "Auto, or a number up to 256, offered first at Add Task",
+				label: "Preallocate files",
+				control: Control::Switch {
+					on: self.preferences.preallocate,
+					set: |this, on, cx| {
+						this.preferences.preallocate = on;
+						this.save_config();
+						cx.notify();
 					},
-					None => Control::Value(
-						self
-							.preferences
-							.connections
-							.map(|n| n.to_string())
-							.unwrap_or_else(|| "Auto".to_owned()),
-					),
 				},
 			},
 			Row {

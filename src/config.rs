@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::category::{Category, Overrides, extensions_of_pattern};
+use crate::engine::HttpVersion;
 use crate::state::{parse_versioned, write_json};
 use crate::ui::icon::Icon;
 use crate::ui::theme::{format_hex, parse_color};
@@ -53,6 +54,78 @@ pub struct Preferences {
 	/// What Add Task offers first: None is the engine's own judgement, Some a fixed count.
 	#[serde(default)]
 	pub connections: Option<u16>,
+	/// How many downloads run at once; the rest wait their turn.
+	#[serde(default = "three")]
+	pub max_active: usize,
+	/// The engine's defaults for every new download, each None where the engine's own value
+	/// stands. See spec/engine.md for what each does.
+	#[serde(default)]
+	pub min_segment: Option<u64>,
+	#[serde(default)]
+	pub connect_timeout: Option<u64>,
+	#[serde(default)]
+	pub idle_timeout: Option<u64>,
+	#[serde(default)]
+	pub retries: Option<u32>,
+	#[serde(default)]
+	pub retry_wait: Option<u64>,
+	#[serde(default)]
+	pub max_size: Option<u64>,
+	#[serde(default = "auto_http")]
+	pub http: HttpVersion,
+	#[serde(default)]
+	pub user_agent: Option<String>,
+	#[serde(default)]
+	pub headers: Vec<(String, String)>,
+	#[serde(default)]
+	pub proxy: Option<String>,
+	#[serde(default)]
+	pub max_redirects: Option<usize>,
+	#[serde(default = "yes")]
+	pub preallocate: bool,
+}
+
+fn three() -> usize {
+	3
+}
+
+fn auto_http() -> HttpVersion {
+	HttpVersion::Auto
+}
+
+impl Preferences {
+	/// The engine's settings for a new download: its own defaults, with what the user set
+	/// written over them.
+	pub fn engine_settings(&self) -> crate::engine::Settings {
+		let mut settings = crate::engine::Settings::default();
+		if let Some(n) = self.min_segment {
+			settings.min_segment = n;
+		}
+		if let Some(s) = self.connect_timeout {
+			settings.connect_timeout = std::time::Duration::from_secs(s);
+		}
+		if let Some(s) = self.idle_timeout {
+			settings.idle_timeout = std::time::Duration::from_secs(s);
+		}
+		if let Some(n) = self.retries {
+			settings.retries = n;
+		}
+		if let Some(s) = self.retry_wait {
+			settings.retry_wait = std::time::Duration::from_secs(s);
+		}
+		settings.max_size = self.max_size;
+		settings.http = self.http;
+		if let Some(agent) = &self.user_agent {
+			settings.user_agent = agent.clone();
+		}
+		settings.headers = self.headers.clone();
+		settings.proxy = self.proxy.clone();
+		if let Some(n) = self.max_redirects {
+			settings.max_redirects = n;
+		}
+		settings.preallocate = self.preallocate;
+		settings
+	}
 }
 
 fn yes() -> bool {
@@ -69,6 +142,19 @@ impl Default for Preferences {
 			update_policy: Policy::default(),
 			speed_limit: None,
 			connections: None,
+			max_active: 3,
+			min_segment: None,
+			connect_timeout: None,
+			idle_timeout: None,
+			retries: None,
+			retry_wait: None,
+			max_size: None,
+			http: HttpVersion::Auto,
+			user_agent: None,
+			headers: Vec::new(),
+			proxy: None,
+			max_redirects: None,
+			preallocate: true,
 		}
 	}
 }
@@ -323,6 +409,26 @@ mod tests {
 		assert_eq!(quiet.settings.update_policy, Policy::Notify);
 		let text = serde_json::to_string(&off).unwrap();
 		assert_eq!(parse(&text).unwrap().settings, off.settings);
+	}
+
+	#[test]
+	fn the_engine_settings_are_its_own_with_the_user_written_over() {
+		let plain = Preferences::default().engine_settings();
+		assert_eq!(plain, crate::engine::Settings::default());
+		let set = Preferences {
+			retries: Some(9),
+			proxy: Some("socks5://h:1080".into()),
+			http: HttpVersion::Http1,
+			headers: vec![("X-A".into(), "b".into())],
+			..Preferences::default()
+		};
+		let settings = set.engine_settings();
+		assert_eq!((settings.retries, settings.http), (9, HttpVersion::Http1));
+		assert_eq!(settings.proxy.as_deref(), Some("socks5://h:1080"));
+		assert_eq!(settings.headers.len(), 1);
+		assert_eq!(settings.user_agent, crate::engine::Settings::default().user_agent);
+		let text = serde_json::to_string(&Config::from_parts(&[], &set)).unwrap();
+		assert_eq!(parse(&text).unwrap().settings, set, "round trip");
 	}
 
 	#[test]
