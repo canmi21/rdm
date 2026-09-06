@@ -111,6 +111,12 @@ Programs red, Disk Images navy -- with a custom rule handed the next hue in a fi
 nobody has to pick. Any of them can be changed to a named hue or one the user writes; the
 color is a number on the category, so a written one is the same kind of thing as a named one.
 
+**An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
+front", under Appearance and on to start with, is the switch behind the monochrome the palette
+takes when the window is not active; off, the window keeps its colors in front or not, for
+someone who keeps it beside another window and reads it there. See the palette in
+[framework.md](framework.md).
+
 **The categories' hues are always on, unless asked otherwise.** "Always use colorful
 categories", on to start with, has every category icon in the sidebar wear its hue all the
 time; off, an icon is grey until its row is chosen or hovered and then its own hue. The state

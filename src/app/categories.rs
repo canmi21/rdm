@@ -154,4 +154,10 @@ impl Rdm {
 		self.save_config();
 		cx.notify();
 	}
+
+	pub(crate) fn set_dim_inactive(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.dim_inactive = on;
+		self.save_config();
+		cx.notify();
+	}
 }

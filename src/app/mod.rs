@@ -601,7 +601,7 @@ impl Rdm {
 
 impl Render for Rdm {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.palette = theme::palette(window.is_window_active());
+		self.palette = theme::palette(window.is_window_active() || !self.preferences.dim_inactive);
 		self.viewport = window.viewport_size();
 		// A field that closed took the focus with it; the root takes it back so keys still land.
 		if window.focused(cx).is_none() {

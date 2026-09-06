@@ -382,6 +382,11 @@ impl Rdm {
 					set: Rdm::set_colorful_categories,
 				},
 			},
+			Row {
+				section: Section::Appearance,
+				label: "Dim the window when it is not in front",
+				control: Control::Switch { on: self.preferences.dim_inactive, set: Rdm::set_dim_inactive },
+			},
 			// What this build is: the name in full lives here, and the numbers that tell one
 			// build from another. See spec/release.md.
 			Row {

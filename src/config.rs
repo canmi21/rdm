@@ -37,6 +37,10 @@ pub struct Preferences {
 	/// inactive grey overrides it either way.
 	#[serde(default = "yes")]
 	pub colorful_categories: bool,
+	/// The window goes grey while it is not in front. On to start with; off, it keeps its
+	/// colors whether it is in front or not.
+	#[serde(default = "yes")]
+	pub dim_inactive: bool,
 	/// Which channel's builds the update check follows. Nightly, the only one there is.
 	#[serde(default)]
 	pub update_channel: Channel,
@@ -136,6 +140,7 @@ impl Default for Preferences {
 	fn default() -> Self {
 		Preferences {
 			colorful_categories: true,
+			dim_inactive: true,
 			update_channel: Channel::default(),
 			check_updates: true,
 			auto_update: true,
