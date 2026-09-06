@@ -11,11 +11,11 @@ let output = arguments.first ?? "/tmp/rdm.png"
 let title = arguments.dropFirst().first
 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
 let found = windows.first { window in
-	(window[kCGWindowOwnerName as String] as? String) == "rdm" && (window[kCGWindowLayer as String] as? Int) == 0
+	(window[kCGWindowOwnerName as String] as? String) == "Downloads" && (window[kCGWindowLayer as String] as? Int) == 0
 		&& title.map { (window[kCGWindowName as String] as? String)?.contains($0) ?? false } ?? true
 }
 guard let window = found, let id = window[kCGWindowNumber as String] as? Int else {
-	FileHandle.standardError.write("no matching rdm window on screen; `mise run dev` first\n".data(using: .utf8)!)
+	FileHandle.standardError.write("no matching Downloads window on screen; `mise run dev` first\n".data(using: .utf8)!)
 	exit(1)
 }
 let capture = Process()
