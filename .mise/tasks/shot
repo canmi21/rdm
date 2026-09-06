@@ -1,18 +1,24 @@
 #!/usr/bin/env swift
-//MISE description="Screenshot the running window to a file: `shot [path]`"
+//MISE description="Screenshot the running window to a file: `shot [path] [title] [--floating]`"
 // Captures the rdm window alone; see spec/workflow.md. Swift because the window list is a
 // CoreGraphics call and the system python has no bridge to it.
 import CoreGraphics
 import Foundation
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-let output = arguments.first ?? "/tmp/rdm.png"
+let output = arguments.first { $0 != "--floating" } ?? "/tmp/rdm.png"
 // A title picks one of the application's windows; without one the frontmost is taken.
-let title = arguments.dropFirst().first
+// `--floating` takes the notice window instead, which is on a layer above the ordinary ones and
+// so is invisible to the usual filter -- the one thing this tool exists for that it could not
+// otherwise see. See spec/ui.md on where a notice can go.
+let floating = arguments.contains("--floating")
+let title = arguments.dropFirst().first { $0 != "--floating" }
 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
 let found = windows.first { window in
-	(window[kCGWindowOwnerName as String] as? String) == "Downloads" && (window[kCGWindowLayer as String] as? Int) == 0
-		&& title.map { (window[kCGWindowName as String] as? String)?.contains($0) ?? false } ?? true
+	let layer = window[kCGWindowLayer as String] as? Int ?? 0
+	return (window[kCGWindowOwnerName as String] as? String) == "Downloads"
+		&& (floating ? layer > 0 : layer == 0)
+		&& (floating || title.map { (window[kCGWindowName as String] as? String)?.contains($0) ?? false } ?? true)
 }
 guard let window = found, let id = window[kCGWindowNumber as String] as? Int else {
 	FileHandle.standardError.write("no matching Downloads window on screen; `mise run dev` first\n".data(using: .utf8)!)

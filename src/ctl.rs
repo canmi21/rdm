@@ -19,7 +19,7 @@ use crate::ui::icon::Icon;
 pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
 
 const USAGE: &str = "state | view <detailed|compact|grid> | select <id> | open <id> | settings [section] | fullscreen | update | \
-	drag <size|progress|speed|status|added> <points> | \
+	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
@@ -320,6 +320,30 @@ impl Rdm {
 					self.resize_to(from + gpui::px(travel * f32::from(step) / 10.0), true, cx);
 				}
 				self.end_resize(cx);
+			}
+			// Saying something on demand, which is the only way to see a notice without waiting
+			// for a download to finish. Debug builds only, like the rest of this socket.
+			"say" => {
+				let Some(occasion) = rest.first().and_then(|name| match *name {
+					"finished" => Some(crate::notify::Occasion::Finished),
+					"failed" => Some(crate::notify::Occasion::Failed),
+					"queue" => Some(crate::notify::Occasion::Queue),
+					"update" => Some(crate::notify::Occasion::Update),
+					_ => None,
+				}) else {
+					return failure("say takes finished, failed, queue or update");
+				};
+				// The same words the real call sites use, so what this shows is what ships.
+				let text = rest[1..].join(" ");
+				let (title, body) = match occasion {
+					crate::notify::Occasion::Finished => ("Download finished".to_owned(), text),
+					crate::notify::Occasion::Failed => (format!("{text} failed"), String::new()),
+					crate::notify::Occasion::Queue => {
+						("Every download finished".to_owned(), String::new())
+					}
+					crate::notify::Occasion::Update => (text, String::new()),
+				};
+				self.tell_of(occasion, title, body, cx);
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
 			"add" => return failure("add takes a url"),

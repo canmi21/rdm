@@ -1035,6 +1035,16 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	});
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.notices.is_empty(), "silent is silent"));
+	// And a notice meant for a window of its own does not also land in the corner: the places
+	// are places, not degrees, so a notice goes to exactly one of them.
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_notice(Occasion::Finished, Style::Window, cx);
+		rdm.tell_of(Occasion::Finished, "Download finished".to_owned(), "debian.iso".to_owned(), cx);
+	});
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.notices.is_empty(), "the corner is not where this one was sent");
+	});
 }
 
 #[gpui::test]

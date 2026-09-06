@@ -188,6 +188,19 @@ centre as well. Silencing it silences both. A card in the corner goes on its own
 seconds or at a press, four at a time at most, oldest first, and the update's card sits under
 them in the same column so neither lands on top of the other.
 
+**A window of its own is a panel at the screen's top right, and it asks the system for nothing.**
+It is `WindowKind::PopUp`, which puts it above the ordinary windows, with no titlebar and no
+frame -- the panel is the window -- and it takes no focus, so a notice arriving while somebody is
+typing does not take the next keystroke. It is the one place that reaches somebody whose main
+window is closed or buried without going through the system's notification centre, which on macOS
+delivers only on behalf of an installed bundle and so says nothing at all from a development
+build. Panels stack downward from the corner and are counted rather than reflowed: one going does
+not slide the others up, since a notice moving out from under a pointer about to press it is
+worse than a gap. A press closes it and brings the application forward, which is what a press on
+the system's own notification does. Being on a layer above the ordinary windows, it is invisible
+to `mise run shot`, which takes the application's window; `shot --floating` takes this one. See
+[workflow.md](workflow.md).
+
 **An inactive window goes grey, unless asked otherwise.** "Dim the window when it is not in
 front", under Appearance and on to start with, is the switch behind the monochrome the palette
 takes when the window is not active; off, the window keeps its colors in front or not, for

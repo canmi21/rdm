@@ -9,6 +9,7 @@ pub mod frame;
 pub mod guide;
 pub mod icon;
 pub mod list;
+pub mod notice_window;
 pub mod settings_sheet;
 pub mod sidebar;
 pub mod status_bar;

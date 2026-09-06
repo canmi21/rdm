@@ -209,6 +209,9 @@ pub struct Rdm {
 	/// The cards in the window's corner, oldest first: what has been said in the window and not
 	/// yet gone. See src/app/notices.rs.
 	pub(crate) notices: Vec<notices::Shown>,
+	/// The notices that are windows of their own, while they are up. A handle stays here after
+	/// its window closes and is found dead on the next one, as the download windows' do.
+	pub(crate) notice_windows: Vec<WindowHandle<crate::ui::notice_window::NoticeWindow>>,
 	/// The update check: what it found, and the card and notification that follow.
 	pub(crate) updates: updates::Updates,
 	_checks: Option<Task<()>>,
@@ -315,6 +318,7 @@ impl Rdm {
 			save: None,
 			_tick: tick,
 			notices: Vec::new(),
+			notice_windows: Vec::new(),
 			updates: updates::Updates::default(),
 			_checks: None,
 		};

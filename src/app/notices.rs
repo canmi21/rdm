@@ -5,11 +5,15 @@
 
 use std::time::{Duration, Instant};
 
-use gpui::{Context, IntoElement, Role, div, prelude::*, px};
+use gpui::{
+	Bounds, Context, IntoElement, Role, WindowBounds, WindowOptions, div, point, prelude::*, px,
+	size,
+};
 
 use crate::app::Rdm;
 use crate::identity;
 use crate::notify::{Occasion, Style};
+use crate::ui::notice_window::{self, NoticeWindow};
 use crate::ui::status_bar;
 
 /// A notice on show in the window's corner.
@@ -43,14 +47,15 @@ impl Rdm {
 			Style::System => system(&title, &body, cx),
 			// A newer build has a card of its own, with a button on it, which the corner is already
 			// drawing; a second card saying the same thing would be one too many.
-			Style::InApp | Style::Window if occasion == Occasion::Update => {}
-			Style::InApp | Style::Window => {
+			Style::InApp if occasion == Occasion::Update => {}
+			Style::InApp => {
 				self.notices.push(Shown { title, body, at: Instant::now() });
 				if self.notices.len() > AT_ONCE {
 					self.notices.remove(0);
 				}
 				cx.notify();
 			}
+			Style::Window => self.in_a_window_of_its_own(title, body, cx),
 		}
 	}
 
@@ -59,6 +64,50 @@ impl Rdm {
 		self.preferences.set_notice(occasion, style);
 		self.save_config();
 		cx.notify();
+	}
+
+	/// A notice in a window of its own, at the screen's top right, under whatever is already
+	/// there. The panels are counted rather than reflowed: one going does not slide the others
+	/// up, since a notice moving under the pointer about to press it is worse than a gap.
+	fn in_a_window_of_its_own(&mut self, title: String, body: String, cx: &mut Context<Self>) {
+		self.notice_windows.retain(|handle| handle.update(cx, |_, _, _| ()).is_ok());
+		let slot = self.notice_windows.len().min(AT_ONCE - 1) as f32;
+		let Some(screen) = cx.primary_display().map(|display| display.bounds()) else { return };
+		let extent = size(px(notice_window::WIDTH), px(notice_window::HEIGHT));
+		let origin = point(
+			screen.origin.x + screen.size.width - px(notice_window::WIDTH + notice_window::MARGIN),
+			screen.origin.y
+				+ px(notice_window::MARGIN + slot * (notice_window::HEIGHT + notice_window::GAP)),
+		);
+		let options = WindowOptions {
+			window_bounds: Some(WindowBounds::Windowed(Bounds::new(origin, extent))),
+			// No frame of the system's around it, and none of ours: the panel is the window.
+			titlebar: None,
+			window_decorations: Some(gpui::WindowDecorations::Client),
+			window_background: gpui::WindowBackgroundAppearance::Transparent,
+			// Above the rest, and taking neither the keyboard nor the pointer's place.
+			kind: gpui::WindowKind::PopUp,
+			focus: false,
+			show: true,
+			is_movable: false,
+			..Default::default()
+		};
+		// Deferred for the reason a download's window is: the first frame is drawn inside
+		// `open_window` and would read this entity while the update that got here still has it.
+		let rdm = cx.entity();
+		cx.defer(move |cx| {
+			let Ok(handle) =
+				cx.open_window(options, |_, cx| cx.new(|_| NoticeWindow::new(title, body)))
+			else {
+				return;
+			};
+			rdm.update(cx, |this, _| this.notice_windows.push(handle));
+			cx.spawn(async move |cx| {
+				cx.background_executor().timer(KEEP).await;
+				let _ = cx.update(|cx| handle.update(cx, |_, window, _| window.remove_window()));
+			})
+			.detach();
+		});
 	}
 
 	/// Drops the cards that have had their time. Called from the window's tick, which is also

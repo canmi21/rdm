@@ -22,6 +22,7 @@ their mouse to it, and that is the rule this section exists to keep.
 | How wide is the window, and resize it       | `mise run ax size <w> <h>`    | no                 |
 | Does a click do the right thing             | `cargo test`, headless        | no window at all   |
 | What does it look like                      | `mise run shot [path] [title]` | reads pixels only |
+| What does a notice window look like         | `mise run shot <path> --floating` | reads pixels only |
 
 **`ctl` is the debug build's control socket.** `src/ctl.rs` listens on a Unix socket under
 `target/` in debug builds only -- on Unix only, since the standard library has no such socket
@@ -30,6 +31,12 @@ sort, view, selection, open windows, every download -- with commands for what th
 sidebar, chips, headers and rows do. It is the analogue of the Tauri MCP bridge the workspace
 uses for its webview app, kept to a socket and a Python client because that is all the job
 needs. The socket lives in `target/` so it is per checkout and gone with `cargo clean`.
+
+`ctl say <finished|failed|queue|update> [text]` makes a notice happen on demand, which is
+otherwise a matter of waiting for a download to end; it says the words the real call sites say,
+since a harness that says something else verifies something else. A notice sent to a window of
+its own is on a layer above the ordinary windows and so is invisible to `shot`, which takes the
+application's window: `shot <path> --floating` takes that one.
 
 `ctl drag <column> <points>` is there for the one gesture nothing else can reach: a drag. A
 handle has no action of its own -- it answers a press and then the pointer -- so the

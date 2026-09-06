@@ -21,7 +21,7 @@ pub enum Style {
 	/// A card in the window's corner, over the list and above the status bar, which reaches
 	/// somebody already looking at it and nobody else.
 	InApp,
-	/// A window of its own, above the others, which needs no main window open. Not offered yet.
+	/// A window of its own, above the others, which needs no main window open.
 	Window,
 	/// Nothing is said.
 	#[default]
@@ -31,7 +31,8 @@ pub enum Style {
 impl Style {
 	/// What Settings offers, in the order it offers it: the places a notice can go, then the
 	/// choice to send it nowhere, since somebody opening the row is usually turning one down.
-	pub const ALL: [Style; 3] = [Style::System, Style::InApp, Style::Silent];
+	pub const ALL: [Style; 4] =
+		[Style::System, Style::InApp, Style::Window, Style::Silent];
 
 	pub fn name(self) -> &'static str {
 		match self {
@@ -72,15 +73,12 @@ impl Occasion {
 mod tests {
 	use super::*;
 
-	/// The window is a place a notice can go before it is a place Settings offers, so that a
-	/// preferences file written by a later build still reads here rather than failing whole.
 	#[test]
-	fn every_style_offered_is_named_and_the_unoffered_one_is_too() {
+	fn every_style_is_offered_and_named() {
 		for style in Style::ALL {
 			assert!(!style.name().is_empty());
 		}
-		assert_eq!(Style::Window.name(), "A window of its own");
-		assert!(!Style::ALL.contains(&Style::Window), "not offered until it is built");
+		assert!(Style::ALL.contains(&Style::Window));
 		assert_eq!(Style::default(), Style::Silent, "an unreadable choice says nothing");
 	}
 
