@@ -37,20 +37,21 @@ pub fn build(settings: &Settings, split: bool) -> Result<reqwest::Client> {
 		(false, HttpVersion::Http2) => builder.http2_prior_knowledge(),
 		(false, HttpVersion::Auto) => builder,
 	};
-	if let Some(proxy) = &settings.proxy {
-		builder = builder.proxy(reqwest::Proxy::all(proxy)?);
-	}
-	// Names are the system's to resolve unless the settings say otherwise; see src/dns.rs for
-	// what "otherwise" can mean and why each of the three parts is its own answer. The resolver
-	// is built here rather than kept: a client is built once a download, and a resolver that
-	// outlived the settings that made it would answer with the servers they used to name.
-	if let Some(resolver) = crate::dns::resolver(&crate::dns::Choice {
-		servers: settings.dns_servers,
-		transport: settings.dns_transport,
-		stack: settings.dns_stack,
-		written: settings.dns_written.clone(),
-	}) {
-		builder = builder.dns_resolver(resolver);
+	// A proxy carries the name, and resolving it here would be answering from the wrong place: a
+	// CDN's answer depends on who asked, and the one that matters is the one seen from where the
+	// connection is made. It would also cost a rule-based proxy the domain it routes on. So a
+	// request that goes through one is handed the name and nothing here resolves anything -- not
+	// our stack, and not the system's either, the name travelling in the CONNECT line or in the
+	// SOCKS request. See src/proxy.rs and src/dns.rs.
+	match &settings.proxy {
+		Some(proxy) => {
+			builder = builder.proxy(reqwest::Proxy::all(crate::proxy::resolved_there(proxy))?);
+		}
+		None => {
+			if let Some(resolver) = crate::dns::resolver(&settings.dns) {
+				builder = builder.dns_resolver(std::sync::Arc::new(resolver));
+			}
+		}
 	}
 	builder.build().map_err(Error::Http)
 }

@@ -51,8 +51,8 @@ const FIELDS: [(&str, &str, &str); 14] = [
 	),
 	(
 		"settings.label.name_servers",
-		"Cloudflare, Google",
-		"Addresses for port 53, https:// URLs for HTTPS; empty for the offered pair",
+		"1.1.1.1",
+		"Addresses for port 53, https:// URLs over HTTPS; several apart by commas",
 	),
 	("settings.label.headers", "", "Name: value, several apart by semicolons"),
 	("settings.label.redirects", "10", "How many a request follows"),
@@ -241,6 +241,18 @@ impl Rdm {
 		}
 	}
 
+	/// Reads a setting back into the field that shows it. The rows where choosing something fills
+	/// a field beside it -- a server, a user agent -- change the setting and not the field, and
+	/// what is on screen has to follow or the field says what was there before.
+	pub(crate) fn show_setting(&mut self, key: &'static str, cx: &mut Context<Self>) {
+		let shown = self.setting_text(key);
+		if let Some(sheet) = &self.settings
+			&& let Some(field) = sheet.fields.get(key)
+		{
+			field.update(cx, |field, cx| field.set_content(&shown, cx));
+		}
+	}
+
 	/// A field's text, applied: parsed for its setting, kept, handed to the engine where the
 	/// engine takes it live, and read back into the field as kept; or refused under its row.
 	pub(crate) fn apply_setting(&mut self, key: &'static str, text: &str, cx: &mut Context<Self>) {
@@ -273,7 +285,11 @@ impl Rdm {
 				"settings.label.size_limit" => self.preferences.max_size = parse_size(text)?,
 				"settings.label.user_agent" => self.preferences.user_agent = (!text.is_empty()).then(|| text.to_owned()),
 				"settings.label.proxy" => {
-					let schemed = ["http://", "https://", "socks5://"].iter().any(|s| text.starts_with(s));
+					// `socks5h://` is taken as well as `socks5://` and means the same thing here:
+					// either way the proxy is the one that resolves. See src/proxy.rs.
+					let schemed = ["http://", "https://", "socks5://", "socks5h://"]
+						.iter()
+						.any(|s| text.starts_with(s));
 					if !text.is_empty() && !schemed {
 						return Err("A proxy starts with http://, https:// or socks5://.".to_owned());
 					}
@@ -295,6 +311,10 @@ impl Rdm {
 						}
 					}
 					self.preferences.dns_servers_written = text.to_owned();
+					// Writing servers is choosing them: leaving the row above on one of the
+					// offered pair while the field says otherwise would show one thing and ask
+					// another.
+					self.preferences.dns_servers = crate::dns::Servers::Custom;
 				}
 				"settings.label.headers" => {
 					let mut headers = Vec::new();
@@ -509,49 +529,6 @@ impl Rdm {
 			self.field_row(Section::Network, "settings.label.proxy").under("settings.group.proxy"),
 			Row {
 				section: Section::Network,
-				group: "settings.group.names",
-				label: "settings.label.dns_who",
-				note: "settings.note.dns_who",
-				control: Control::Choice {
-					options: crate::dns::Servers::ALL.iter().map(|s| s.name()).collect(),
-					chosen: crate::dns::Servers::ALL
-						.iter()
-						.position(|s| *s == self.preferences.dns_servers)
-						.unwrap_or(0),
-					set: |this, index, cx| this.set_dns_servers(crate::dns::Servers::ALL[index], cx),
-				},
-			},
-			Row {
-				section: Section::Network,
-				group: "settings.group.names",
-				label: "settings.label.dns_how",
-				note: "settings.note.dns_how",
-				control: Control::Choice {
-					options: crate::dns::Transport::ALL.iter().map(|t| t.name()).collect(),
-					chosen: crate::dns::Transport::ALL
-						.iter()
-						.position(|t| *t == self.preferences.dns_transport)
-						.unwrap_or(0),
-					set: |this, index, cx| this.set_dns_transport(crate::dns::Transport::ALL[index], cx),
-				},
-			},
-			self.field_row(Section::Network, "settings.label.name_servers").under("settings.group.names"),
-			Row {
-				section: Section::Network,
-				group: "settings.group.names",
-				label: "settings.label.dns_what",
-				note: "settings.note.dns_what",
-				control: Control::Choice {
-					options: crate::dns::Stack::ALL.iter().map(|s| s.name()).collect(),
-					chosen: crate::dns::Stack::ALL
-						.iter()
-						.position(|s| *s == self.preferences.dns_stack)
-						.unwrap_or(0),
-					set: |this, index, cx| this.set_dns_stack(crate::dns::Stack::ALL[index], cx),
-				},
-			},
-			Row {
-				section: Section::Network,
 				group: "settings.group.proxy",
 				label: "settings.label.proxy_in_use",
 				note: "settings.note.proxy_in_use",
@@ -690,6 +667,48 @@ impl Rdm {
 				set: notice_setter(occasion),
 			},
 		}));
+		// How names are resolved. The switch that hands the whole business back to the machine
+		// comes first, and while it is on the rows under it are not shown: none of them does
+		// anything then, and a row that cannot matter is a row read for nothing. See src/dns.rs.
+		rows.push(Row {
+			section: Section::Network,
+			group: "settings.group.names",
+			label: "settings.label.dns_force_system",
+			note: "settings.note.dns_force_system",
+			control: Control::Switch {
+				on: self.preferences.dns_force_system,
+				set: Rdm::set_dns_force_system,
+			},
+		});
+		if !self.preferences.dns_force_system {
+			let transport = self.preferences.dns_transport;
+			let offered = crate::dns::Servers::offered(transport);
+			rows.push(Row {
+				section: Section::Network,
+				group: "settings.group.names",
+				label: "settings.label.dns_https",
+				note: "settings.note.dns_https",
+				control: Control::Switch { on: transport.is_https(), set: Rdm::set_dns_https },
+			});
+			rows.push(Row {
+				section: Section::Network,
+				group: "settings.group.names",
+				label: "settings.label.dns_servers",
+				note: "settings.note.dns_servers",
+				control: Control::Choice {
+					options: offered.iter().map(|s| s.name(transport)).collect(),
+					chosen: offered.iter().position(|s| *s == self.preferences.dns_servers).unwrap_or(0),
+					set: |this, index, cx| {
+						let transport = this.preferences.dns_transport;
+						this.set_dns_servers(crate::dns::Servers::offered(transport)[index], cx);
+					},
+				},
+			});
+			rows.push(
+				self.field_row(Section::Network, "settings.label.name_servers")
+					.under("settings.group.names"),
+			);
+		}
 		rows
 	}
 

@@ -1,43 +1,90 @@
-//! How a name becomes an address. Three questions, each its own answer, because the reasons for
-//! changing one are not the reasons for changing the others:
+//! How a name becomes an address.
 //!
-//! - **Who is asked.** The system's own servers, which is what everything else on the machine
-//!   uses, or a pair named here. A machine on a network that answers `github.com` with a lie is
-//!   the reason anybody sets this, and the pair offered first is the pair such a person means:
-//!   Cloudflare and Google.
-//! - **How they are asked.** Plain DNS on port 53, which anything between here and there can read
-//!   and rewrite, or DNS over HTTPS, which it cannot.
-//! - **What does the asking.** The system's resolver, which knows about the machine's search
-//!   domains, its `/etc/hosts` and its VPN, or one written in Rust that knows only what it is
-//!   told. The system's is right far more often; the other exists because the system's cannot be
-//!   pointed at a server of one's choosing on every platform.
+//! **This application resolves names itself, and does it the same way on every platform.** That
+//! is the whole reason: one Rust stack, one cache, one set of timeouts, so a download that will
+//! not start behaves the same on macOS, Windows and Linux and can be reasoned about from one
+//! place. It is not a security measure. Asking the machine's own servers with our own client
+//! gets the machine's own answers, lies included; what buys trust is changing who is asked or
+//! how, and both of those are the user's to turn on.
 //!
-//! Nothing here is on by default. The system's stack, asking the system's servers, is what a
-//! download manager should do until somebody says otherwise. See spec/engine.md.
+//! What the system's stack knows and no unicast server does is `.local`, which is answered by
+//! multicast, and whatever a VPN's own scoped resolver answers for. So a name our resolver
+//! cannot find is put to the system once before the download fails. The fallback is an escape
+//! hatch and not a second opinion: it runs where nobody could have answered, never where an
+//! answer came back that somebody might not like.
+//!
+//! Three things the user can change, and each turns something off:
+//!
+//! - **Force the system's resolver.** Off. On, nothing here is built and reqwest resolves the way
+//!   the machine does, which is the way out if this arrangement is ever the problem.
+//! - **DNS over HTTPS.** Off. On, the question cannot be read or rewritten on the way, which is
+//!   what somebody whose network answers `github.com` with a lie is after.
+//! - **Which servers.** The machine's own, one of the two anybody in that position already knows,
+//!   or whatever is written in the field.
+//!
+//! **A download that goes through a proxy resolves nothing here.** The name travels to the proxy
+//! and the proxy resolves it, because the address a CDN gives depends on who asked and the one
+//! that matters is the one seen from where the connection is made. See src/engine/client.rs.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Mutex, OnceLock};
 
+use hickory_resolver::TokioResolver;
+use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolverConfig};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::net::{DnsError, NetError};
 use serde::{Deserialize, Serialize};
 
-/// Who is asked.
+/// Which servers are asked.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Servers {
-	/// Whatever the machine is configured with, which is what everything else on it uses.
+	/// Whatever the machine is configured with, which is what everything else on it uses. On
+	/// Apple that is read from the SystemConfiguration store and not from `/etc/resolv.conf`, so
+	/// the search domains arrive with the addresses.
 	#[default]
 	System,
-	/// The addresses named in the settings, and only those.
-	Named,
+	Cloudflare,
+	Google,
+	/// Whatever is written in the field. `named` is what an older file calls this.
+	#[serde(alias = "named")]
+	Custom,
 }
 
 impl Servers {
-	pub const ALL: [Servers; 2] = [Servers::System, Servers::Named];
+	/// What is offered, which depends on the transport: a machine's DNS configuration names
+	/// addresses and never URLs, so following it is an answer on port 53 and not over HTTPS.
+	pub fn offered(transport: Transport) -> &'static [Servers] {
+		match transport {
+			Transport::Plain => &[Servers::System, Servers::Cloudflare, Servers::Google, Servers::Custom],
+			Transport::Https => &[Servers::Cloudflare, Servers::Google, Servers::Custom],
+		}
+	}
 
-	pub fn name(self) -> &'static str {
-		match self {
-			Servers::System => crate::i18n::t("dns.servers.system"),
-			Servers::Named => crate::i18n::t("dns.servers.named"),
+	/// What the option is called. The two servers offered are named by their address on port 53
+	/// and by their operator over HTTPS, because that is what somebody looking for them knows:
+	/// everybody remembers 1.1.1.1 and nobody remembers a DoH URL.
+	pub fn name(self, transport: Transport) -> &'static str {
+		match (self, transport) {
+			(Servers::System, _) => crate::i18n::t("dns.servers.system"),
+			(Servers::Custom, _) => crate::i18n::t("dns.servers.custom"),
+			(Servers::Cloudflare, Transport::Plain) => "1.1.1.1",
+			(Servers::Google, Transport::Plain) => "8.8.8.8",
+			(Servers::Cloudflare, Transport::Https) => "Cloudflare",
+			(Servers::Google, Transport::Https) => "Google",
+		}
+	}
+
+	/// What choosing it writes into the field beside it, so what is being asked is on screen
+	/// rather than implied -- the same reason a chosen user agent fills its field. The machine's
+	/// own servers and Custom write nothing: one has nothing to show and the other is the field.
+	pub fn written(self, transport: Transport) -> &'static str {
+		match (self, transport) {
+			(Servers::Cloudflare, Transport::Plain) => "1.1.1.1",
+			(Servers::Google, Transport::Plain) => "8.8.8.8",
+			(Servers::Cloudflare, Transport::Https) => "https://cloudflare-dns.com/dns-query",
+			(Servers::Google, Transport::Https) => "https://dns.google/dns-query",
+			(Servers::System | Servers::Custom, _) => "",
 		}
 	}
 }
@@ -46,7 +93,9 @@ impl Servers {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Transport {
-	/// Port 53, in the clear, which anything between here and there can read and rewrite.
+	/// Port 53, which anything between here and there can read and rewrite. UDP first; hickory
+	/// moves the same question to TCP when an answer comes back truncated, and also when it comes
+	/// back with the wrong case, which is how a forged reply gives itself away.
 	#[default]
 	Plain,
 	/// DNS over HTTPS, which it cannot.
@@ -54,184 +103,388 @@ pub enum Transport {
 }
 
 impl Transport {
-	pub const ALL: [Transport; 2] = [Transport::Plain, Transport::Https];
-
-	pub fn name(self) -> &'static str {
-		match self {
-			Transport::Plain => crate::i18n::t("dns.transport.plain"),
-			Transport::Https => crate::i18n::t("dns.transport.https"),
+	pub fn of(https: bool) -> Transport {
+		match https {
+			true => Transport::Https,
+			false => Transport::Plain,
 		}
+	}
+
+	pub fn is_https(self) -> bool {
+		self == Transport::Https
 	}
 }
 
-/// What does the asking.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Stack {
-	/// The system's own resolver, which knows the machine's search domains, its hosts file and
-	/// its VPN.
-	#[default]
-	System,
-	/// Hickory, which knows only what it is told, and can be told to ask anyone.
-	Hickory,
-}
+/// The two servers offered, and the addresses they answer on, written down so that choosing one
+/// does not need a question answered before it can ask its own. A DoH server named by a host we
+/// have not got an address for is looked up the ordinary way, which is not a circle -- one
+/// question before the first, and every question after it over HTTPS -- but it does mean the
+/// bootstrap goes through whatever is already working, and these two never have to.
+const PINNED: [(&str, &str); 2] = [("cloudflare-dns.com", "1.1.1.1"), ("dns.google", "8.8.8.8")];
 
-impl Stack {
-	pub const ALL: [Stack; 2] = [Stack::System, Stack::Hickory];
-
-	pub fn name(self) -> &'static str {
-		match self {
-			Stack::System => crate::i18n::t("dns.stack.system"),
-			Stack::Hickory => crate::i18n::t("dns.stack.hickory"),
-		}
-	}
-}
-
-/// The servers offered first when somebody chooses to name their own: the two public resolvers
-/// anybody in this position already knows the addresses of. Written as text because that is what
-/// the settings field holds and what the user edits.
-pub const DEFAULT_PLAIN: &str = "1.1.1.1, 8.8.8.8";
-
-/// And the same two over HTTPS.
-pub const DEFAULT_HTTPS: &str = "https://cloudflare-dns.com/dns-query, https://dns.google/dns-query";
-
-/// What the settings come to, gathered so the resolver is built from one thing.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// What the settings come to, gathered so the resolver is built from one thing and so two
+/// settings that come to the same thing share a resolver.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Choice {
-	pub servers: Servers,
+	/// Nothing of ours is built, and reqwest resolves the way the machine does.
+	pub force_system: bool,
 	pub transport: Transport,
-	pub stack: Stack,
-	/// The addresses or URLs, as the user wrote them: comma or space apart.
+	pub servers: Servers,
+	/// The addresses or URLs, as the user wrote them: comma, space or newline apart.
 	pub written: String,
 }
 
 impl Choice {
-	/// Whether anything here asks for a resolver of our own. The system's stack asking the
-	/// system's servers is the whole of what reqwest does already.
-	pub fn is_default(&self) -> bool {
-		self.stack == Stack::System && self.servers == Servers::System
-	}
-}
-
-/// A resolver built to a choice, or None where the choice is the system's own and there is
-/// nothing to build. An address that will not parse is left out rather than taken as a reason to
-/// fail: a settings field is typed into a character at a time, and a resolver that refused to
-/// exist while it was half-typed would take the downloads with it.
-pub fn resolver(choice: &Choice) -> Option<Arc<Resolver>> {
-	if choice.is_default() {
-		return None;
-	}
-	// DNS over HTTPS is TLS like any other, and this may be the first thing to want it.
-	crate::tls::install();
-	let provider = hickory_resolver::net::runtime::TokioRuntimeProvider::default();
-	let builder = match choice.servers {
-		// The system's servers, asked by hickory: what the machine is configured with, read the
-		// way the machine reads it.
-		Servers::System => hickory_resolver::TokioResolver::builder(provider).ok()?,
-		Servers::Named => {
-			hickory_resolver::TokioResolver::builder_with_config(named_config(choice)?, provider)
+	/// The servers to ask, as text: the field where the choice is Custom, the chosen server's own
+	/// address or URL otherwise, and nothing where the machine's own are the ones to read.
+	fn text(&self) -> &str {
+		let written = match self.servers {
+			Servers::Custom => self.written.trim(),
+			other => other.written(self.transport),
+		};
+		match (written.is_empty(), self.transport) {
+			// Over HTTPS there is no such thing as following the machine, which names addresses
+			// and never URLs. A choice that comes to nothing there is the server offered first,
+			// not a quiet drop back to port 53 -- somebody who asked for HTTPS did not ask for
+			// their questions to go out in the clear because a field was empty.
+			(true, Transport::Https) => Servers::Cloudflare.written(Transport::Https),
+			_ => written,
 		}
-	};
-	// A resolver that will not build is a resolver we do without: the system's stack answers.
-	Some(Arc::new(Resolver { inner: builder.build().ok()? }))
+	}
+
+	/// Whether a name our resolver could not find is worth putting to the system. It is only when
+	/// the servers being asked are the machine's own: what the system knows and they do not is
+	/// `.local` and whatever a VPN answers for, and both come from the same machine either way.
+	/// Somebody who named servers said they do not trust this machine's, and a fallback that
+	/// asked it anyway would hand back the answers they refused.
+	fn asks_system_for_missing(&self) -> bool {
+		self.servers == Servers::System && self.transport == Transport::Plain
+	}
 }
 
-/// The servers the user named, as a hickory config. None where nothing in the field parsed,
-/// which is the same as having named nothing.
-fn named_config(choice: &Choice) -> Option<hickory_resolver::config::ResolverConfig> {
-	use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-	let written: Vec<&str> =
-		choice.written.split([',', ' ', '\n']).map(str::trim).filter(|s| !s.is_empty()).collect();
-	let servers: Vec<NameServerConfig> = match choice.transport {
-		Transport::Plain => written
-			.iter()
-			.filter_map(|text| text.parse().ok())
-			.map(NameServerConfig::udp_and_tcp)
-			.collect(),
-		Transport::Https => written
-			.iter()
-			.filter_map(|url| {
-				// A DoH server is named by its URL, and its address is found the ordinary way --
-				// which is not a circle: the URL's host is resolved once, through whatever is
-				// already working, and every question after it goes over HTTPS.
-				let rest = url.strip_prefix("https://")?;
-				let (host, path) = rest.split_once('/').unwrap_or((rest, "dns-query"));
-				let addresses = std::net::ToSocketAddrs::to_socket_addrs(&(host, 443)).ok()?;
-				let ip = addresses.map(|a: SocketAddr| a.ip()).next()?;
-				Some(NameServerConfig::https(ip, host.into(), Some(format!("/{path}").into())))
-			})
-			.collect(),
-	};
-	if servers.is_empty() {
+/// The resolver this process has, and the choice it was built for.
+///
+/// **One, for the life of the process.** A resolver holds a cache, and a cache thrown away with
+/// the client that made it answers nothing twice: a download builds a client per connection, so
+/// this is the difference between one query for a name and sixteen. The choice is kept beside it
+/// so a settings change replaces it rather than being answered by the servers it used to name.
+static CURRENT: OnceLock<Mutex<Option<(Choice, Resolver)>>> = OnceLock::new();
+
+/// The resolver for a choice, or None where the choice is to let the system do it and there is
+/// nothing to build.
+pub fn resolver(choice: &Choice) -> Option<Resolver> {
+	if choice.force_system {
 		return None;
 	}
-	Some(ResolverConfig::from_parts(None, Vec::new(), servers))
+	let held = CURRENT.get_or_init(|| Mutex::new(None));
+	let mut held = held.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+	if let Some((made_for, resolver)) = held.as_ref()
+		&& made_for == choice
+	{
+		return Some(resolver.clone());
+	}
+	let resolver =
+		Resolver(Arc::new(Held { choice: choice.clone(), inner: tokio::sync::OnceCell::new() }));
+	*held = Some((choice.clone(), resolver.clone()));
+	Some(resolver)
 }
 
-/// What reqwest is handed. The trait is reqwest's; the work is hickory's.
-pub struct Resolver {
-	inner: hickory_resolver::TokioResolver,
+/// What reqwest is handed. Cloning one clones a handle: every copy is the same resolver, the
+/// same connections and the same cache.
+#[derive(Clone)]
+pub struct Resolver(Arc<Held>);
+
+struct Held {
+	choice: Choice,
+	/// Built at the first name asked rather than where this is made. Building it may have to look
+	/// a DoH server's own address up, which is a question, and a question wants a runtime; this is
+	/// made where a client is made, which is not always inside one.
+	inner: tokio::sync::OnceCell<TokioResolver>,
 }
 
 impl reqwest::dns::Resolve for Resolver {
 	fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
-		let inner = self.inner.clone();
+		let held = self.0.clone();
 		Box::pin(async move {
-			let lookup = inner.lookup_ip(name.as_str()).await?;
-			// The port is reqwest's to fill in: it says so, and fills a zero with the scheme's.
-			let addresses: Vec<SocketAddr> =
-				lookup.iter().map(|ip| SocketAddr::new(ip, 0)).collect();
-			Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs)
+			let name = name.as_str().to_owned();
+			// A resolver that will not build at all -- nothing usable in the settings, a DoH
+			// server whose own address cannot be found -- is one we do without rather than a
+			// download that fails before it starts.
+			let Ok(inner) = held.inner.get_or_try_init(|| build(&held.choice)).await else {
+				return system(&name).await;
+			};
+			match inner.lookup_ip(name.as_str()).await {
+				Ok(lookup) => {
+					let addresses: Vec<SocketAddr> =
+						// The port is reqwest's to fill in: it says so, and fills a zero with
+						// the scheme's.
+						lookup.iter().map(|ip| SocketAddr::new(ip, 0)).collect();
+					match addresses.is_empty() {
+						false => Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs),
+						// An answer with nothing in it is the same as no answer.
+						true if held.choice.asks_system_for_missing() => system(&name).await,
+						true => Err(format!("no addresses for {name}").into()),
+					}
+				}
+				// A name our servers do not know may be one the system does: `.local` is answered
+				// by multicast and a VPN's own names by a resolver scoped to it, and no unicast
+				// server has either.
+				Err(error) if missing(&error) => match held.choice.asks_system_for_missing() {
+					true => system(&name).await,
+					false => Err(Box::new(error) as _),
+				},
+				// Anything else is the question not getting through, and the system's stack is a
+				// different path to a different set of servers whatever ours were.
+				Err(_) => system(&name).await,
+			}
 		})
 	}
+}
+
+/// Whether the answer was "no such name" rather than "no answer". hickory reports both as an
+/// error and they are the two ends of the fallback: a name that does not exist is worth putting
+/// to the system only when the system's own servers were the ones asked, and a question that
+/// never got through is worth putting to it however it was sent.
+fn missing(error: &NetError) -> bool {
+	matches!(error, NetError::Dns(DnsError::NoRecordsFound(_)))
+}
+
+/// The machine's own stack, asked the way everything else on it asks. `lookup_host` is
+/// `getaddrinfo` on tokio's blocking pool, so the wait is not on a worker thread.
+async fn system(
+	name: &str,
+) -> Result<reqwest::dns::Addrs, Box<dyn std::error::Error + Send + Sync>> {
+	let addresses: Vec<SocketAddr> = tokio::net::lookup_host((name, 0)).await?.collect();
+	Ok(Box::new(addresses.into_iter()))
+}
+
+/// The resolver for a choice, made inside a runtime because a DoH server named by a host has to
+/// be looked up before it can be asked anything.
+async fn build(choice: &Choice) -> Result<TokioResolver, String> {
+	// DNS over HTTPS is TLS like any other, and this may be the first thing to want it.
+	crate::tls::install();
+	let provider = TokioRuntimeProvider::default();
+	let mut builder = match config(choice).await {
+		Some(config) => TokioResolver::builder_with_config(config, provider),
+		None => TokioResolver::builder(provider).map_err(|error| error.to_string())?,
+	};
+	// A and AAAA in parallel, A ordered first. hickory orders AAAA first by default, and the
+	// system's stack does too -- but it also knows whether this machine has a route to a v6
+	// address at all and demotes them when it does not, which we cannot. On a machine with
+	// half-working IPv6 that difference is happy eyeballs' wait on every connection, sixteen
+	// times over for a split download. reqwest's own hickory client makes the same override.
+	builder.options_mut().ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
+	builder.build().map_err(|error| error.to_string())
+}
+
+/// The servers to ask, or None to read the machine's own. An address that will not parse is left
+/// out rather than taken as a reason to fail: a settings field is typed into a character at a
+/// time, and a resolver that refused to exist while it was half-typed would take the downloads
+/// with it.
+async fn config(choice: &Choice) -> Option<ResolverConfig> {
+	let mut servers = Vec::new();
+	for one in choice.text().split([',', ' ', '\n']).map(str::trim).filter(|s| !s.is_empty()) {
+		match choice.transport {
+			Transport::Plain => match one.parse::<IpAddr>() {
+				Ok(ip) => servers.push(NameServerConfig::udp_and_tcp(ip)),
+				Err(_) => continue,
+			},
+			Transport::Https => match over_https(one).await {
+				Some(server) => servers.push(server),
+				None => continue,
+			},
+		}
+	}
+	if servers.is_empty() {
+		// Nothing usable is the same as having named nothing, and the machine's own servers are
+		// what that comes to -- except over HTTPS, where going back to port 53 would be answering
+		// a question nobody asked. See `Choice::text`.
+		return match choice.transport {
+			Transport::Plain => None,
+			Transport::Https => {
+				let offered = over_https(Servers::Cloudflare.written(Transport::Https)).await?;
+				Some(ResolverConfig::from_parts(None, Vec::new(), vec![offered]))
+			}
+		};
+	}
+	Some(ResolverConfig::from_parts(None, Vec::new(), servers))
+}
+
+/// A DoH server from its URL: its address from the table where we have it, from the URL itself
+/// where the URL names one, and from the ordinary lookup otherwise. The host is kept whatever the
+/// address came from, because it is the name the certificate is checked against -- an address
+/// somebody rewrote on the way fails the handshake rather than answering the questions.
+async fn over_https(url: &str) -> Option<NameServerConfig> {
+	let rest = url.strip_prefix("https://")?;
+	let (host, path) = rest.split_once('/').unwrap_or((rest, "dns-query"));
+	let ip = match PINNED.iter().find(|(known, _)| *known == host) {
+		Some((_, address)) => address.parse().ok()?,
+		None => match host.parse::<IpAddr>() {
+			Ok(ip) => ip,
+			Err(_) => tokio::net::lookup_host((host, 443)).await.ok()?.next()?.ip(),
+		},
+	};
+	Some(NameServerConfig::https(ip, host.into(), Some(format!("/{path}").into())))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 
-	fn choice(servers: Servers, transport: Transport, stack: Stack, written: &str) -> Choice {
-		Choice { servers, transport, stack, written: written.to_owned() }
+	fn choice(transport: Transport, servers: Servers, written: &str) -> Choice {
+		Choice { force_system: false, transport, servers, written: written.to_owned() }
 	}
 
 	#[test]
-	fn the_system_asking_the_system_builds_nothing() {
-		let plain = choice(Servers::System, Transport::Plain, Stack::System, "");
-		assert!(plain.is_default(), "which is what reqwest does already");
-		assert!(resolver(&plain).is_none());
+	fn nothing_is_built_for_the_choice_to_let_the_system_do_it() {
+		let forced = Choice { force_system: true, ..Choice::default() };
+		assert!(resolver(&forced).is_none());
 	}
 
-	/// A settings field is typed into a character at a time. A resolver that refused to exist
-	/// while the field was half-typed would take the downloads with it, so what does not parse is
-	/// left out and what is left over is used.
+	/// The default is our own stack asking the machine's own servers, which is a resolver to
+	/// build and not a reason to skip one.
 	#[test]
-	fn addresses_that_do_not_parse_are_left_out_rather_than_fatal() {
-		let half = choice(Servers::Named, Transport::Plain, Stack::Hickory, "1.1.1.1, 8.8.8");
-		assert!(named_config(&half).is_some(), "one good address is enough");
-		let none = choice(Servers::Named, Transport::Plain, Stack::Hickory, "nonsense");
-		assert!(named_config(&none).is_none(), "and none is none");
-		let empty = choice(Servers::Named, Transport::Plain, Stack::Hickory, "");
-		assert!(named_config(&empty).is_none());
+	fn the_default_is_our_stack_on_the_machines_servers() {
+		let default = Choice::default();
+		assert!(!default.force_system);
+		assert_eq!(default.servers, Servers::System);
+		assert_eq!(default.transport, Transport::Plain);
+		assert!(default.text().is_empty(), "which is read from the machine, not written here");
+		assert!(default.asks_system_for_missing(), "and a name it cannot find goes to the system");
 	}
 
+	/// Naming servers is saying this machine's are not to be trusted. A fallback that asked them
+	/// anyway on a name the named servers do not have would hand back what was refused.
 	#[test]
-	fn the_offered_servers_are_the_two_anybody_in_this_position_knows() {
-		assert!(DEFAULT_PLAIN.contains("1.1.1.1") && DEFAULT_PLAIN.contains("8.8.8.8"));
-		assert!(DEFAULT_HTTPS.contains("cloudflare-dns.com") && DEFAULT_HTTPS.contains("dns.google"));
-		let named = choice(Servers::Named, Transport::Plain, Stack::Hickory, DEFAULT_PLAIN);
-		assert!(named_config(&named).is_some(), "and the default pair parses");
+	fn only_the_machines_own_servers_earn_the_fallback() {
+		assert!(!choice(Transport::Plain, Servers::Cloudflare, "").asks_system_for_missing());
+		assert!(!choice(Transport::Plain, Servers::Custom, "9.9.9.9").asks_system_for_missing());
+		assert!(!choice(Transport::Https, Servers::Cloudflare, "").asks_system_for_missing());
 	}
 
+	/// Choosing one of the offered servers fills the field beside it, so what is being asked is
+	/// on screen. Custom is the one that reads the field instead of writing it.
 	#[test]
-	fn every_choice_is_named_and_the_defaults_are_the_systems() {
-		assert_eq!(Servers::default(), Servers::System);
-		assert_eq!(Transport::default(), Transport::Plain);
-		assert_eq!(Stack::default(), Stack::System);
-		for name in Servers::ALL.map(Servers::name).into_iter().chain(Transport::ALL.map(Transport::name)) {
-			assert!(!name.is_empty());
+	fn choosing_a_server_says_what_it_means() {
+		assert_eq!(Servers::Cloudflare.written(Transport::Plain), "1.1.1.1");
+		assert_eq!(Servers::Google.written(Transport::Plain), "8.8.8.8");
+		assert_eq!(choice(Transport::Plain, Servers::Google, "ignored").text(), "8.8.8.8");
+		assert_eq!(choice(Transport::Plain, Servers::Custom, " 9.9.9.9 ").text(), "9.9.9.9");
+		for transport in [Transport::Plain, Transport::Https] {
+			for servers in Servers::offered(transport) {
+				assert!(!servers.name(transport).is_empty());
+			}
 		}
-		for stack in Stack::ALL {
-			assert!(!stack.name().is_empty());
+	}
+
+	/// Every URL the two offered options can come to has its address written down, so the common
+	/// way to turn DoH on never asks the network where its DoH server is.
+	#[test]
+	fn the_offered_doh_servers_need_no_lookup() {
+		for offered in [Servers::Cloudflare, Servers::Google] {
+			let url = offered.written(Transport::Https);
+			let host = url.strip_prefix("https://").and_then(|r| r.split('/').next()).unwrap();
+			assert!(PINNED.iter().any(|(known, _)| *known == host), "{host} has no address");
 		}
+		for (_, address) in PINNED {
+			assert!(address.parse::<IpAddr>().is_ok(), "{address}");
+		}
+	}
+
+	/// Asking for HTTPS and getting port 53 because a field was empty would be answering a
+	/// question nobody asked, so what an unusable choice comes to over HTTPS is still a URL.
+	#[test]
+	fn an_empty_choice_over_https_is_still_over_https() {
+		assert!(choice(Transport::Https, Servers::Custom, "").text().starts_with("https://"));
+		assert!(choice(Transport::Https, Servers::System, "").text().starts_with("https://"));
+		assert!(
+			choice(Transport::Plain, Servers::Custom, "").text().is_empty(),
+			"port 53 reads the machine"
+		);
+	}
+
+	/// Two settings that come to the same thing share a resolver, and a settings change replaces
+	/// it: one cache for the process, and never one that answers with the servers it used to name.
+	#[test]
+	fn the_resolver_is_kept_and_replaced_rather_than_rebuilt() {
+		let one = choice(Transport::Plain, Servers::Custom, "1.1.1.1");
+		let first = resolver(&one).expect("a resolver is built");
+		let again = resolver(&one).expect("and kept");
+		assert!(Arc::ptr_eq(&first.0, &again.0), "the same choice is the same resolver");
+		let other = choice(Transport::Plain, Servers::Custom, "8.8.8.8");
+		let changed = resolver(&other).expect("a changed choice is a new resolver");
+		assert!(!Arc::ptr_eq(&first.0, &changed.0));
+	}
+
+	/// An older file says `named` where this now says `custom`, and it means the same thing: the
+	/// servers in the field. A value that will not read is a config.json thrown away whole.
+	#[test]
+	fn an_older_files_word_for_the_field_still_reads() {
+		let old: Servers = serde_json::from_str("\"named\"").expect("named still reads");
+		assert_eq!(old, Servers::Custom);
+		let now: Servers = serde_json::from_str("\"custom\"").expect("and so does custom");
+		assert_eq!(now, Servers::Custom);
+	}
+}
+
+/// Against a real network, and ignored by default as the engine's own network tests are:
+/// `cargo test -- --ignored` runs them. What they prove is the part no unit test can -- that a
+/// resolver built from a choice actually answers, over port 53 and over HTTPS, and that a name
+/// nobody has comes back as a failure rather than a wait.
+#[cfg(test)]
+mod network {
+	use std::time::Duration;
+
+	use reqwest::dns::Resolve;
+
+	use super::*;
+
+	async fn answer(choice: Choice, name: &str) -> Result<Vec<SocketAddr>, ()> {
+		let resolver = resolver(&choice).expect("a resolver is built");
+		let name: reqwest::dns::Name = name.parse().expect("a name");
+		tokio::time::timeout(Duration::from_secs(30), resolver.resolve(name))
+			.await
+			.expect("answered within thirty seconds")
+			.map(|addresses| addresses.collect())
+			.map_err(|_| ())
+	}
+
+	/// The default: our own stack on whatever servers the machine is configured with.
+	#[tokio::test]
+	#[ignore = "needs the network"]
+	async fn the_machines_own_servers_answer_through_our_stack() {
+		let addresses = answer(Choice::default(), "one.one.one.one").await.expect("resolved");
+		assert!(!addresses.is_empty());
+	}
+
+	/// Both offered servers, both ways of asking them. The HTTPS half is what proves the pinned
+	/// addresses are right and that the certificate is checked against the host beside them.
+	#[tokio::test]
+	#[ignore = "needs the network"]
+	async fn the_offered_servers_answer_over_53_and_over_https() {
+		for transport in [Transport::Plain, Transport::Https] {
+			for servers in [Servers::Cloudflare, Servers::Google] {
+				let choice = Choice { force_system: false, transport, servers, written: String::new() };
+				let addresses = answer(choice, "example.com").await.expect("{servers:?} answered");
+				assert!(!addresses.is_empty(), "{servers:?} over {transport:?}");
+			}
+		}
+	}
+
+	/// `.invalid` is reserved and nobody answers for it, so this is the fallback running its whole
+	/// length -- our servers say no such name, the system is asked, and the answer is still no.
+	#[tokio::test]
+	#[ignore = "needs the network"]
+	async fn a_name_nobody_has_fails_rather_than_hanging() {
+		assert!(answer(Choice::default(), "no-such-host.rdm.invalid").await.is_err());
+	}
+
+	/// The way out, on its own: the machine's stack, asked the way everything else on it asks.
+	#[tokio::test]
+	#[ignore = "needs the network"]
+	async fn the_fallback_is_the_machines_own_stack() {
+		let addresses: Vec<SocketAddr> =
+			system("example.com").await.expect("the system answers").collect();
+		assert!(!addresses.is_empty());
 	}
 }

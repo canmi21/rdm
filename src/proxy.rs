@@ -1,14 +1,24 @@
 //! Which proxy the downloads go through, and finding one that is already running.
 //!
-//! The machines this is used on usually have a proxy on them, and it is usually one of a handful
-//! of programs listening on one of a handful of ports. Asking the user to type an address they
-//! did not choose -- mihomo picked 7890, not them -- is asking them to know something about their
-//! own machine that the machine can be asked instead. So the default is to look: open a socket to
-//! each of the known ports, take the first that answers, and go straight out when none does.
+//! The machines this is used on usually have a proxy on them, and it is usually listening on one
+//! of a handful of ports. Asking the user to type an address they did not choose -- mihomo picked
+//! 7890, not them -- is asking them to know something about their own machine that the machine can
+//! be asked instead. So the default is to look: open a socket to each of the known ports, take the
+//! first that answers, and go straight out when none does.
+//!
+//! **Three things are looked for, not seven programs.** A catalogue of every proxy's default port
+//! is a list to keep up with, and what matters is not which program is listening but what it
+//! speaks: an HTTP proxy, a SOCKS5 proxy, and the 78xx ports the Clash family and its descendants
+//! have made the ones a machine here is most likely to have. Ports that a program other than a
+//! proxy commonly holds are left out -- 8080 is somebody's development server far more often than
+//! it is a proxy, and sending every download through it would be worse than finding nothing.
 //!
 //! Nothing is guessed beyond that. A port that answers is a program listening, not necessarily a
-//! proxy, so the address found is shown in Settings and can be overruled by one typed there. See
-//! spec/engine.md.
+//! proxy, so the address found is shown in Settings and can be overruled by one typed there.
+//!
+//! **A proxy resolves the names it is given.** See `resolved_there` at the bottom of this file for
+//! why that is not an option, and src/dns.rs for what happens when there is no proxy.
+//! See spec/engine.md.
 
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
@@ -41,26 +51,21 @@ impl Source {
 	}
 }
 
-/// The addresses tried, in the order they are tried. The first is mihomo and Clash's mixed port,
-/// which speaks HTTP and SOCKS on one number and is what most of these machines have; the rest
-/// are the other defaults those programs and their neighbours ship with.
+/// The addresses tried, in the order they are tried: the mixed port first, because it is the one
+/// most of these machines have, then the rest of the 78xx family, then the port SOCKS5 has
+/// listened on since before any of this.
 ///
 /// A mixed port is written as `http://`: reqwest will send HTTP through it, which the port
 /// accepts, and a SOCKS-only listener is written as `socks5://`. Nothing here is a guess about
 /// what the program is -- only about what it speaks on that number.
-pub const KNOWN: [&str; 7] = [
-	// mihomo, Clash and Clash Verge: the mixed port, old and new defaults.
+pub const KNOWN: [&str; 4] = [
+	// The mixed port, HTTP and SOCKS on one number, on its old and new defaults.
 	"http://127.0.0.1:7890",
 	"http://127.0.0.1:7897",
-	// Clash's separate SOCKS port, beside the mixed one.
+	// The SOCKS port that usually sits beside it.
 	"socks5://127.0.0.1:7891",
-	// V2Ray, Xray and sing-box as their templates ship them.
-	"socks5://127.0.0.1:10808",
-	"http://127.0.0.1:10809",
-	// The address a SOCKS proxy has had since before any of these.
+	// The address a SOCKS5 proxy has had since before any of the above.
 	"socks5://127.0.0.1:1080",
-	// Privoxy, which a good many of the above chain through.
-	"http://127.0.0.1:8118",
 ];
 
 /// How long a port is given to answer. A proxy on this machine answers in under a millisecond;
@@ -68,7 +73,7 @@ pub const KNOWN: [&str; 7] = [
 const PATIENCE: Duration = Duration::from_millis(120);
 
 /// The first known address that answers, or None. Blocking, and meant for a background thread:
-/// seven connections at a tenth of a second each is most of a second in the worst case, which is
+/// four connections at an eighth of a second each is half a second in the worst case, which is
 /// nothing off the main thread and a visible stall on it.
 pub fn discover() -> Option<String> {
 	KNOWN.iter().find(|address| answers(address)).map(|address| (*address).to_owned())
@@ -89,9 +94,49 @@ fn socket_of(address: &str) -> Option<SocketAddr> {
 	rest.parse().ok()
 }
 
+/// The address as the client should be given it, which for SOCKS means the form that sends the
+/// name rather than an address.
+///
+/// `socks5://` and `socks5h://` are the same wire protocol -- SOCKS5 has carried domain names
+/// since it was written -- and differ only in whether the client resolves before it connects.
+/// That distinction is curl trivia and not something a download manager's settings field should
+/// make somebody know: whoever types `socks5://` means "a SOCKS5 proxy", and the proxy is who
+/// should be resolving. An address that is not SOCKS5 is handed back as it came, an HTTP proxy
+/// already being given the name in the CONNECT line.
+pub fn resolved_there(address: &str) -> String {
+	match address.strip_prefix("socks5://") {
+		Some(rest) => format!("socks5h://{rest}"),
+		None => address.to_owned(),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// What is looked for is three things and not a catalogue of programs: a mixed port, a SOCKS
+	/// port, and nothing on a number that something other than a proxy commonly holds.
+	#[test]
+	fn the_list_is_short_and_holds_no_port_a_development_server_wants() {
+		assert!(KNOWN.len() <= 4, "a list to keep up with is a list that falls behind");
+		for address in KNOWN {
+			for taken in [":8080", ":3000", ":8000", ":5000"] {
+				assert!(!address.ends_with(taken), "{address} is somebody's own server");
+			}
+		}
+	}
+
+	/// A SOCKS proxy is given the name, not an address: it is the one that can route on a domain,
+	/// and the one whose answer comes from where the connection is made.
+	#[test]
+	fn a_socks_proxy_is_handed_the_name() {
+		assert_eq!(resolved_there("socks5://127.0.0.1:7891"), "socks5h://127.0.0.1:7891");
+		assert_eq!(resolved_there("socks5h://127.0.0.1:1080"), "socks5h://127.0.0.1:1080");
+		assert_eq!(resolved_there("http://127.0.0.1:7890"), "http://127.0.0.1:7890");
+		for address in KNOWN {
+			assert!(!resolved_there(address).starts_with("socks5://"), "{address}");
+		}
+	}
 
 	#[test]
 	fn every_known_address_parses_and_names_a_scheme() {

@@ -129,9 +129,8 @@ pub struct Preferences {
 	/// user's, and the machine can be asked. See src/proxy.rs.
 	#[serde(default)]
 	pub proxy_source: crate::proxy::Source,
-	/// Who resolves names, how they are asked, and what does the asking. Each its own answer,
-	/// because the reasons for changing one are not the reasons for changing the others. All
-	/// three are the system's to start with. See src/dns.rs.
+	/// How names are resolved. This application does it itself by default, the same way on every
+	/// platform; these are the three things that can change that. See src/dns.rs.
 	/// What the window is read in. `System` is what a first launch has, and what a file written
 	/// before this arrangement reads as: the machine's own language decides until somebody picks
 	/// one, and picking one is picking it for good. See src/i18n.rs.
@@ -146,14 +145,15 @@ pub struct Preferences {
 	/// or whatever is written in the field. See src/agent.rs.
 	#[serde(default)]
 	pub agent: crate::agent::Agent,
+	/// Off. On, nothing of ours is built and the machine resolves the way it does for everything
+	/// else on it -- the way out if resolving here is ever the problem.
 	#[serde(default)]
-	pub dns_servers: crate::dns::Servers,
+	pub dns_force_system: bool,
 	#[serde(default)]
 	pub dns_transport: crate::dns::Transport,
 	#[serde(default)]
-	pub dns_stack: crate::dns::Stack,
-	/// The servers as the user wrote them. Empty means the pair offered for the transport in
-	/// use, which is Cloudflare and Google either way.
+	pub dns_servers: crate::dns::Servers,
+	/// The servers as the user wrote them, which choosing one of the offered servers fills in.
 	#[serde(default)]
 	pub dns_servers_written: String,
 	#[serde(default)]
@@ -233,19 +233,13 @@ impl Preferences {
 		settings.headers = self.headers.clone();
 		// What the engine is given: the address typed, whatever was found, or nothing. `found` is
 		// what the last look came to and is None until it has looked. See src/app/network.rs.
-		settings.dns_servers = self.dns_servers;
-		settings.dns_transport = self.dns_transport;
-		settings.dns_stack = self.dns_stack;
-		// Empty is the pair offered for this transport: somebody who chose to name servers and
-		// then cleared the field meant the offered ones, not none at all. Nothing is filled in
-		// while the system's servers are the ones being asked, there being nothing to fill.
-		settings.dns_written = match (self.dns_servers, self.dns_servers_written.trim()) {
-			(crate::dns::Servers::System, _) => String::new(),
-			(_, "") if self.dns_transport == crate::dns::Transport::Https => {
-				crate::dns::DEFAULT_HTTPS.to_owned()
-			}
-			(_, "") => crate::dns::DEFAULT_PLAIN.to_owned(),
-			(_, written) => written.to_owned(),
+		// The four of them are one thing to the engine: what a choice comes to is src/dns.rs's to
+		// work out, and one resolver is built for it and shared by every download that asks.
+		settings.dns = crate::dns::Choice {
+			force_system: self.dns_force_system,
+			transport: self.dns_transport,
+			servers: self.dns_servers,
+			written: self.dns_servers_written.clone(),
 		};
 		settings.proxy = match self.proxy_source {
 			crate::proxy::Source::Direct => None,
@@ -297,9 +291,9 @@ impl Default for Preferences {
 			language: crate::i18n::Language::default(),
 			start_at_login: false,
 			agent: crate::agent::Agent::default(),
-			dns_servers: crate::dns::Servers::default(),
+			dns_force_system: false,
 			dns_transport: crate::dns::Transport::default(),
-			dns_stack: crate::dns::Stack::default(),
+			dns_servers: crate::dns::Servers::default(),
 			dns_servers_written: String::new(),
 			max_redirects: None,
 			preallocate: true,

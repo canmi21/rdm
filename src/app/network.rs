@@ -1,7 +1,7 @@
 //! What the window knows about getting out: the proxy in use, and the look that finds one.
 //!
 //! The look runs once at launch and again whenever it is asked for, off the window's thread --
-//! seven connections at a tenth of a second each is most of a second in the worst case, which is
+//! four connections at an eighth of a second each is half a second in the worst case, which is
 //! nothing on a background thread and a visible stall on the main one. See src/proxy.rs.
 
 use gpui::Context;
@@ -97,33 +97,39 @@ impl Rdm {
 			self.preferences.user_agent = Some(agent.string(&own, ""));
 		}
 		self.save_config();
+		self.show_setting("settings.label.user_agent", cx);
 		cx.notify();
 	}
 
-	/// Settings' rows: who is asked, how, and by what. Each is written as it is chosen, and the
-	/// engine reads them when it builds the next client.
+	/// Settings' row: hand the whole business back to the machine. On, nothing of ours is built
+	/// and reqwest resolves the way everything else on this machine does -- the way out if
+	/// resolving here is ever the problem. See src/dns.rs.
+	pub(crate) fn set_dns_force_system(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.dns_force_system = on;
+		self.save_config();
+		cx.notify();
+	}
+
+	/// Settings' row: whether the questions go over HTTPS. Turning it changes what a server is --
+	/// an address for port 53, a URL for HTTPS -- so what was written for the old transport is not
+	/// an answer for the new one, and the choice goes back to the first server offered.
+	pub(crate) fn set_dns_https(&mut self, on: bool, cx: &mut Context<Self>) {
+		let transport = crate::dns::Transport::of(on);
+		self.preferences.dns_transport = transport;
+		self.set_dns_servers(crate::dns::Servers::offered(transport)[0], cx);
+	}
+
+	/// Settings' row: which servers. Choosing one of the offered fills the field beside it, so
+	/// what is being asked is on screen rather than implied -- the same reason a chosen user agent
+	/// fills its field. Custom leaves the field alone, the field being the choice.
 	pub(crate) fn set_dns_servers(&mut self, servers: crate::dns::Servers, cx: &mut Context<Self>) {
 		self.preferences.dns_servers = servers;
+		if servers != crate::dns::Servers::Custom {
+			self.preferences.dns_servers_written =
+				servers.written(self.preferences.dns_transport).to_owned();
+		}
 		self.save_config();
-		cx.notify();
-	}
-
-	pub(crate) fn set_dns_transport(
-		&mut self,
-		transport: crate::dns::Transport,
-		cx: &mut Context<Self>,
-	) {
-		self.preferences.dns_transport = transport;
-		// The field holds addresses for one and URLs for the other; what was written for the old
-		// transport is not an answer for the new one, so it goes back to the offered pair.
-		self.preferences.dns_servers_written.clear();
-		self.save_config();
-		cx.notify();
-	}
-
-	pub(crate) fn set_dns_stack(&mut self, stack: crate::dns::Stack, cx: &mut Context<Self>) {
-		self.preferences.dns_stack = stack;
-		self.save_config();
+		self.show_setting("settings.label.name_servers", cx);
 		cx.notify();
 	}
 
