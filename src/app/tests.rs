@@ -1568,6 +1568,55 @@ fn the_update_settings_are_switches_and_a_choice_that_follows_the_switch(cx: &mu
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.check_updates));
 }
 
+/// The Names rows: two switches and a choice whose options follow the transport. Searching for
+/// them rather than scrolling to them, since they sit at the end of a section that is longer than
+/// the pane and a row with no bounds would fail this for the wrong reason.
+#[gpui::test]
+fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
+	cx.run_until_parked();
+	let search = rdm.read_with(&cx, |rdm, _| rdm.settings.as_ref().unwrap().search.clone());
+	// By their group's name: a search matches a row's label, its note or the heading it sits
+	// under, and "Names" is the one word every row here answers to.
+	cx.update(|_, cx| search.update(cx, |field, cx| field.set_content("names", cx)));
+	cx.run_until_parked();
+
+	// The default: our own resolver, on port 53, on the machine's own servers. The two offered
+	// are named by their address here, because that is the name anybody has for them.
+	assert!(cx.debug_bounds("setting:settings.label.dns_force_system").is_some());
+	assert!(cx.debug_bounds("setting:settings.label.dns_https").is_some());
+	assert!(cx.debug_bounds("choice:Follow system").is_some());
+	assert!(cx.debug_bounds("choice:1.1.1.1").is_some());
+	assert!(cx.debug_bounds("choice:8.8.8.8").is_some());
+
+	// Choosing one fills the field beside it, so what is being asked is on screen.
+	click(&mut cx, "choice:1.1.1.1");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.preferences.dns_servers, crate::dns::Servers::Cloudflare);
+		assert_eq!(rdm.preferences.dns_servers_written, "1.1.1.1");
+	});
+
+	// Over HTTPS a server is a URL, so the machine's own are not offered and the operators' names
+	// are what the two are called.
+	click(&mut cx, "switch:settings.label.dns_https");
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("choice:Follow system").is_none(), "a machine names no DoH URL");
+	assert!(cx.debug_bounds("choice:Cloudflare").is_some());
+	assert!(cx.debug_bounds("choice:Google").is_some());
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.preferences.dns_servers_written, "https://cloudflare-dns.com/dns-query");
+	});
+
+	// And handing the whole business back to the machine leaves nothing under it to set.
+	click(&mut cx, "switch:settings.label.dns_force_system");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.dns_force_system));
+	assert!(cx.debug_bounds("setting:settings.label.dns_https").is_none());
+	assert!(cx.debug_bounds("choice:Cloudflare").is_none());
+}
+
 #[gpui::test]
 fn a_file_is_shown_before_it_is_added_and_the_connections_are_chosen_there(
 	cx: &mut TestAppContext,
