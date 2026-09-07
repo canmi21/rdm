@@ -56,10 +56,20 @@ const COLUMNS: usize = 60;
 /// the next second or two and the window stays a window meanwhile.
 const A_FRAME: u32 = 24;
 
+/// How many made pictures the folder keeps. Each is a PNG of a card, tens of kilobytes; a
+/// thousand of them is a folder somebody would not notice, and the oldest go first because the
+/// newest are the files being looked at. One deleted is one made again the next time it is
+/// wanted, so the count is a comfort rather than a promise.
+const KEPT: usize = 1000;
+
 #[derive(Default)]
 pub struct Thumbnails {
 	cache: HashMap<PathBuf, Option<Arc<RenderImage>>>,
 	previews: HashMap<PathBuf, Option<Preview>>,
+	/// Where a picture made from a file is kept between runs, if the platform gave us a place.
+	/// Only pictures of files go here: an icon is 64 KB and a quarter of a millisecond to draw,
+	/// while a picture is a whole file decoded, and it is the one worth not doing twice.
+	kept: Option<PathBuf>,
 	/// What is left of this frame's allowance, and whether the frame ran out. Running out is
 	/// what asks for another frame: the rest of the pictures are waiting in it.
 	budget: u32,
@@ -67,6 +77,13 @@ pub struct Thumbnails {
 }
 
 impl Thumbnails {
+	/// Pictures made from files are kept in this folder between runs. Without one -- a platform
+	/// that gave no directories, or a test -- everything is made afresh each run, which is the
+	/// behaviour this had before the folder existed.
+	pub fn keeping_pictures_in(folder: Option<PathBuf>) -> Thumbnails {
+		Thumbnails { kept: folder, ..Thumbnails::default() }
+	}
+
 	/// The system's picture for this file, or None where there is none to be had -- or where this
 	/// frame has asked for as many as it will. The first call for a path asks the system; the
 	/// rest read the answer.
@@ -109,9 +126,50 @@ impl Thumbnails {
 			return None;
 		}
 		self.budget -= 1;
-		let made = read_preview(path).or_else(|| read(path).map(|image| Preview::Icon(Arc::new(image))));
+		let made = match self.remembered(path) {
+			Some(picture) => Some(Preview::Picture(picture)),
+			None => match read_preview(path) {
+				Some(Made::Picture(rgba)) => {
+					self.keep(path, &rgba);
+					drawable(rgba).map(Preview::Picture)
+				}
+				Some(Made::Lines(lines)) => Some(Preview::Lines(lines)),
+				None => read(path).map(|image| Preview::Icon(Arc::new(image))),
+			},
+		};
 		self.previews.insert(path.to_path_buf(), made.clone());
 		made
+	}
+
+	/// The picture kept for this file, if one was made before and the file has not changed since.
+	/// Changed is decided by the times: a picture older than the file it is of is a picture of
+	/// something else, and is made again. A file touched without being edited costs one remake,
+	/// which is the cheap way to be wrong.
+	fn remembered(&self, path: &Path) -> Option<Arc<RenderImage>> {
+		let file = self.kept_at(path)?;
+		let made = std::fs::metadata(&file).ok()?.modified().ok()?;
+		let changed = std::fs::metadata(path).ok()?.modified().ok()?;
+		(made >= changed).then_some(())?;
+		drawable(image::open(&file).ok()?.into_rgba8())
+	}
+
+	/// Writes the picture beside the others, as a PNG. A folder that cannot be written to is not
+	/// an error worth a word on screen: the picture was made and is about to be drawn, and the
+	/// only cost is making it again next run.
+	fn keep(&self, path: &Path, rgba: &image::RgbaImage) {
+		let Some(file) = self.kept_at(path) else { return };
+		if std::fs::create_dir_all(file.parent().unwrap_or(&file)).is_ok() {
+			let _ = rgba.save(&file);
+		}
+	}
+
+	/// What this file's picture is called: a hash of the path, so a name of any length or shape
+	/// becomes one a file system will take, and the same file finds the same picture next run.
+	fn kept_at(&self, path: &Path) -> Option<PathBuf> {
+		use sha2::Digest;
+		let digest = sha2::Sha256::digest(path.as_os_str().as_encoded_bytes());
+		let name: String = digest.iter().take(16).map(|byte| format!("{byte:02x}")).collect();
+		Some(self.kept.as_ref()?.join(format!("{name}.png")))
 	}
 
 	/// Forgets a file's picture, for a file that has changed on disk.
@@ -183,11 +241,19 @@ fn read(path: &Path) -> Option<RenderImage> {
 	render_image(SIZE as u32, SIZE as u32, bgra)
 }
 
+/// What a file turned out to hold, before it is anything gpui can draw. A picture stays straight
+/// RGBA so that the same bytes can be written to the folder as a PNG and turned into an image to
+/// draw, rather than drawn and then unpicked back into a picture.
+enum Made {
+	Picture(image::RgbaImage),
+	Lines(Vec<String>),
+}
+
 /// A picture of the file, or the first lines of it, or nothing. Extension-led rather than
 /// content-led: opening every file in a folder to find out what it is would be the very thing
 /// the allowance exists to prevent, and a file named `.png` that is not one simply fails to
 /// decode and falls back like everything else.
-fn read_preview(path: &Path) -> Option<Preview> {
+fn read_preview(path: &Path) -> Option<Made> {
 	let extension = path.extension()?.to_str()?.to_ascii_lowercase();
 	let size = std::fs::metadata(path).ok()?.len();
 	if size > BIGGEST {
@@ -209,21 +275,44 @@ fn read_preview(path: &Path) -> Option<Preview> {
 
 /// The file scaled to fit a card, keeping its shape: a picture squashed to a square is a picture
 /// somebody has to look at twice to recognise.
-fn picture(path: &Path) -> Option<Preview> {
+fn picture(path: &Path) -> Option<Made> {
 	let decoded = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
 	let scaled = decoded.resize(CARD, CARD, image::imageops::FilterType::Triangle).into_rgba8();
-	let (width, height) = (scaled.width(), scaled.height());
-	let mut bgra = scaled.into_raw();
+	Some(Made::Picture(scaled))
+}
+
+/// A made picture as gpui takes it. The decoder gives RGBA and the renderer wants BGRA, which is
+/// a swap of the first and third byte of every pixel; getting it backwards shows as blue people.
+fn drawable(rgba: image::RgbaImage) -> Option<Arc<RenderImage>> {
+	let (width, height) = (rgba.width(), rgba.height());
+	let mut bgra = rgba.into_raw();
 	for pixel in bgra.as_chunks_mut::<4>().0 {
 		pixel.swap(0, 2);
 	}
-	Some(Preview::Picture(Arc::new(render_image(width, height, bgra)?)))
+	Some(Arc::new(render_image(width, height, bgra)?))
+}
+
+/// Deletes all but the newest `KEPT` pictures. Run once at launch, off the window's thread: a
+/// folder is read and some files are removed, and nothing on screen waits for either.
+pub fn trim(folder: &Path) {
+	let Ok(entries) = std::fs::read_dir(folder) else { return };
+	let mut kept: Vec<(std::time::SystemTime, PathBuf)> = entries
+		.flatten()
+		.filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
+		.collect();
+	if kept.len() <= KEPT {
+		return;
+	}
+	kept.sort_by_key(|(made, _)| std::cmp::Reverse(*made));
+	for (_, file) in kept.drain(KEPT..) {
+		let _ = std::fs::remove_file(file);
+	}
 }
 
 /// The first lines of a text file, as they are. Read as bytes and lossily converted: a file that
 /// is not UTF-8 still has readable words in it, and a card that showed nothing because of one
 /// stray byte would be a card that lied about the file.
-fn lines(path: &Path) -> Option<Preview> {
+fn lines(path: &Path) -> Option<Made> {
 	use std::io::Read;
 	let mut head = vec![0; LINES * COLUMNS * 4];
 	let mut file = std::fs::File::open(path).ok()?;
@@ -235,7 +324,7 @@ fn lines(path: &Path) -> Option<Preview> {
 		.take(LINES)
 		.map(|line| line.chars().take(COLUMNS).collect::<String>())
 		.collect();
-	(!lines.iter().all(|line| line.trim().is_empty())).then_some(Preview::Lines(lines))
+	(!lines.iter().all(|line| line.trim().is_empty())).then_some(Made::Lines(lines))
 }
 
 /// Windows keeps one too, and asking for it is `SHGetFileInfo`; until that is written the
@@ -247,6 +336,8 @@ fn read(_path: &Path) -> Option<RenderImage> {
 
 #[cfg(test)]
 mod tests {
+	use std::time::Duration;
+
 	use super::*;
 
 	/// The answer is kept whatever it was, so a file is asked about once; and a frame that has
@@ -279,5 +370,46 @@ mod tests {
 		let _ = thumbnails.of(Path::new("/nowhere/one-too-many.txt"));
 		assert_eq!(thumbnails.cache.len(), A_FRAME as usize, "the allowance is spent");
 		assert!(thumbnails.starved(), "so another frame is owed");
+	}
+
+	/// A picture made from a file is written beside the others and read back next run rather than
+	/// made again -- and a file that has changed since is made again, which is what the times are
+	/// compared for.
+	#[test]
+	fn a_picture_made_from_a_file_is_kept_and_a_changed_file_is_made_again() {
+		let dir = crate::testing::scratch("thumbnails");
+		let folder = dir.join("kept");
+		let file = dir.join("picture.png");
+		image::RgbaImage::from_pixel(64, 64, image::Rgba([9, 9, 9, 255])).save(&file).unwrap();
+
+		let mut thumbnails = Thumbnails::keeping_pictures_in(Some(folder.clone()));
+		thumbnails.begin_frame();
+		let made = thumbnails.preview(&file).expect("a picture is made from a picture");
+		assert!(matches!(made, Preview::Picture(_)));
+		let kept = thumbnails.kept_at(&file).expect("a folder was given, so there is a name");
+		assert!(kept.exists(), "and what was made is written to it");
+
+        // A different picture under the same name: whatever comes back next is what was read.
+		image::RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255])).save(&kept).unwrap();
+		let mut next_run = Thumbnails::keeping_pictures_in(Some(folder));
+		next_run.begin_frame();
+		match next_run.preview(&file).expect("the kept picture answers") {
+			Preview::Picture(picture) => assert_eq!(picture.size(0).width.0, 8, "read, not made"),
+			_ => panic!("a picture was kept, so a picture comes back"),
+		}
+
+		// The file changes, so the picture of it is older than the file and is made again. Its
+		// time is set rather than waited for: a second of sleep in a test is a second every run.
+		image::RgbaImage::from_pixel(64, 64, image::Rgba([7, 7, 7, 255])).save(&file).unwrap();
+		let touched = std::fs::File::options().write(true).open(&file).unwrap();
+		touched.set_modified(std::time::SystemTime::now() + Duration::from_secs(10)).unwrap();
+		let mut after = Thumbnails::keeping_pictures_in(Some(kept.parent().unwrap().to_path_buf()));
+		after.begin_frame();
+		match after.preview(&file).expect("the file is still a picture") {
+			// A card holds 256 square, so the picture that comes from the file is that; the one
+			// that was kept was 8, which is how the two are told apart.
+			Preview::Picture(picture) => assert_eq!(picture.size(0).width.0, 256, "made again"),
+			_ => panic!("a picture was made, so a picture comes back"),
+		}
 	}
 }

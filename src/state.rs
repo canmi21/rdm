@@ -23,6 +23,11 @@ pub struct Paths {
 	pub config: PathBuf,
 	/// `internal.sqlite`: the downloads themselves, once they persist; rows, appended and updated.
 	pub database: PathBuf,
+	/// `thumbnails/`: one picture per file that had one made, named by a hash of the file's path.
+	/// A picture is a blob and the database is for records, so these are files: a stale one is a
+	/// file to delete, and the folder can be thrown away whole without the application minding.
+	/// See src/thumbnail.rs.
+	pub thumbnails: PathBuf,
 	/// Where downloads land: the platform's Downloads folder as the user has it -- the XDG
 	/// user-dirs entry on Linux, the known folder on Windows, `~/Downloads` on macOS, which
 	/// offers no way to move it -- and the home directory if there is no such folder.
@@ -38,6 +43,7 @@ impl Paths {
 			state: dir.join("state.json"),
 			config: dir.join("config.json"),
 			database: dir.join("internal.sqlite"),
+			thumbnails: dir.join("thumbnails"),
 			downloads: dir.join("downloads"),
 		}
 	}
@@ -55,6 +61,7 @@ impl Paths {
 			state: root.join("state.json"),
 			config: dirs.config_dir().join("config.json"),
 			database: root.join("internal.sqlite"),
+			thumbnails: root.join("thumbnails"),
 			downloads,
 		})
 	}

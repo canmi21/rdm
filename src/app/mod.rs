@@ -367,6 +367,7 @@ impl Rdm {
 		// The rows a previous run left. One that was moving or waiting when the window closed is
 		// handed back to the engine, which continues from the plan beside its partial file; one
 		// that was paused, failed or done is left as it was.
+		let paths_for_thumbnails = paths.as_ref().map(|p| p.thumbnails.clone());
 		let store = paths.as_ref().and_then(|p| match Store::open(&p.database) {
 			Ok(store) => Some(store),
 			Err(error) => {
@@ -435,7 +436,9 @@ impl Rdm {
 			_tick: tick,
 			folder_shape: HashMap::new(),
 			opened: std::collections::HashSet::new(),
-			thumbnails: std::cell::RefCell::default(),
+			thumbnails: std::cell::RefCell::new(crate::thumbnail::Thumbnails::keeping_pictures_in(
+				paths_for_thumbnails,
+			)),
 			marked: std::cell::RefCell::default(),
 			found_proxy: None,
 			looking_for_proxy: false,
@@ -450,6 +453,10 @@ impl Rdm {
 		// The machine is asked what proxy it is running, once, off this thread.
 		if this.preferences.proxy_source == crate::proxy::Source::Found {
 			this.look_for_proxy(cx);
+		}
+		// The kept pictures are counted and the oldest dropped, once, where nothing waits for it.
+		if let Some(folder) = this.paths.as_ref().map(|p| p.thumbnails.clone()) {
+			cx.background_executor().spawn(async move { crate::thumbnail::trim(&folder) }).detach();
 		}
 		this.import_strays();
 		// Where the window opened, read now rather than waited for. The observer above only fires

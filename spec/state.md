@@ -32,7 +32,7 @@ whatever was there before waiting in the installed application's directory. None
 this is the window's memory, not the user's configuration, and a settings file a user is meant to
 open would be a third file with its own rules.
 
-Three files, because three kinds of writing:
+Three files and a folder, because three kinds of writing and one kind of picture:
 
 - **`state.json`** is small and rewritten whole: the window's frame and whether it was maximised,
   the column widths, the view, whether the header's funnel is lit (see [ui.md](ui.md)), and the
@@ -59,6 +59,18 @@ Three files, because three kinds of writing:
   database is for. See [release.md](release.md). The categories judge an archive by what it
   holds as well as by its name, see
   [ui.md](ui.md). See [engine.md](engine.md) and the store.
+- **`thumbnails/`** holds one PNG per file a card has shown a picture of, named by a hash of the
+  file's path. A picture is a blob and the database is for records, so these are files: one that
+  has gone stale is a file to delete, and the folder can be thrown away whole without the
+  application minding. What is kept is the picture the card draws, 256 square at most, not the
+  file it came from. A kept picture is used where it is not older than the file it is of, and the
+  file is read again where it is: 12 to 20 milliseconds to make one from a photograph against a
+  third of a millisecond to read it back, and the gap only widens with the size of the file. The
+  system's icons are not kept here and do not need to be -- drawing one costs a quarter of a
+  millisecond, and an icon that outlived a system update or an application's new artwork would be
+  a picture that lies. The newest thousand are kept and the rest deleted at launch, off the
+  window's thread; one deleted is one made again the next time it is wanted. See
+  src/thumbnail.rs.
 - **`config.json`**, in the platform's *configuration* directory rather than its state directory,
   is the user's: the categories, and the switches the settings sheet offers, each with a default
   so a file from before a switch reads as if it had been left alone. It is seeded with the built-in
