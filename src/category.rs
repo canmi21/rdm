@@ -125,8 +125,9 @@ impl Category {
 		}
 	}
 
-	/// The presets a user picks from. The seed is all of them plus Other; a user who wants fewer
-	/// removes them, and one who wants more writes a custom one or adds to a preset's list.
+	/// The presets a user picks from. A new file takes the common ones and the catch-all -- see
+	/// `COMMON` -- and the rest wait in the presets sheet; a user who wants fewer removes them,
+	/// and one who wants more takes another preset, writes a custom rule, or adds to a list.
 	///
 	/// The lists aim to be complete for what a download manager meets rather than short: every
 	/// vendor's and every open format for the kind, the older ones still in circulation, and the
@@ -434,9 +435,20 @@ impl Category {
 		}
 	}
 
+	/// The presets a new file starts with: the kinds a download folder holds whatever the person
+	/// downloading is doing. The other eight are no less useful to the person they are useful to
+	/// -- code, firmware, 3D models -- but a sidebar that opens with fifteen rows makes the reader
+	/// find the four they came for, and a category is not a thing you would think to remove. So
+	/// the rest are offered rather than given: they sit in the presets sheet under the plus, one
+	/// press away, and `Config::seed` records them as offered so a later launch does not add them
+	/// behind the user's back. See spec/ui.md.
+	pub const COMMON: [&str; 7] =
+		["Videos", "Audio", "Images", "Documents", "Archives", "Programs", "Disk Images"];
+
 	pub fn defaults() -> Vec<Category> {
 		let mut all: Vec<Category> = Category::PRESETS
 			.iter()
+			.filter(|preset| Category::COMMON.contains(&preset.name))
 			.enumerate()
 			.map(|(i, preset)| {
 				Category::from_preset(i as u64 + 1, preset.name, Overrides::default())

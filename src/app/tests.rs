@@ -403,10 +403,16 @@ fn the_folders_junk_is_hidden_and_a_torrent_shows_under_its_own_category(cx: &mu
 		assert!(!names.contains(&"~$Report.docx"), "nor an editor's scratch");
 		assert!(!names.contains(&"ubuntu-24.04.torrent"), "nor a torrent, among the downloads");
 	});
+	// Torrents is a preset the seed leaves in the sheet, so it is taken first, the way a user
+	// who downloads torrents would take it. See `Category::COMMON`.
+	click(&mut cx, "button:New category");
+	click(&mut cx, "preset:Torrents");
+	rdm.update(&mut cx, |rdm, cx| rdm.close_category_sheet(cx));
+	cx.run_until_parked();
 	let torrents = rdm.read_with(&cx, |rdm, _| {
 		rdm.categories.iter().find(|c| c.name == "Torrents").map(|c| c.id)
 	});
-	let torrents = torrents.expect("Torrents is a preset");
+	let torrents = torrents.expect("the preset was taken");
 	rdm.update(&mut cx, |rdm, cx| rdm.set_filter(Filter::Category(torrents), cx));
 	rdm.read_with(&cx, |rdm, _| {
 		let names: Vec<&str> = rdm.shown().iter().map(|d| d.name.as_str()).collect();
@@ -668,9 +674,11 @@ fn a_preset_row_toggles_the_category_in_and_out(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:New category");
 	let before = rdm.read_with(&cx, |rdm, _| rdm.categories.len());
-	click(&mut cx, "preset:eBooks");
+	// Archives rather than eBooks: the seed takes the common presets, and a row can only be
+	// toggled out of the sidebar if it was in it. See `Category::COMMON`.
+	click(&mut cx, "preset:Archives");
 	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.categories.len(), before - 1));
-	click(&mut cx, "preset:eBooks");
+	click(&mut cx, "preset:Archives");
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.categories.len(), before);
 		assert!(rdm.categories.last().unwrap().is_catch_all());
@@ -751,11 +759,11 @@ fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAp
 			click_count: 1,
 		});
 	};
-	drag(&mut cx, "filter:Videos", "filter:Code");
+	drag(&mut cx, "filter:Videos", "filter:Programs");
 	rdm.read_with(&cx, |rdm, _| {
 		let after = names(rdm);
 		assert_eq!(after[0], "Audio", "{after:?}");
-		assert_eq!(after.iter().position(|n| n == "Videos"), before.iter().position(|n| n == "Code"));
+		assert_eq!(after.iter().position(|n| n == "Videos"), before.iter().position(|n| n == "Programs"));
 		assert_eq!(rdm.filter, Filter::All, "a row in reorder mode does not filter");
 	});
 	drag(&mut cx, "filter:Audio", "filter:Other");
@@ -783,10 +791,10 @@ fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAp
 fn edit_opens_a_presets_list_where_extensions_switch_and_are_added(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:New category");
-	click(&mut cx, "preset:eBooks");
-	rdm.read_with(&cx, |rdm, _| assert!(!rdm.categories.iter().any(|c| c.name == "eBooks")));
+	click(&mut cx, "preset:Archives");
+	rdm.read_with(&cx, |rdm, _| assert!(!rdm.categories.iter().any(|c| c.name == "Archives")));
 	click(&mut cx, "button:Edit");
-	click(&mut cx, "preset:eBooks");
+	click(&mut cx, "preset:Archives");
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(
 			matches!(rdm.category_sheet, Some(CategorySheet::Presets { editing: true })),

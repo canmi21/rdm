@@ -711,9 +711,17 @@ dialog must never do, and it outranks the convenience the outside click buys.
 ## Categories are rules the user writes
 
 The sidebar's categories are one kind of thing: a name, an icon and a regular expression over
-the file name. Nine presets -- Videos, Audio, Images, Documents, eBooks, Code, Archives, Programs,
-Disk Images -- are seeded into `config.json` on the first launch, followed by Other, which has no
-pattern and takes whatever nothing else did.
+the file name. Fifteen presets ship with the application; seven of them -- Videos, Audio, Images,
+Documents, Archives, Programs, Disk Images -- are seeded into `config.json` on the first launch,
+followed by Other, which has no pattern and takes whatever nothing else did.
+
+**The rest are offered, not given.** Plain Text, Presentations, Spreadsheets, eBooks, Code,
+Firmware, 3D Models and Torrents are no less useful to the person they are useful to, but a
+sidebar that opens with fifteen rows makes that person look for the four they came for, and a
+category is not a thing anybody thinks to remove. So they wait under the plus, one press away,
+and the seed records them as offered so that a later launch does not add them behind the user's
+back -- the same record that lets a preset added in a new release reach an existing file. See
+`Category::COMMON` and src/config.rs.
 
 **A sidebar label is in Title Case, and plural when it can be counted.** Title Case because
 that is what macOS asks of sidebar items and what Finder's are; the plural because the row

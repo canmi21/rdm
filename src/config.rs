@@ -582,23 +582,25 @@ mod tests {
 	fn a_preset_added_since_a_file_was_written_arrives_and_a_removed_one_stays_away() {
 		let mut config = Config::seed();
 		let before = config.categories.len();
+		// The seed takes the common presets and records the rest as offered but not taken, so a
+		// fresh file is shorter than the list of presets and stays that way.
+		assert_eq!(before, Category::COMMON.len() + 1, "the common presets, then the catch-all");
 		assert!(!config.offer_new_presets(), "a fresh file has been offered everything");
 		assert_eq!(config.categories.len(), before);
 		// The user takes one away; it is still on the record, so it does not come back.
-		config.categories.retain(|c| c.name != "Torrents");
+		config.categories.retain(|c| c.name != "Archives");
 		assert!(!config.offer_new_presets(), "what was taken away stays away");
-		assert!(!config.categories.iter().any(|c| c.name == "Torrents"));
+		assert!(!config.categories.iter().any(|c| c.name == "Archives"));
 		// A file from before the record is read as having been offered what it holds.
 		config.offered.clear();
-		config.categories.retain(|c| c.name != "Firmware");
-		assert!(config.offer_new_presets(), "Torrents and Firmware are both news to it now");
+		assert!(config.offer_new_presets(), "every preset it does not hold is news to it now");
 		let names: Vec<&str> = config.categories.iter().map(|c| c.name.as_str()).collect();
-		assert!(names.contains(&"Torrents") && names.contains(&"Firmware"));
+		assert!(names.contains(&"Torrents") && names.contains(&"Archives"));
 		assert_eq!(names.last(), Some(&"Other"), "and the catch-all is still last");
 		// Just before the catch-all, not at the top: a preset writes no pattern either, so
-		// looking for an empty one finds the first preset in the file.
-		// In the order the application lists them, which is Firmware before Torrents.
-		assert_eq!(&names[names.len() - 3..], ["Firmware", "Torrents", "Other"], "{names:?}");
+		// looking for an empty one finds the first preset in the file. In the order the
+		// application lists them, which ends with 3D Models and then Torrents.
+		assert_eq!(&names[names.len() - 3..], ["3D Models", "Torrents", "Other"], "{names:?}");
 		assert_eq!(names[0], "Videos", "and what was there stays where it was");
 	}
 	use crate::testing::scratch;
@@ -608,7 +610,7 @@ mod tests {
 		let dir = scratch("seed");
 		let path = dir.join("config.json");
 		let config = load_or_seed(&path);
-		assert_eq!(config.categories.len(), Category::PRESETS.len() + 1, "every preset, then Other");
+		assert_eq!(config.categories.len(), Category::COMMON.len() + 1, "the common ones, then Other");
 		assert_eq!(config.categories[0].name, "Videos");
 		assert_eq!(parse(&std::fs::read_to_string(&path).unwrap()).unwrap(), config);
 		std::fs::remove_dir_all(dir).ok();
