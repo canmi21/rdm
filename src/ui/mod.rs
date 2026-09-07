@@ -40,6 +40,28 @@ pub const MIN_WIDTH: f32 = sidebar::WIDTH
 	+ crate::app::Column::MINS[3]
 	+ crate::app::Column::MINS[4];
 
+/// What the name column is given at a first launch, and through it how wide the window opens.
+/// Everything else in the table has a width of its own -- the sidebar, the fixed columns at the
+/// widths they start with, a handle before each -- and the name column is what is left over, so
+/// the window's width is those plus the room the name is worth. At 960, which this was, the name
+/// column opened with 96 points: thirteen characters, and a first launch showed a column of
+/// `Sta...` where the file names should be. 336 is about fifty characters, which holds
+/// `VMware-Fusion-26H1-25388279_universal.dmg` and most of what a browser leaves behind.
+///
+/// The height does not follow: a list is scrolled down and never across, so a taller window shows
+/// more of the same thing while a wider one shows more of each row. See spec/ui.md.
+pub const NAME_ROOM: f32 = 336.0;
+pub const FIRST_WIDTH: f32 = sidebar::WIDTH
+	+ list::TABLE_CHROME
+	+ 5.0 * list::HANDLE_W
+	+ NAME_ROOM
+	+ crate::app::Column::DEFAULT_WIDTHS[0]
+	+ crate::app::Column::DEFAULT_WIDTHS[1]
+	+ crate::app::Column::DEFAULT_WIDTHS[2]
+	+ crate::app::Column::DEFAULT_WIDTHS[3]
+	+ crate::app::Column::DEFAULT_WIDTHS[4];
+pub const FIRST_HEIGHT: f32 = 600.0;
+
 /// The toolbar and the status bar want a few rows of list under them to be worth opening.
 pub const MIN_HEIGHT: f32 = 320.0;
 

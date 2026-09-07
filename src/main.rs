@@ -63,9 +63,10 @@ fn main() {
 		let screens = screens::all(cx);
 		// The size outlives the place: a window whose display is gone comes back centred on the
 		// main one, but at the size the user made it, not at the size a first launch opens with.
-		let extent = saved
-			.window
-			.map_or_else(|| size(px(960.0), px(600.0)), |f| size(px(f.width), px(f.height)));
+		let extent = saved.window.map_or_else(
+			|| size(px(ui::FIRST_WIDTH), px(ui::FIRST_HEIGHT)),
+			|f| size(px(f.width), px(f.height)),
+		);
 		// The frame is a place on the display named beside it, so the display is handed to GPUI
 		// with it; without one GPUI opens on the main display, which is where a centred window
 		// belongs anyway. See src/screens.rs.

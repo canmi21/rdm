@@ -711,6 +711,22 @@ fn a_short_window_scrolls_the_categories_rather_than_burying_them(cx: &mut TestA
 	assert!(all.origin.y < after.origin.y, "the filters stay above the categories");
 }
 
+/// The width a window opens at is worked out from what the table takes, so that the name column
+/// is left the room it was sized for. The two are written apart -- one in `ui`, one in the table's
+/// own widths -- and this is what keeps them agreeing.
+#[gpui::test]
+fn a_first_launch_leaves_the_name_column_the_room_it_was_sized_for(cx: &mut TestAppContext) {
+	use gpui::{px, size};
+
+	let (rdm, cx) = open(cx);
+	cx.simulate_resize(size(px(crate::ui::FIRST_WIDTH), px(crate::ui::FIRST_HEIGHT)));
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(rdm.widths, Column::DEFAULT_WIDTHS, "a first launch drags no column");
+		assert_eq!(rdm.name_width(&rdm.drawn()), crate::ui::NAME_ROOM);
+	});
+}
+
 /// The fold tells the reader there is more: the list fades where it was cut, at whichever end has
 /// something past it, and nowhere else. A list that fits shows neither fade.
 #[gpui::test]

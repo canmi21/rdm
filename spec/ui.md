@@ -139,6 +139,16 @@ drag means -- the first cut put the handle on the right and read as reversed. Th
 the view, and every row spends the same twelve points on the handle's gap so cells stay under
 their titles.
 
+**The window's first width is the name column's, worked backwards.** A window with nothing
+remembered opens 1200 by 600, and the 1200 is not chosen: the sidebar, the fixed columns at the
+widths they start with and a handle before each take what they take, and the width is those plus
+the room a name is worth -- 336 points, about fifty characters, which holds
+`VMware-Fusion-26H1-25388279_universal.dmg`. It used to be 960, which left the name column 96
+points and about thirteen characters, so a first launch showed a column of `Sta...` where the file
+names should be and the reader's first impression of the table was that it could not hold one. The
+height stays 600: a list is scrolled down and never across, so a taller window shows more of the
+same thing while a wider one shows more of each row. See `FIRST_WIDTH` in src/ui/mod.rs.
+
 **Every column has a floor, and the floors are what the window is measured by.** A column will
 not go below a width that leaves its cell merely legible -- "1.2G", a stub of a bar, a truncated
 word beside its mark -- and the name column keeps one of the same kind. They are floors, not
