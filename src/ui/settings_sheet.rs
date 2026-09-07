@@ -16,7 +16,6 @@ use crate::app::Rdm;
 use crate::identity;
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::text_input::TextInput;
-use crate::ui::tooltip::tooltip_wrapped;
 use crate::ui::{LeavesFocus, backdrop, floating, icon_button};
 use std::collections::HashMap;
 
@@ -1254,18 +1253,7 @@ impl Rdm {
 			// The label gives way and the control does not: a control clipped to nothing is a
 			// control that cannot be pressed, which is what happened when these were the other way
 			// round and the switches stopped answering.
-			.child(
-				div()
-					// An id because a tooltip needs one: GPUI tracks how long the pointer has
-					// rested on an element, and an element with no id is not one it can follow.
-					.id(SharedString::from(format!("label:{label}")))
-					.when(!stacked, |s| s.flex_1().min_w_0())
-					.truncate()
-					// The row is one line, so what the setting does lives under the pointer. A
-					// label with nothing behind it gets no tooltip rather than an empty one.
-					.when(!note.is_empty(), |s| s.tooltip(tooltip_wrapped(note)))
-					.child(title),
-			)
+			.child(div().when(!stacked, |s| s.flex_1().min_w_0()).truncate().child(title))
 			// A switch, a field and a dropdown are the size they are; a value or a status is as
 			// long as it happens to be, and one of those given its natural width pushes the label
 			// out of the row -- so beside a label it is capped and truncates instead.
@@ -1285,6 +1273,10 @@ impl Rdm {
 			.gap_1()
 			.py_1p5()
 			.child(line)
+			// The note runs the whole width under the row rather than beside the label, which is
+			// the only place it fits: a sentence given the label's column wraps into a gutter,
+			// and given the control's it is cut at four words. See spec/ui.md.
+			.when(!note.is_empty(), |s| s.child(div().text_xs().text_color(p.muted).child(note)))
 			.when(open, |s| s.child(self.choice_menu(p, row, cx)))
 	}
 

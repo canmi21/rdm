@@ -18,7 +18,7 @@ use crate::ui::icon::Icon;
 use crate::ui::theme::{format_hex, parse_color};
 use crate::update::{Channel, Policy};
 
-pub const VERSION: u64 = 1;
+pub const VERSION: u64 = 2;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Config {
@@ -131,9 +131,9 @@ pub struct Preferences {
 	pub proxy_source: crate::proxy::Source,
 	/// How names are resolved. This application does it itself by default, the same way on every
 	/// platform; these are the three things that can change that. See src/dns.rs.
-	/// What the window is read in. `System` is what a first launch has, and what a file written
-	/// before this arrangement reads as: the machine's own language decides until somebody picks
-	/// one, and picking one is picking it for good. See src/i18n.rs.
+	/// What the window is read in, as one of the three there are -- never "follow the machine".
+	/// The machine is asked at the seed and at the migration off version 1, and the answer is
+	/// written here; after that this field is the whole of it. See src/i18n.rs.
 	#[serde(default)]
 	pub language: crate::i18n::Language,
 	/// Starts with the machine. Off to begin with: an application that put itself in the login
@@ -297,7 +297,9 @@ impl Default for Preferences {
 			headers: Vec::new(),
 			proxy: None,
 			proxy_source: crate::proxy::Source::default(),
-			language: crate::i18n::Language::default(),
+			// Asked of the machine once, at the only moment there is nothing written down to
+			// read instead. See src/i18n.rs.
+			language: crate::i18n::Language::detected(),
 			start_at_login: false,
 			agent: crate::agent::Agent::default(),
 			dns_force_system: false,
@@ -536,8 +538,26 @@ pub fn parse(text: &str) -> Result<Config> {
 	parse_versioned(text, VERSION, migrate)
 }
 
-fn migrate(from: u64, _value: Value) -> Result<Value> {
-	bail!("no migration from config.json version {from}")
+/// One step, from `from` to `from + 1`. Each breaking change adds an arm and bumps VERSION; the
+/// arms are the history of the file's shape and are never removed. See spec/state.md.
+fn migrate(from: u64, mut value: Value) -> Result<Value> {
+	match from {
+		// 1 -> 2: `System` was taken out of the languages, so a file naming it names a variant
+		// this build has no arm for -- and one field it cannot read fails the whole object,
+		// which would cost the reader their categories and every switch beside them. The machine
+		// is asked once, here, and the answer written down: which is the same act a first launch
+		// performs, arriving at the same place. See src/i18n.rs.
+		1 => {
+			if let Some(settings) = value.get_mut("settings").and_then(Value::as_object_mut)
+				&& settings.get("language").and_then(Value::as_str) == Some("system")
+			{
+				let detected = serde_json::to_value(crate::i18n::Language::detected())?;
+				settings.insert("language".to_owned(), detected);
+			}
+			Ok(value)
+		}
+		_ => bail!("no migration from config.json version {from}"),
+	}
 }
 
 /// The file if it is there and readable; the seed, written, if it is not there at all. A file
@@ -670,6 +690,30 @@ mod tests {
 		assert!(written.categories[2].color.is_some(), "a custom rule always writes its color");
 		assert_eq!(written.categories[1].preset.as_deref(), Some("Audio"));
 		assert_eq!(parse(&serde_json::to_string(&written).unwrap()).unwrap(), written);
+	}
+
+	/// `System` came out of the languages, so a file naming it names a variant with no arm. One
+	/// field it cannot read fails the whole object, which would have cost the reader their
+	/// categories and every switch beside them -- so the arm resolves it rather than refusing.
+	#[test]
+	fn a_file_that_followed_the_machine_is_given_the_language_it_meant() {
+		let old = parse(
+			r#"{ "version": 1, "categories": [], "settings": { "language": "system", "retries": 9 } }"#,
+		)
+		.unwrap();
+		assert_eq!(old.settings.language, crate::i18n::Language::detected(), "asked once, here");
+		assert!(
+			crate::i18n::Language::ALL.contains(&old.settings.language),
+			"and it is one of the three, whatever the machine is set to"
+		);
+		assert_eq!(old.settings.retries, Some(9), "the rest of the file came through with it");
+		// A file that had already chosen is left alone: only `system` was unreadable.
+		let chosen =
+			parse(r#"{ "version": 1, "categories": [], "settings": { "language": "ja" } }"#).unwrap();
+		assert_eq!(chosen.settings.language, crate::i18n::Language::Ja);
+		// And one written by this build reads back as itself.
+		let now = parse(r#"{ "version": 2, "categories": [], "settings": { "language": "zh" } }"#).unwrap();
+		assert_eq!(now.settings.language, crate::i18n::Language::Zh);
 	}
 
 	#[test]

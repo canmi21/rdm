@@ -21,53 +21,75 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use serde::{Deserialize, Serialize};
 
 /// The languages there are. The value is what `config.json` carries and what the files are named.
+///
+/// **There is no `System`.** Following the machine sounds like the accommodating answer and is
+/// not one: two of every three machines are set to a language none of these three is, and what
+/// "follow the system" then means is English -- a setting whose name says it will do one thing
+/// and which mostly does another. What the machine is set to is read **once**, when there is no
+/// file to read a choice out of, and written down as one of these three; after that the file
+/// says what the window is read in and nothing infers it. See `detected`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Language {
-	/// Follow the system, which is what a first launch does before anybody has chosen.
+	/// The fallback in every direction: a machine set to something none of these covers, a file
+	/// with no language in it, a file from before there was a choice to record.
 	#[default]
-	System,
 	En,
 	Zh,
 	Ja,
 }
 
 impl Language {
-	pub const ALL: [Language; 4] = [Language::System, Language::En, Language::Zh, Language::Ja];
+	pub const ALL: [Language; 3] = [Language::En, Language::Zh, Language::Ja];
 
 	/// What Settings shows. A language is named in itself: somebody looking for their own
 	/// language is looking for the word they call it by, not the word English calls it by.
 	pub fn name(self) -> &'static str {
 		match self {
-			Language::System => "System",
 			Language::En => "English",
 			Language::Zh => "简体中文",
 			Language::Ja => "日本語",
 		}
 	}
 
-	/// The code the file is named for; System resolves to whatever the machine is set to.
+	/// The code the file is named for.
 	fn code(self) -> &'static str {
 		match self {
-			Language::System => Language::of_system().code(),
 			Language::En => "en",
 			Language::Zh => "zh",
 			Language::Ja => "ja",
 		}
 	}
 
-	/// What the machine is set to, of the three there are, English for anything else. Read once:
-	/// a system language that changes under a running application is not a thing worth watching
-	/// for, and the next launch will see it.
-	pub fn of_system() -> Language {
+	/// What the machine is set to, of the three there are, English for anything else. This is
+	/// asked once and then written down -- at a first launch, or where a file carries no choice --
+	/// and never again: it is how a window comes up in the right language before anybody has said
+	/// anything, not a setting that follows the machine about.
+	///
+	/// Read once within the run as well: a system language that changes under a running
+	/// application is not a thing worth watching for, and the next launch will see it.
+	pub fn detected() -> Language {
 		static SYSTEM: OnceLock<Language> = OnceLock::new();
 		*SYSTEM.get_or_init(|| {
 			let tag = sys_locale::get_locale().unwrap_or_default().to_ascii_lowercase();
-			// A tag is a language and then some: `zh-Hans-CN`, `ja-JP`, `en-GB`. Only the first
-			// part decides, and only three answers exist.
-			match tag.split(['-', '_']).next().unwrap_or("") {
-				"zh" => Language::Zh,
-				"ja" => Language::Ja,
+			// A tag is a language and then some: `zh-Hans-CN`, `zh-Hant-TW`, `ja-JP`, `en-GB`.
+			let mut parts = tag.split(['-', '_']);
+			let language = parts.next().unwrap_or("");
+			// The script where the tag names one: `zh-Hans-CN` and `zh-Hant-TW` differ here and
+			// nowhere else. A region sits in this position too -- `zh-CN` -- which matches no arm
+			// below and falls in with the rest.
+			let script = parts.next().unwrap_or("");
+			match (language, script) {
+				// **Traditional Chinese is given Simplified, on purpose.** They are not the same
+				// script and this does not pretend otherwise: it is that of the three files there
+				// are, the Chinese one is far nearer to what that reader wants than the English
+				// one, and English is the only other answer available. The arm is written out
+				// rather than left to fall in with `zh` above it, so that the day a Traditional
+				// translation exists there is a line that has to be answered rather than a
+				// truncation nobody remembers making.
+				("zh", "hant") => Language::Zh,
+				("zh", _) => Language::Zh,
+				("ja", _) => Language::Ja,
 				_ => Language::En,
 			}
 		})
@@ -191,11 +213,17 @@ mod tests {
 		assert_eq!(t("settings.section.general"), english, "and switching back switches back");
 	}
 
-	/// A tag is a language and then some, and only the first part decides.
 	#[test]
 	fn a_language_is_named_in_itself() {
 		assert_eq!(Language::Zh.name(), "简体中文");
 		assert_eq!(Language::Ja.name(), "日本語");
-		assert_eq!(Language::default(), Language::System);
+	}
+
+	/// English is the answer wherever there is no better one: a machine set to a language none of
+	/// the three covers, a file that carries no choice, a file from before there was one to make.
+	#[test]
+	fn english_is_what_everything_unanswered_comes_to() {
+		assert_eq!(Language::default(), Language::En);
+		assert_eq!(Language::ALL.len(), 3, "and there is no fourth to follow the machine");
 	}
 }

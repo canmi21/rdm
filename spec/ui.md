@@ -322,9 +322,27 @@ to `mise run shot`, which takes the application's window; `shot --floating` take
 
 **The window is read in one of three languages**: American English, simplified Chinese and
 Japanese. `Language` is the first row under General and takes effect at the next frame, which is
-what "immediately" looks like -- nothing is restarted and nothing is rebuilt. `System` is what a
-first launch has and what a `config.json` written before this reads as: the machine's own
-language decides until somebody picks one, and picking one is picking it for good.
+what "immediately" looks like -- nothing is restarted and nothing is rebuilt.
+
+**There is no "follow the system", and there used to be.** It sounds like the accommodating
+option and is not one: most machines are set to a language none of these three is, so what
+following the system means for most of them is English -- a setting whose name says it will do
+one thing and which mostly does another, and which cannot be told apart from a deliberate choice
+of English in the file. So the machine is asked **once**, where there is nothing written down to
+read instead -- a first launch, or a `config.json` from before this -- and the answer is written
+as one of the three. After that the file says what the window is read in and nothing infers it.
+
+**A machine set to Traditional Chinese is given Simplified, on purpose.** They are not the same
+script and this does not pretend otherwise: of the three files there are, the Chinese one is far
+nearer to what that reader wants than the English one, and English is the only other answer
+available. It is written as an arm of its own in `Language::detected` rather than left to fall in
+with `zh`, so that the day a Traditional translation exists there is a line that has to be
+answered rather than a truncation nobody remembers making.
+
+Taking `System` out of the languages is a change of shape, so `config.json` moved to version 2
+and its migration resolves the word rather than refusing the file: one field a reader cannot
+read fails the whole object, and that would have cost somebody their categories and every switch
+beside them over a language. See [state.md](state.md).
 
 Every string the user reads is a flat key -- `settings.section.network` rather than a tree, three
 files that must agree being easier to compare than three trees to walk -- and the files are one a
@@ -340,12 +358,17 @@ translated is what a machine writes. Debug selectors name the key rather than th
 means the same thing whatever language the machine running it is set to, and the tests pin
 themselves to English for the same reason.
 
-**A settings row is a label and a control, on one line, and what the setting does is under the
-pointer.** Every row has a note -- `Auto update` names itself and says nothing about what
-happens -- and the note is a whole sentence, which is why it is not on the row: a sentence on
-every row made a section of eight settings a page to scroll rather than one to read. It is a
-tooltip on the label instead, which is where the pointer already is when somebody is wondering
-what a row means. The search still reads it, so a setting is still found by what it does.
+**A settings row is a label and a control on one line, with what the setting does written under
+them.** Every row has a note -- `Auto update` names itself and says nothing about what happens --
+and the note runs the full width beneath the row rather than beside the label. That is the only
+place it fits: given the label's column a sentence wraps into a gutter, and given the control's
+it is cut at four words, both of which it was.
+
+**The note was a tooltip for a while and is back on the page.** Hiding it made every row one
+line, which is denser, and the page that came out was a column of labels with a great deal of
+nothing beside them -- and an explanation nobody hovers over is an explanation nobody reads. The
+density is worth less than the sentences. The search reads the note either way, so a setting is
+found by what it does rather than by what it is called.
 
 **One note, one home, and that home is `Row::note`.** A field's note used to live inside
 `Control::Field` and be drawn between the label and the input, where there was never room: every
