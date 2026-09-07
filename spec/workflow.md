@@ -140,6 +140,18 @@ everywhere else; a method reached only from the control socket is reached here a
 release build, since the socket is `#[cfg(all(debug_assertions, unix))]`. Five such warnings had
 been accumulating in the nightly's logs unread, four of them from the day the code was written.
 
+**A headless test that names a value the platform chooses passes here and fails there.** The
+tests run on all four systems and the same assertion is not the same assertion on each. The one
+that caught this asserted on `Chrome on Linux` being among the user agents offered -- and
+`Agent::offered` leaves out the disguise that would be this machine telling the truth, so on
+Linux that option is precisely the one that is not there. Green on a Mac, red on both Linux
+runners, and nothing local to see.
+
+So **a test asserts on the rule, not on a value the rule happens to produce here**: that the
+offered set excludes this system's own, rather than that it contains a named one. Where a test
+really does want a platform's answer it says which platform, with a `cfg`, and then it is a test
+of that arm rather than a test that travels badly.
+
 So **anything behind a `cfg` carries the same `cfg` on whatever it needs**: the import beside the
 function, the constant beside its one reader, the method beside its callers. Written that way
 there is nothing to notice later. Written the other way it is invisible from here and shows up
