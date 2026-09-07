@@ -1,11 +1,16 @@
-//! Settings are a sheet inside the main window, like Add Task; only a download gets a window of
-//! its own, because a download is a thing to keep beside the list while it moves. The sheet is
-//! shaped for the many settings to come: a rail of sections on the left with a search field
+//! Settings is a sheet inside the main window, like Add Task; only a download gets a window of
+//! its own, because a download is a thing to keep beside the list while it moves. It carries a
+//! strip of its own at the top -- its name and the cross that closes it -- laid out as every
+//! other sheet's header is.
+//!
+//! It is shaped for the many settings to come: a rail of sections on the left with a search field
 //! over it, and the chosen section's rows on the right. A search cuts across every section and
-//! shows what matches under its section's name, so a setting is found without knowing where
-//! it was filed. See spec/ui.md.
+//! shows what matches under its section's name, so a setting is found without knowing where it
+//! was filed. See spec/ui.md.
 
-use gpui::{Context, Entity, IntoElement, Role, SharedString, deferred, div, prelude::*, px};
+use gpui::{
+	Context, Entity, IntoElement, Role, SharedString, deferred, div, prelude::*, px,
+};
 
 use crate::app::Rdm;
 use crate::identity;
@@ -22,6 +27,14 @@ use crate::update::Policy;
 
 // TODO: every value row here is a label until there is a setting behind it and a store to keep it
 // in; the folder is the one the engine writes to, the rest are the engine's defaults, read only.
+
+/// The card's size. Fixed, so changing sections moves nothing.
+const SHEET_W: f32 = 680.0;
+const SHEET_H: f32 = 520.0;
+
+/// The strip at the top of the card: its name and the button that closes it.
+const HEADER_H: f32 = 36.0;
+
 
 /// The sheet while it is up: which section is open, and the field that searches all of them.
 pub struct SettingsSheet {
@@ -854,9 +867,12 @@ impl Rdm {
 		rows
 	}
 
-	pub(crate) fn settings_sheet(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
-		let Some(sheet) = &self.settings else { return deferred(div()).priority(2) };
+	pub(crate) fn settings_body(
+		&self,
+		p: crate::ui::theme::Palette,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
+		let Some(sheet) = &self.settings else { return div().into_any_element() };
 		let query = sheet.search.read(cx).content.trim().to_lowercase();
 		let searching = !query.is_empty();
 		let rows = self.settings_rows();
@@ -966,7 +982,7 @@ impl Rdm {
 					last = Some(row.section);
 					pane = pane.child(section_title(p, row.section.name()).when(!first, |s| s.mt_2()));
 				}
-				pane = pane.child(self.setting_row(row, cx));
+				pane = pane.child(self.setting_row(p, row, cx));
 			}
 		} else {
 			// No section title here: the rail two inches to the left already shows which section
@@ -982,7 +998,7 @@ impl Rdm {
 					pane = pane.child(group_title(p, crate::i18n::t(row.group)));
 				}
 				group = Some(row.group);
-				pane = pane.child(self.setting_row(row, cx));
+				pane = pane.child(self.setting_row(p, row, cx));
 				if let Some((label, message)) = &complaint
 					&& *label == row.label
 				{
@@ -997,43 +1013,74 @@ impl Rdm {
 			}
 		}
 
+		// The card, drawn the same whether it is a sheet in the main window or a window of its
+		// own: its own strip at the top, the rail and the pane under it. The frame around it is
+		// the only difference between the two, which is what makes dragging it out move nothing
+		// but the frame.
+		div()
+			.id("settings-sheet")
+			.debug_selector(|| "settings-sheet".to_owned())
+			.flex()
+			.flex_col()
+			.size_full()
+			.overflow_hidden()
+			// Zed's density, the same as the main window's: this is the same application and not
+			// a dialog with a face of its own.
+			.text_size(px(13.0))
+			.bg(p.window)
+			.text_color(p.text)
+			.child(self.settings_header(p, cx))
+			.child(div().flex().flex_1().min_h_0().child(rail).child(pane))
+			.into_any_element()
+	}
+
+	/// The strip at the top of the card: its name and the one button that closes it, laid out as
+	/// every other sheet's is -- the name at the left, the cross at the right, on every system.
+	/// A sheet is not a window and its cross is not a window button, so there is nothing here for
+	/// a system's own arrangement to be followed.
+	fn settings_header(
+		&self,
+		p: crate::ui::theme::Palette,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
+		div()
+			.debug_selector(|| "settings-header".to_owned())
+			.flex()
+			.items_center()
+			.justify_between()
+			.flex_none()
+			.h(px(HEADER_H))
+			.px_3()
+			.border_b_1()
+			.border_color(p.border)
+			.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Settings"))
+			.child(icon_button(
+				p,
+				"settings-close",
+				Icon::X,
+				"Close",
+				true,
+				cx.listener(|this, _, _, cx| this.close_settings(cx)),
+			))
+	}
+
+	/// Settings inside the main window, which is where it opens: the card over the dimmed list.
+	/// Dragging its strip takes it out. See spec/ui.md.
+	pub(crate) fn settings_sheet(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
 		deferred(
 			backdrop(p).child(
 				div()
-					.id("settings-sheet")
-					.debug_selector(|| "settings-sheet".to_owned())
-					.flex()
-					.flex_col()
-					.w(px(640.0))
-					.h(px(480.0))
+					.id("settings-card")
+					.w(px(SHEET_W))
+					.h(px(SHEET_H))
 					.rounded_lg()
 					.border_1()
 					.border_color(p.border)
-					.bg(p.panel)
 					.shadow_lg()
 					.overflow_hidden()
 					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_settings(cx)))
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.px_4()
-							.pt_3()
-							.pb_2()
-							.border_b_1()
-							.border_color(p.border)
-							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Settings"))
-							.child(icon_button(
-								p,
-								"settings-close",
-								Icon::X,
-								"Close",
-								true,
-								cx.listener(|this, _, _, cx| this.close_settings(cx)),
-							)),
-					)
-					.child(div().flex().flex_1().min_h_0().child(rail).child(pane)),
+					.child(self.settings_body(p, cx)),
 			),
 		)
 		.priority(2)
@@ -1041,8 +1088,12 @@ impl Rdm {
 
 	/// One setting: its name on the left, and on the right the value it has or the switch that
 	/// changes it. The switch is a track with a knob, lit while on.
-	fn setting_row(&self, row: &Row, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
+	fn setting_row(
+		&self,
+		p: crate::ui::theme::Palette,
+		row: &Row,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
 		let label = row.label;
 		// A choice is drawn one of two ways and the words decide which: see `segments_fit`.
 		let dropdown = match &row.control {
@@ -1141,14 +1192,18 @@ impl Rdm {
 			Control::Field { input } => {
 				div().w(px(132.0)).flex_none().child(input.clone()).into_any_element()
 			}
+			// The status wraps rather than truncating, up to the width below. What it says is the
+			// whole point of the row -- which build was found, or why the check could not be
+			// read -- and a sentence cut at `2026.9.6 (102) is the la` has answered nothing. The
+			// word beside it keeps to the first line, so the row still reads as one action.
 			Control::Action { word, note, run } => {
 				let (word, run) = (*word, *run);
 				div()
 					.flex()
-					.items_center()
+					.items_start()
 					.gap_3()
 					.min_w_0()
-					.child(div().text_color(p.muted).truncate().child(note.clone()))
+					.child(div().max_w(px(240.0)).text_color(p.muted).child(note.clone()))
 					.child(
 						div()
 							.id(SharedString::from(format!("action:{label}")))
@@ -1174,8 +1229,12 @@ impl Rdm {
 		// with everything else.
 		let stacked = matches!(row.control, Control::Choice { .. }) && !dropdown;
 		let note = crate::i18n::t(row.note);
-		let fixed =
-			matches!(row.control, Control::Switch { .. } | Control::Field { .. }) || dropdown;
+		// An action sizes itself: its status wraps within its own ceiling, so capping and
+		// truncating the whole thing here would undo the wrapping a line below.
+		let fixed = matches!(
+			row.control,
+			Control::Switch { .. } | Control::Field { .. } | Control::Action { .. }
+		) || dropdown;
 		let title = crate::i18n::t(row.title.unwrap_or(row.label));
 		let line = div()
 			.flex()
@@ -1215,7 +1274,7 @@ impl Rdm {
 			.gap_1()
 			.py_1p5()
 			.child(line)
-			.when(open, |s| s.child(self.choice_menu(row, cx)))
+			.when(open, |s| s.child(self.choice_menu(p, row, cx)))
 	}
 
 	/// The options of a dropdown, in a panel under its row. It is laid out in the pane rather than
@@ -1224,8 +1283,12 @@ impl Rdm {
 	/// inside a pane that scrolls, so an anchored panel would part company with its row on the
 	/// first turn of the wheel. In the pane it moves with the row and is clipped by the same
 	/// edges. It occludes, like everything drawn over the window. See spec/ui.md.
-	fn choice_menu(&self, row: &Row, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
+	fn choice_menu(
+		&self,
+		p: crate::ui::theme::Palette,
+		row: &Row,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
 		let label = row.label;
 		let Control::Choice { options, chosen, set } = &row.control else {
 			return div().into_any_element();

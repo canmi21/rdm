@@ -255,6 +255,7 @@ fn reset_under_appearance_puts_every_column_width_back(cx: &mut TestAppContext) 
 		rdm.widths = [200.0, 90.0, 60.0, 70.0, 80.0];
 		rdm.open_settings(cx);
 	});
+	cx.run_until_parked();
 	click(&mut cx, "section:Appearance");
 	click(&mut cx, "button:Reset");
 	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.widths, Column::DEFAULT_WIDTHS));
@@ -1294,6 +1295,7 @@ fn the_colorful_categories_switch_flips_the_preference(cx: &mut TestAppContext) 
 	let (rdm, mut cx) = open(cx);
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.colorful_categories, "on to start with"));
 	click(&mut cx, "button:Settings");
+	cx.run_until_parked();
 	click(&mut cx, "section:Appearance");
 	click(&mut cx, "switch:settings.label.colorful");
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.preferences.colorful_categories));
@@ -1364,6 +1366,7 @@ fn notifications_are_one_row_an_occasion_and_the_choice_is_kept(cx: &mut TestApp
 	use crate::notify::{Occasion, Style};
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:Settings");
+	cx.run_until_parked();
 	click(&mut cx, "section:Notifications");
 	for occasion in Occasion::ALL {
 		let selector: &'static str = format!("setting:{}", occasion.label()).leak();
@@ -1441,6 +1444,7 @@ fn settings_has_sections_and_a_search_that_cuts_across_them(cx: &mut TestAppCont
 	use crate::ui::settings_sheet::Section;
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:Settings");
+	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(rdm.settings.as_ref().map(|s| s.section), Some(Section::General))
 	});
@@ -1918,3 +1922,4 @@ fn the_two_user_agent_rows_are_named_apart_and_both_are_searchable(cx: &mut Test
 		"the field row answers to the name it is drawn under"
 	);
 }
+

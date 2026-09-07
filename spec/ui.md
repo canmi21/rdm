@@ -340,20 +340,57 @@ translated is what a machine writes. Debug selectors name the key rather than th
 means the same thing whatever language the machine running it is set to, and the tests pin
 themselves to English for the same reason.
 
-**A settings row is a label, a line saying what it does, and a control**, and the rows are
-gathered under headings within their section. The line under the label is the part that was
-missing: `Auto update` names itself and says nothing about what happens, and what happened used
-to be a second row away. The headings are what make a section of a dozen rows into three short
-lists; rows of one group are gathered together whatever order they were written in, since a
-group split in two by a row from another gets its heading twice and reads as two lists of the
-same name. The search reads the note and the heading as well as the label, because somebody
-looking for `proxy` is looking for what a setting does and the label is often the one word that
-does not say it. `Updates` has a section of its own, General having been a dozen rows in one run.
+**A settings row is a label and a control, on one line, and what the setting does is under the
+pointer.** Every row has a note -- `Auto update` names itself and says nothing about what
+happens -- and the note is a whole sentence, which is why it is not on the row: a sentence on
+every row made a section of eight settings a page to scroll rather than one to read. It is a
+tooltip on the label instead, which is where the pointer already is when somebody is wondering
+what a row means. The search still reads it, so a setting is still found by what it does.
 
-The pane scrolls, and the label gives way while the control does not: a note is a sentence and
-will take every point it is given, and a control clipped to nothing cannot be pressed. Both were
-learned the hard way -- the switches stopped answering, and a row with a long path in it grew to
-fifteen hundred points because the note beside it was left a character wide.
+**One note, one home, and that home is `Row::note`.** A field's note used to live inside
+`Control::Field` and be drawn between the label and the input, where there was never room: every
+row of Transfers showed a sentence cut off at four words, and the Action row's fared worse,
+wrapping into a column the value beside it had already taken. Two places for one fact, one of
+which could not hold it. `Control::Action` keeps a note of its own, and that is not an exception:
+what it holds is how the thing last went -- `Nothing found; straight out` -- which is a value
+that changes as the thing runs, not an explanation of the row.
+
+The rows are gathered under headings within their section, and the headings are the only
+division: rows of one group are gathered together whatever order they were written in, since a
+group split in two by a row from another gets its heading twice and reads as two lists of the
+same name. There is no rule between rows. A heading and the space around it already say where a
+group starts and ends, and a rule under every row is a second mechanism saying the same thing --
+one that also drew a line under a section's last row, dividing it from nothing.
+
+`Updates` has a section of its own, General having been a dozen rows in one run. The pane
+scrolls, and the label gives way while the control does not: a control clipped to nothing cannot
+be pressed, which is what happened when these were the other way round and the switches stopped
+answering. The cap that keeps a long value from pushing a label out of its row applies only where
+the two share a line; a segmented control has the line to itself, and holding it to six tenths of
+one cut `No proxy` to `No`.
+
+**A choice is a segmented control or a dropdown, and its words decide which.** Lit and unlit
+words with nothing around them read as a button and some loose text rather than as one control
+offering alternatives, so a short set is drawn as segments inside one track. A long set will not
+fit whatever it is drawn as -- four disguises ran off the pane and the fourth was never on
+screen -- so it becomes a dropdown, which is one word and a chevron and therefore shares the line
+with its label. A segmented control does not: it is as wide as all of its words at once, so it
+goes under the label.
+
+Which one a set gets is **counted, not measured**. A width can only be had after the frame it
+would decide, so a control that changed shape one frame late would flicker between the two every
+time the language changed. The count is in the columns the words draw in rather than in
+characters, a CJK glyph drawing in two: `简体中文` is four characters and eight columns, and
+counting characters would call the Chinese and Japanese windows narrow when they are not. Five
+options are a dropdown whatever they say, a row of five being a list. See `segments_fit` in
+src/ui/settings_sheet.rs.
+
+**The dropdown's panel opens under its row, inside the pane.** It is not floated over the window
+the way the status funnel's menu is. That one hangs off the window root and is positioned in
+window space, and a settings row has no window position to be given: it is inside a pane that
+scrolls, so an anchored panel would part company with its row on the first turn of the wheel. In
+the pane it moves with the row and is clipped by the same edges. It occludes, like everything
+drawn over the window.
 
 **A resolved address fills in the name it will be saved under.** Add Task looks at an address
 before anything is fetched -- what it is, how big, whether it can be split -- and the name the
@@ -578,6 +615,28 @@ keeping beside the list while the list moves: a download is, and its window foll
 form is filled in and dismissed, and a window for it is a window to find and close afterwards.
 Add Task was tried as a sheet first and read better than the window it replaced, so Settings
 followed.
+
+**Settings was given a window of its own, and it was taken back before it landed.** It was built
+and it worked: the card could be dragged out of the main window by its strip and dropped back
+into it, drawing its own frame and one close button while it was out. It is not in the history,
+so there is nothing to go looking for -- it is written down here so that the next reader knows
+the idea was tried rather than never considered.
+
+What it cost is the reason it went. A window that is torn off has to be opened where the card
+already was, moved by the system, watched for where it got to, and **guessed to have been let
+go** -- `start_window_move` hands the drag to the compositor, which runs its own event loop and
+sends no release back, so the end of a drag can only be read as the moment the window stops
+moving. That guess docks a window somebody was still moving. Against a sheet that opens and
+closes, none of it earns its keep. The rule above is the simpler one and it is the one that
+stands.
+
+What survived the removal is the strip itself, which the card keeps: a name and a cross, the same
+shape every other sheet's header has.
+
+**The strip's cross sits at the right, on every system.** A sheet is not a window and its cross
+is not a window button, so nothing here follows a system's own arrangement of those -- which is
+one platform difference not to carry, and one fewer thing that can only be checked on a machine
+this is not written on.
 
 **Settings is shaped for the many to come.** A rail down the left names the sections -- General,
 Transfers, Appearance, About -- with a search field above it, and the chosen section's rows fill
