@@ -29,8 +29,15 @@ use crate::update::Policy;
 // in; the folder is the one the engine writes to, the rest are the engine's defaults, read only.
 
 /// The card's size. Fixed, so changing sections moves nothing.
+///
+/// The height is what six of the eight sections hold without scrolling, and not what the longest
+/// one does: at 520 the card stood 87 out of every 100 points of a window opened at its default
+/// height, which left the list a rim around it rather than something the card was laid over, and
+/// every short section -- General has four rows, Folder three -- ended in a third of a card of
+/// nothing. Transfers and Network are longer than this and scroll, which the pane has always
+/// done.
 const SHEET_W: f32 = 680.0;
-const SHEET_H: f32 = 520.0;
+const SHEET_H: f32 = 440.0;
 
 /// The strip at the top of the card: its name and the button that closes it.
 const HEADER_H: f32 = 36.0;
@@ -1074,6 +1081,10 @@ impl Rdm {
 					.id("settings-card")
 					.w(px(SHEET_W))
 					.h(px(SHEET_H))
+					// Except where the window is shorter than the card, which the window's own
+					// minimum height allows: fixed would overflow it and be clipped by the window,
+					// taking the close button off the bottom with it. See `MIN_HEIGHT`.
+					.max_h(gpui::relative(0.9))
 					.rounded_lg()
 					.border_1()
 					.border_color(p.border)
