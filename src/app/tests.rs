@@ -1629,6 +1629,16 @@ fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(
 		assert_eq!(rdm.preferences.dns_servers_written, "https://cloudflare-dns.com/dns-query");
 	});
 
+	// Forcing a transport that is not in use says nothing, so that switch arrives with this one
+	// and leaves with it.
+	assert!(cx.debug_bounds("setting:settings.label.dns_force_https").is_some());
+	click(&mut cx, "switch:settings.label.dns_force_https");
+	cx.run_until_parked();
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.dns_force_https));
+	click(&mut cx, "switch:settings.label.dns_https");
+	cx.run_until_parked();
+	assert!(cx.debug_bounds("setting:settings.label.dns_force_https").is_none());
+
 	// And handing the whole business back to the machine leaves nothing under it to set.
 	click(&mut cx, "switch:settings.label.dns_force_system");
 	cx.run_until_parked();

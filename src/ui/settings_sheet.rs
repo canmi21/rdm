@@ -732,6 +732,19 @@ impl Rdm {
 				note: "settings.note.dns_https",
 				control: Control::Switch { on: transport.is_https(), set: Rdm::set_dns_https },
 			});
+			// Only beside the switch above: forcing a transport that is not in use says nothing.
+			if transport.is_https() {
+				rows.push(Row {
+					section: Section::Network,
+					group: "settings.group.names",
+					label: "settings.label.dns_force_https",
+					note: "settings.note.dns_force_https",
+					control: Control::Switch {
+						on: self.preferences.dns_force_https,
+						set: Rdm::set_dns_force_https,
+					},
+				});
+			}
 			rows.push(Row {
 				section: Section::Network,
 				group: "settings.group.names",

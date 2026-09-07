@@ -117,6 +117,14 @@ impl Rdm {
 		self.set_dns_servers(crate::dns::Servers::offered(transport)[0], cx);
 	}
 
+	/// Settings' row: HTTPS or nothing. On, there is no chain under it -- a name that cannot be
+	/// resolved over HTTPS is a download that does not start, which is what forcing it is for.
+	pub(crate) fn set_dns_force_https(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.preferences.dns_force_https = on;
+		self.save_config();
+		cx.notify();
+	}
+
 	/// Settings' row: which servers. Choosing one of the offered fills the field beside it, so
 	/// what is being asked is on screen rather than implied -- the same reason a chosen user agent
 	/// fills its field. Custom leaves the field alone, the field being the choice.

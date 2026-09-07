@@ -324,19 +324,27 @@ forged reply. A question that simply times out is retried as it was; making it a
 would be a branch in the default path that only the network being hostile could justify, and a
 hostile network is what DNS over HTTPS is for.
 
-### The fallback is an escape hatch, not a second opinion
+### The chain, and why the fallback is an escape hatch rather than a second opinion
 
 What the system's stack knows and no unicast server does is `.local`, answered by multicast, and
 whatever a VPN's own scoped resolver answers for -- neither of which is in the machine's global
 DNS configuration, so reading that configuration does not bring them along. A name our resolver
-cannot find is therefore put to the system once before the download fails.
+cannot find is therefore put to the system before the download fails.
 
-It runs where nobody could have answered and not where an answer came back that somebody might
-not like. A question that never got through falls back whatever the servers were, that being a
-different path to a different set of servers. A name that does not exist falls back only while
-the servers being asked are the machine's own: somebody who named servers said this machine's are
-not to be trusted, and a fallback that asked them anyway would hand back exactly what was
-refused.
+**Under DNS over HTTPS there is a rung between them:** our own stack on port 53, on the machine's
+own servers. HTTPS falls to it and it falls to the system. **A request carried by a proxy skips
+it** -- one that has got this far wants the machine's stack, not a second question of ours asked
+from a place the connection is not made from. **Forcing HTTPS removes the chain entirely**, since
+both rungs below would send the question out in the clear and that is the one thing forcing it is
+for.
+
+Whatever the chain, it runs where nobody could have answered and not where an answer came back
+that somebody might not like. A question that never got through walks it whatever the servers
+were, each rung being a different path to a different set of servers. A name that does not exist
+walks it only while the servers being asked are the machine's own: somebody who named servers
+said this machine's are not to be trusted, and a fallback that asked them anyway would hand back
+exactly what was refused. That is why `.local` resolves under the default and stops resolving
+once servers are named -- the cost of the setting, not an oversight.
 
 ### One resolver, for the life of the process
 
@@ -344,19 +352,27 @@ A resolver holds a cache, and a cache thrown away with the client that made it a
 twice -- a download builds a client per connection, so this is the difference between one query
 for a name and sixteen, and between one DoH handshake and sixteen. So one is built and kept, with
 the choice that built it beside it: a settings change replaces it, and it is never left answering
-with servers the settings used to name.
+with servers the settings used to name. Whether a proxy carries the requests is kept beside the
+choice too, not being a setting but deciding the chain, so the two shapes never share one.
 
 It is built at the first name asked rather than where it is made, because building it may have to
 look a DoH server's own address up, which is a question, and a question wants a runtime.
 
-### Three switches, and each turns something off
+### Four switches, and each turns something off
 
 - **Force the system's resolver.** Off. On, nothing of ours is built and reqwest resolves the way
   everything else on the machine does. It is the way out if resolving here is ever the problem,
   which is worth having on the screen rather than in a config file.
 - **DNS over HTTPS.** Off. On, the question cannot be read or rewritten on the way, which is what
   somebody whose network answers `github.com` with a lie is after. It buys integrity and not
-  reach: a DoH server that is blocked is blocked.
+  reach: a DoH server that is blocked is blocked. It also outranks the proxy rule above -- a
+  request through a proxy resolves here after all, because who may see and answer a question is a
+  stronger claim than where its answer should come from. Turning it on beside a running proxy
+  points two things at one job, which is the user's to settle and the reason the switch is off
+  until they turn it on.
+- **Force DNS over HTTPS.** Off, and only on screen beside the switch above, since forcing a
+  transport that is not in use says nothing. On, there is no chain: a name that cannot be resolved
+  over HTTPS is a download that does not start.
 - **Which servers.** The machine's own, one of the two anybody in that position already knows, or
   whatever is written in the field. On port 53 the offered two are named by their address, because
   that is what a person remembers; over HTTPS they are named by their operator, because nobody

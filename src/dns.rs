@@ -13,18 +13,29 @@
 //! hatch and not a second opinion: it runs where nobody could have answered, never where an
 //! answer came back that somebody might not like.
 //!
-//! Three things the user can change, and each turns something off:
+//! Four things the user can change, and each turns something off:
 //!
 //! - **Force the system's resolver.** Off. On, nothing here is built and reqwest resolves the way
 //!   the machine does, which is the way out if this arrangement is ever the problem.
 //! - **DNS over HTTPS.** Off. On, the question cannot be read or rewritten on the way, which is
 //!   what somebody whose network answers `github.com` with a lie is after.
+//! - **Force DNS over HTTPS.** Off, and only there to be turned on beside the one above. On,
+//!   HTTPS is the only way a question goes out: nothing below it in the chain, and a name that
+//!   cannot be resolved that way is a download that does not start.
 //! - **Which servers.** The machine's own, one of the two anybody in that position already knows,
 //!   or whatever is written in the field.
 //!
-//! **A download that goes through a proxy resolves nothing here.** The name travels to the proxy
-//! and the proxy resolves it, because the address a CDN gives depends on who asked and the one
-//! that matters is the one seen from where the connection is made. See src/engine/client.rs.
+//! **The chain, once the first rung has not answered.** DNS over HTTPS falls to our own stack on
+//! port 53, and that to the machine's. A request carried by a proxy skips the middle rung: a
+//! second question of ours from the wrong place is not what it wants, and the machine's stack is.
+//! Forcing HTTPS has no chain at all, which is the whole of what forcing it means.
+//!
+//! **A download that goes through a proxy resolves nothing here, unless HTTPS is on.** The name
+//! travels to the proxy and the proxy resolves it, because the address a CDN gives depends on who
+//! asked and the one that matters is the one seen from where the connection is made. Turning
+//! HTTPS on says something stronger -- who may see and answer the question at all -- so it wins,
+//! and somebody who turns it on beside a proxy has pointed two things at one job. The switch is
+//! off until they do. See src/engine/client.rs.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -129,6 +140,9 @@ pub struct Choice {
 	/// Nothing of ours is built, and reqwest resolves the way the machine does.
 	pub force_system: bool,
 	pub transport: Transport,
+	/// HTTPS or nothing: no rung below it, and a question that cannot go that way does not go.
+	/// Means nothing while the transport is port 53.
+	pub force_https: bool,
 	pub servers: Servers,
 	/// The addresses or URLs, as the user wrote them: comma, space or newline apart.
 	pub written: String,
@@ -152,6 +166,12 @@ impl Choice {
 		}
 	}
 
+	/// The middle rung: our own stack on port 53, on whatever servers the machine is configured
+	/// with, which is what the default choice already is.
+	fn plain() -> Choice {
+		Choice::default()
+	}
+
 	/// Whether a name our resolver could not find is worth putting to the system. It is only when
 	/// the servers being asked are the machine's own: what the system knows and they do not is
 	/// `.local` and whatever a VPN answers for, and both come from the same machine either way.
@@ -168,24 +188,34 @@ impl Choice {
 /// the client that made it answers nothing twice: a download builds a client per connection, so
 /// this is the difference between one query for a name and sixteen. The choice is kept beside it
 /// so a settings change replaces it rather than being answered by the servers it used to name.
-static CURRENT: OnceLock<Mutex<Option<(Choice, Resolver)>>> = OnceLock::new();
+static CURRENT: OnceLock<Mutex<Option<(Made, Resolver)>>> = OnceLock::new();
+
+/// What a kept resolver was made for: the settings, and whether a proxy carries the requests.
+/// The second is not a setting but it decides the chain, so it belongs to the identity.
+type Made = (Choice, bool);
 
 /// The resolver for a choice, or None where the choice is to let the system do it and there is
-/// nothing to build.
-pub fn resolver(choice: &Choice) -> Option<Resolver> {
+/// nothing to build. `proxied` says a proxy carries the requests this is for, which is not a
+/// setting but a fact about them, and which decides whether the middle rung is in the chain.
+pub fn resolver(choice: &Choice, proxied: bool) -> Option<Resolver> {
 	if choice.force_system {
 		return None;
 	}
+	let key = (choice.clone(), proxied);
 	let held = CURRENT.get_or_init(|| Mutex::new(None));
 	let mut held = held.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 	if let Some((made_for, resolver)) = held.as_ref()
-		&& made_for == choice
+		&& *made_for == key
 	{
 		return Some(resolver.clone());
 	}
-	let resolver =
-		Resolver(Arc::new(Held { choice: choice.clone(), inner: tokio::sync::OnceCell::new() }));
-	*held = Some((choice.clone(), resolver.clone()));
+	let resolver = Resolver(Arc::new(Held {
+		choice: choice.clone(),
+		proxied,
+		first: tokio::sync::OnceCell::new(),
+		plain: tokio::sync::OnceCell::new(),
+	}));
+	*held = Some((key, resolver.clone()));
 	Some(resolver)
 }
 
@@ -196,11 +226,47 @@ pub struct Resolver(Arc<Held>);
 
 struct Held {
 	choice: Choice,
+	proxied: bool,
 	/// Built at the first name asked rather than where this is made. Building it may have to look
 	/// a DoH server's own address up, which is a question, and a question wants a runtime; this is
 	/// made where a client is made, which is not always inside one.
-	inner: tokio::sync::OnceCell<TokioResolver>,
+	first: tokio::sync::OnceCell<TokioResolver>,
+	/// The middle rung, built only if the chain ever reaches it.
+	plain: tokio::sync::OnceCell<TokioResolver>,
 }
+
+impl Held {
+	/// Whether our own stack on port 53 is a rung here: under DNS over HTTPS, over the system's,
+	/// and only where no proxy carries the request -- one that gets this far wants the machine's
+	/// stack, not a second question of ours asked from a place the connection is not made from.
+	fn has_plain_rung(&self) -> bool {
+		self.choice.transport.is_https() && !self.choice.force_https && !self.proxied
+	}
+
+	/// What is left of the chain once the first rung has not answered. Forcing HTTPS leaves
+	/// nothing: both of the rungs below it would send the question out in the clear, which is
+	/// the one thing forcing it is for.
+	async fn below(&self, name: &str, why: NetError) -> Result<reqwest::dns::Addrs, Failure> {
+		if self.choice.force_https && self.choice.transport.is_https() {
+			return Err(Box::new(why));
+		}
+		if self.has_plain_rung() {
+			let rung = Choice::plain();
+			if let Ok(plain) = self.plain.get_or_try_init(|| build(&rung)).await
+				&& let Ok(lookup) = plain.lookup_ip(name).await
+			{
+				let found: Vec<SocketAddr> = lookup.iter().map(|ip| SocketAddr::new(ip, 0)).collect();
+				if !found.is_empty() {
+					return Ok(Box::new(found.into_iter()));
+				}
+			}
+		}
+		system(name).await
+	}
+}
+
+/// What a resolution comes back as when it does not come back with an address.
+type Failure = Box<dyn std::error::Error + Send + Sync>;
 
 impl reqwest::dns::Resolve for Resolver {
 	fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
@@ -210,10 +276,14 @@ impl reqwest::dns::Resolve for Resolver {
 			// A resolver that will not build at all -- nothing usable in the settings, a DoH
 			// server whose own address cannot be found -- is one we do without rather than a
 			// download that fails before it starts.
-			let Ok(inner) = held.inner.get_or_try_init(|| build(&held.choice)).await else {
-				return system(&name).await;
+			let first = match held.first.get_or_try_init(|| build(&held.choice)).await {
+				Ok(first) => first,
+				// A resolver that will not build at all -- nothing usable in the settings, a DoH
+				// server whose own address cannot be found -- is one we do without rather than a
+				// download that fails before it starts.
+				Err(why) => return held.below(&name, NetError::Msg(why.clone())).await,
 			};
-			match inner.lookup_ip(name.as_str()).await {
+			match first.lookup_ip(name.as_str()).await {
 				Ok(lookup) => {
 					let addresses: Vec<SocketAddr> =
 						// The port is reqwest's to fill in: it says so, and fills a zero with
@@ -222,20 +292,21 @@ impl reqwest::dns::Resolve for Resolver {
 					match addresses.is_empty() {
 						false => Ok(Box::new(addresses.into_iter()) as reqwest::dns::Addrs),
 						// An answer with nothing in it is the same as no answer.
-						true if held.choice.asks_system_for_missing() => system(&name).await,
-						true => Err(format!("no addresses for {name}").into()),
+						true => held.below(&name, NetError::Message("no addresses")).await,
 					}
 				}
 				// A name our servers do not know may be one the system does: `.local` is answered
 				// by multicast and a VPN's own names by a resolver scoped to it, and no unicast
-				// server has either.
+				// server has either. But a name that does not exist is only worth asking about
+				// again while the servers asked were the machine's own; somebody who named
+				// servers said this machine's are not to be trusted.
 				Err(error) if missing(&error) => match held.choice.asks_system_for_missing() {
-					true => system(&name).await,
+					true => held.below(&name, error).await,
 					false => Err(Box::new(error) as _),
 				},
-				// Anything else is the question not getting through, and the system's stack is a
-				// different path to a different set of servers whatever ours were.
-				Err(_) => system(&name).await,
+				// Anything else is the question not getting through, which is what the rungs
+				// below are for whatever the servers were.
+				Err(error) => held.below(&name, error).await,
 			}
 		})
 	}
@@ -332,13 +403,20 @@ mod tests {
 	use super::*;
 
 	fn choice(transport: Transport, servers: Servers, written: &str) -> Choice {
-		Choice { force_system: false, transport, servers, written: written.to_owned() }
+		Choice {
+			force_system: false,
+			transport,
+			force_https: false,
+			servers,
+			written: written.to_owned(),
+		}
 	}
 
 	#[test]
 	fn nothing_is_built_for_the_choice_to_let_the_system_do_it() {
 		let forced = Choice { force_system: true, ..Choice::default() };
-		assert!(resolver(&forced).is_none());
+		assert!(resolver(&forced, false).is_none());
+		assert!(resolver(&forced, true).is_none());
 	}
 
 	/// The default is our own stack asking the machine's own servers, which is a resolver to
@@ -408,12 +486,39 @@ mod tests {
 	#[test]
 	fn the_resolver_is_kept_and_replaced_rather_than_rebuilt() {
 		let one = choice(Transport::Plain, Servers::Custom, "1.1.1.1");
-		let first = resolver(&one).expect("a resolver is built");
-		let again = resolver(&one).expect("and kept");
+		let first = resolver(&one, false).expect("a resolver is built");
+		let again = resolver(&one, false).expect("and kept");
 		assert!(Arc::ptr_eq(&first.0, &again.0), "the same choice is the same resolver");
 		let other = choice(Transport::Plain, Servers::Custom, "8.8.8.8");
-		let changed = resolver(&other).expect("a changed choice is a new resolver");
+		let changed = resolver(&other, false).expect("a changed choice is a new resolver");
 		assert!(!Arc::ptr_eq(&first.0, &changed.0));
+		// And a proxy carrying the requests is a different chain under the same choice, so it is
+		// a different resolver even where nothing in the settings moved.
+		let proxied = resolver(&one, true).expect("a resolver is built");
+		assert!(!Arc::ptr_eq(&first.0, &proxied.0));
+	}
+
+	/// The chain under the first rung. Our own stack on port 53 sits there only under HTTPS --
+	/// on port 53 it is already the first rung -- only while HTTPS is not forced, and only where
+	/// no proxy carries the request.
+	#[test]
+	fn the_middle_rung_is_under_https_and_nowhere_else() {
+		let held = |transport, force_https, proxied| Held {
+			choice: Choice {
+				force_system: false,
+				transport,
+				force_https,
+				servers: Servers::Cloudflare,
+				written: String::new(),
+			},
+			proxied,
+			first: tokio::sync::OnceCell::new(),
+			plain: tokio::sync::OnceCell::new(),
+		};
+		assert!(held(Transport::Https, false, false).has_plain_rung());
+		assert!(!held(Transport::Https, true, false).has_plain_rung(), "forcing leaves no rung");
+		assert!(!held(Transport::Https, false, true).has_plain_rung(), "proxied wants the system");
+		assert!(!held(Transport::Plain, false, false).has_plain_rung(), "already the first rung");
 	}
 
 	/// An older file says `named` where this now says `custom`, and it means the same thing: the
@@ -440,7 +545,7 @@ mod network {
 	use super::*;
 
 	async fn answer(choice: Choice, name: &str) -> Result<Vec<SocketAddr>, ()> {
-		let resolver = resolver(&choice).expect("a resolver is built");
+		let resolver = resolver(&choice, false).expect("a resolver is built");
 		let name: reqwest::dns::Name = name.parse().expect("a name");
 		tokio::time::timeout(Duration::from_secs(30), resolver.resolve(name))
 			.await
@@ -464,7 +569,13 @@ mod network {
 	async fn the_offered_servers_answer_over_53_and_over_https() {
 		for transport in [Transport::Plain, Transport::Https] {
 			for servers in [Servers::Cloudflare, Servers::Google] {
-				let choice = Choice { force_system: false, transport, servers, written: String::new() };
+				let choice = Choice {
+					force_system: false,
+					transport,
+					force_https: false,
+					servers,
+					written: String::new(),
+				};
 				let addresses = answer(choice, "example.com").await.expect("{servers:?} answered");
 				assert!(!addresses.is_empty(), "{servers:?} over {transport:?}");
 			}

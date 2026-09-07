@@ -43,15 +43,18 @@ pub fn build(settings: &Settings, split: bool) -> Result<reqwest::Client> {
 	// request that goes through one is handed the name and nothing here resolves anything -- not
 	// our stack, and not the system's either, the name travelling in the CONNECT line or in the
 	// SOCKS request. See src/proxy.rs and src/dns.rs.
-	match &settings.proxy {
-		Some(proxy) => {
-			builder = builder.proxy(reqwest::Proxy::all(crate::proxy::resolved_there(proxy))?);
-		}
-		None => {
-			if let Some(resolver) = crate::dns::resolver(&settings.dns) {
-				builder = builder.dns_resolver(std::sync::Arc::new(resolver));
-			}
-		}
+	let proxied = settings.proxy.is_some();
+	if let Some(proxy) = &settings.proxy {
+		builder = builder.proxy(reqwest::Proxy::all(crate::proxy::resolved_there(proxy))?);
+	}
+	// Names go to the proxy where there is one -- unless DNS over HTTPS is on, which says
+	// something stronger than where an answer should come from: who may see and answer the
+	// question at all. Somebody who turns it on beside a proxy has pointed two things at one job,
+	// and that is theirs to settle; the switch is off until they do.
+	if (!proxied || settings.dns.transport.is_https())
+		&& let Some(resolver) = crate::dns::resolver(&settings.dns, proxied)
+	{
+		builder = builder.dns_resolver(std::sync::Arc::new(resolver));
 	}
 	builder.build().map_err(Error::Http)
 }

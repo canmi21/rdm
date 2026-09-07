@@ -151,6 +151,10 @@ pub struct Preferences {
 	pub dns_force_system: bool,
 	#[serde(default)]
 	pub dns_transport: crate::dns::Transport,
+	/// HTTPS or nothing: no rung under it, and a name it cannot resolve does not get resolved.
+	/// Off, and only there to be turned on beside the switch above.
+	#[serde(default)]
+	pub dns_force_https: bool,
 	#[serde(default)]
 	pub dns_servers: crate::dns::Servers,
 	/// The servers as the user wrote them, which choosing one of the offered servers fills in.
@@ -236,6 +240,7 @@ impl Preferences {
 		settings.dns = crate::dns::Choice {
 			force_system: self.dns_force_system,
 			transport: self.dns_transport,
+			force_https: self.dns_force_https,
 			servers: self.dns_servers,
 			written: self.dns_servers_written.clone(),
 		};
@@ -291,6 +296,7 @@ impl Default for Preferences {
 			agent: crate::agent::Agent::default(),
 			dns_force_system: false,
 			dns_transport: crate::dns::Transport::default(),
+			dns_force_https: false,
 			dns_servers: crate::dns::Servers::default(),
 			dns_servers_written: String::new(),
 			max_redirects: None,
