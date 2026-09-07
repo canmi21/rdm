@@ -17,6 +17,26 @@ pub const HANDLE_W: f32 = 12.0;
 /// The table's horizontal overhead: the type icon, and the margins and padding around the header.
 pub const TABLE_CHROME: f32 = 14.0 + 2.0 * 6.0 + 2.0 * 8.0;
 
+/// A card in the grid: how wide it is, the least that goes between two of them, and the padding
+/// the grid keeps around the lot.
+pub const CARD: f32 = 156.0;
+const CARD_GAP: f32 = 6.0;
+const GRID_PADDING: f32 = 2.0 * 8.0;
+
+/// How many cards fit across a list this wide, and what goes between them. The width is fixed --
+/// a card is the size of a card -- so what is left over after the last one that fits is spread
+/// between them rather than left in a heap at the right edge: widen the window until one more
+/// column nearly fits and the gaps grow instead of a column of nothing appearing. The last row
+/// of a grid is short of cards and keeps this same gap rather than spreading what it has, since
+/// a card under a card is what makes a grid a grid. See spec/ui.md.
+pub fn grid_columns(width: f32) -> (usize, f32) {
+	let room = width - GRID_PADDING;
+	let across = (((room + CARD_GAP) / (CARD + CARD_GAP)) as usize).max(1);
+	let spare = room - across as f32 * CARD;
+	let gap = if across > 1 { (spare / (across - 1) as f32).max(CARD_GAP) } else { CARD_GAP };
+	(across, gap)
+}
+
 /// What each fixed column sorts by and is titled; widths live on the view, since they are dragged.
 const COLUMNS: [(Column, SortKey, &str); 5] = [
 	(Column::Size, SortKey::Size, "Size"),
@@ -36,7 +56,7 @@ impl Rdm {
 		// thousand files was a thousand rows built for a screen that holds twenty. The grid's
 		// cards wrap, and a wrapping row is not a row this can count, so the cards are dealt into
 		// rows of their own: as many across as the window fits, and one item is one such row.
-		let across = self.cards_across();
+		let (across, gap) = self.grid_columns();
 		let count = match self.view {
 			View::Grid => shown.len().div_ceil(across),
 			View::Detailed | View::Thumbnails => shown.len(),
@@ -80,7 +100,7 @@ impl Rdm {
 										div()
 											.flex()
 											.flex_row()
-											.gap_1p5()
+											.gap(px(gap))
 											.children(
 												shown[from..to].iter().map(|d| this.card(d, cx).into_any_element()),
 											)
@@ -497,7 +517,7 @@ impl Rdm {
 			.flex()
 			.flex_col()
 			.gap_1p5()
-			.w(px(156.0))
+			.w(px(CARD))
 			.p_2()
 			.child(
 				div()
@@ -567,4 +587,30 @@ fn size_cell(download: &Download) -> String {
 
 fn speed_cell(download: &Download) -> SharedString {
 	if download.speed > 0 { format_speed(download.speed).into() } else { "\u{2013}".into() }
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The cards keep their width and the leftover goes between them, so a row reaches both edges
+	/// however the window is dragged -- and one card narrower than two never leaves a column of
+	/// nothing on the right.
+	#[test]
+	fn what_a_row_cannot_use_is_spread_between_the_cards_it_holds() {
+		let room = |cards: usize, gap: f32| GRID_PADDING + cards as f32 * CARD + (cards - 1) as f32 * gap;
+		// A window that fits three cards exactly keeps the smallest gap.
+		assert_eq!(grid_columns(room(3, CARD_GAP)), (3, CARD_GAP));
+		// Twenty points wider still fits three, and the twenty are shared by the two gaps.
+		let (across, gap) = grid_columns(room(3, CARD_GAP) + 20.0);
+		assert_eq!(across, 3);
+		assert_eq!(gap, CARD_GAP + 10.0);
+		// One point short of a fourth card is the case this is for: three cards, wide gaps, no
+		// heap of nothing at the right edge.
+		let (across, gap) = grid_columns(room(4, CARD_GAP) - 1.0);
+		assert_eq!(across, 3);
+		assert!(gap > CARD_GAP * 8.0, "the gaps take a whole card's width between them: {gap}");
+		// A window narrower than one card still draws one, and one card has no gaps.
+		assert_eq!(grid_columns(40.0), (1, CARD_GAP));
+	}
 }

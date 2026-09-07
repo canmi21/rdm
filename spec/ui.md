@@ -52,6 +52,16 @@ They are offered in the order a row turns from words into a picture -- the whole
 with a picture on it, then cards -- and the glyph on each button says which: a table, lines with
 a picture on them, cards.
 
+**The grid keeps its card width and spreads what is left over.** A card is 156 points wide
+whatever the window is, so a window between two column counts has a card's worth of room it
+cannot use; left at the right edge it reads as a column that failed to draw. It goes between the
+cards instead, shared equally, so a row reaches both edges and widening the window grows the gaps
+until one more card fits and they snap back to six points. The last row of the grid is short of
+cards and keeps that same gap rather than spreading what it has: a card under a card is what
+makes a grid a grid. The alternative -- letting the cards themselves grow -- was not taken, since
+a card that is a different size in every window is a card whose picture area is never the size it
+was drawn for. See `grid_columns` in src/ui/list.rs.
+
 **The list draws what the window holds, not what the list holds.** All three views hand their
 rows to a uniform list, which builds the rows on screen and a little either side of them and
 leaves the rest as a number. It used to build every row it had, so a folder of a thousand files

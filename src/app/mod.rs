@@ -634,15 +634,11 @@ impl Rdm {
 	/// How deep a folder row sits and whether it is a folder, by its id. A `Download` is the
 	/// engine's row and has no room for either, and the two lists are built together and
 	/// numbered together, so a second list beside it is the smaller of the two lies.
-	/// How many cards the grid fits across the window it has. The list's own width, less the
-	/// padding around the cards, divided by a card and the gap after it; one at the least, since
-	/// a window narrower than a card still has to draw one.
-	pub(crate) fn cards_across(&self) -> usize {
-		const CARD: f32 = 156.0;
-		const GAP: f32 = 6.0;
-		const PADDING: f32 = 16.0;
-		let room = f32::from(self.viewport.width) - crate::ui::sidebar::WIDTH - PADDING;
-		(((room + GAP) / (CARD + GAP)) as usize).max(1)
+	/// How many cards the grid fits across the window it has, and the gap that goes between them.
+	/// The arithmetic is in `crate::ui::list`, beside the width it is about; this is the room to
+	/// do it in -- the window less the sidebar and the padding the grid keeps around its cards.
+	pub(crate) fn grid_columns(&self) -> (usize, f32) {
+		crate::ui::list::grid_columns(f32::from(self.viewport.width) - crate::ui::sidebar::WIDTH)
 	}
 
 	pub(crate) fn folder_shape(&self, id: u64) -> Option<(u8, bool)> {
