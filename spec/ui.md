@@ -63,6 +63,12 @@ See src/state.rs.
 **The picture is the system's own.** Every desktop keeps an icon per kind of file, and it is the
 picture somebody already knows the file by, so the thumbnails view asks for it rather than
 inventing one -- Word's icon on a `.docx`, Excel's on an `.xlsx`, whatever has claimed the kind.
+It is asked for by drawing it into a bitmap of the size wanted, which is the only cheap way to
+ask: an icon is a set of representations, and the call that hands over all of them at once --
+`TIFFRepresentation` -- encodes thirty-two of them, 16 square to 1024, into one uncompressed
+file of 35 MB, to be decoded again and scaled down to 128. Two hundred rows of that took twelve
+milliseconds and seventy-five megabytes each, and the window's memory went to gigabytes for a
+list of icons that come to 64 KB apiece. See src/thumbnail.rs.
 Where there is none to be had, and on the systems this is not written for yet, the category's own
 glyph stands in; that is not a failure, since the glyph is what this application draws when it is
 drawing for itself. The pictures are cached by path for the run and asked for again when a
