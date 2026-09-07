@@ -1,6 +1,6 @@
 use gpui::{
 	ClickEvent, Context, Div, Hsla, IntoElement, MouseButton, MouseDownEvent, Role, SharedString,
-	Stateful, div, prelude::*, px, relative,
+	Stateful, div, prelude::*, px, relative, uniform_list,
 };
 
 use crate::app::{Column, Rdm, SortKey, View};
@@ -31,49 +31,79 @@ impl Rdm {
 		let p = self.palette;
 		let shown = self.shown();
 		let empty = shown.is_empty();
-		let items: Vec<_> = shown
-			.iter()
-			.map(|d| match self.view {
-				View::Detailed => self.table_row(d, cx).into_any_element(),
-				View::Thumbnails => self.thumbnail_row(d, cx).into_any_element(),
-				View::Grid => self.card(d, cx).into_any_element(),
-			})
-			.collect();
-		// A frame that ran out of its allowance of system pictures is owed another: the rest of
-		// them are waiting in it.
-		if self.thumbnails.borrow().starved() {
-			cx.notify();
-		}
+		// The list draws the rows the window has room for and no others. It used to draw every
+		// row it had, which is why the pictures have an allowance a frame -- a folder of a
+		// thousand files was a thousand rows built for a screen that holds twenty. The grid's
+		// cards wrap, and a wrapping row is not a row this can count, so the cards are dealt into
+		// rows of their own: as many across as the window fits, and one item is one such row.
+		let across = self.cards_across();
+		let count = match self.view {
+			View::Grid => shown.len().div_ceil(across),
+			View::Detailed | View::Thumbnails => shown.len(),
+		};
+		drop(shown);
 		div()
 			.flex()
 			.flex_col()
 			.flex_1()
 			.min_h_0()
 			.when(self.view == View::Detailed, |s| s.child(self.header(cx)))
-			.child(
-				div()
-					.id("downloads")
-					.flex()
+			.when(empty, |s| {
+				s.child(
+					div()
+						.flex()
+						.size_full()
+						.justify_center()
+						.items_center()
+						.text_color(p.muted)
+						.child("Nothing here"),
+				)
+			})
+			.when(!empty, |s| {
+				s.child(
+					uniform_list(
+						"downloads",
+						count,
+						cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+							let shown = this.shown();
+							let items: Vec<gpui::AnyElement> = match this.view {
+								View::Detailed => {
+									range.map(|at| this.table_row(shown[at], cx).into_any_element()).collect()
+								}
+								View::Thumbnails => range
+									.map(|at| this.thumbnail_row(shown[at], cx).into_any_element())
+									.collect(),
+								View::Grid => range
+									.map(|row| {
+										let from = row * across;
+										let to = (from + across).min(shown.len());
+										div()
+											.flex()
+											.flex_row()
+											.gap_1p5()
+											.children(
+												shown[from..to].iter().map(|d| this.card(d, cx).into_any_element()),
+											)
+											.into_any_element()
+									})
+									.collect(),
+							};
+							// A frame that ran out of its allowance of system pictures is owed another: the
+							// rest of them are waiting in it.
+							if this.thumbnails.borrow().starved() {
+								cx.notify();
+							}
+							items
+						}),
+					)
 					.flex_1()
 					.min_h_0()
-					.overflow_y_scroll()
 					.map(|s| match self.view {
-						View::Grid => s.flex_row().flex_wrap().gap_1p5().content_start().p_2(),
-						View::Detailed | View::Thumbnails => s.flex_col().px_1p5().py_1(),
-					})
-					.children(items)
-					.when(empty, |s| {
-						s.child(
-							div()
-								.flex()
-								.size_full()
-								.justify_center()
-								.items_center()
-								.text_color(p.muted)
-								.child("Nothing here"),
-						)
+						View::Grid => s.p_2(),
+						View::Detailed | View::Thumbnails => s.px_1p5().py_1(),
 					}),
-			)
+				)
+			})
 	}
 
 	/// Column titles that sort, each preceded by a handle on its left edge: the table is anchored
@@ -232,6 +262,11 @@ impl Rdm {
 		let selected = self.selected == Some(id);
 		div()
 			.id(("download", id))
+			// The width of the list, not of what the row holds: a row is pressed and highlighted
+			// across the whole list, and only the grid's cards, which set their own width after
+			// this, are the shape of their contents. In a flex column this came for nothing;
+			// under a uniform list it has to be said.
+			.w_full()
 			.role(Role::ListItem)
 			.aria_label(download.name.clone())
 			.aria_selected(selected)

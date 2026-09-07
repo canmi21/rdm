@@ -61,7 +61,7 @@ their mouse to it, and that is the rule this section exists to keep.
 **`ctl` is the debug build's control socket.** `src/ctl.rs` listens on a Unix socket under
 `target/` in debug builds only -- on Unix only, since the standard library has no such socket
 on Windows, where a debug build simply has none -- one line in and the application's state out as JSON -- filter,
-sort, view, selection, open windows, every download -- with commands for what the toolbar,
+sort, view, selection, open windows, how many rows the list holds and shows, every download -- with commands for what the toolbar,
 sidebar, chips, headers and rows do. It is the analogue of the Tauri MCP bridge the workspace
 uses for its webview app, kept to a socket and a Python client because that is all the job
 needs. The socket lives in `target/` so it is per checkout and gone with `cargo clean`.

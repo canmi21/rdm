@@ -52,6 +52,17 @@ They are offered in the order a row turns from words into a picture -- the whole
 with a picture on it, then cards -- and the glyph on each button says which: a table, lines with
 a picture on them, cards.
 
+**The list draws what the window holds, not what the list holds.** All three views hand their
+rows to a uniform list, which builds the rows on screen and a little either side of them and
+leaves the rest as a number. It used to build every row it had, so a folder of a thousand files
+was a thousand rows built each frame for a window that shows twenty, and that is why the pictures
+have an allowance a frame -- the allowance stays, since a screen's worth of new rows still asks a
+screen's worth of the system, but it now guards a handful of rows rather than a folder. The grid's
+cards wrap, and a wrapping row is not a row a uniform list can count, so the cards are dealt into
+rows of their own: as many across as the window fits, and one item is one such row. A row is drawn
+the full width of the list, which a flex column gave for nothing and a uniform list has to be
+told. See src/ui/list.rs.
+
 **There were four.** A Compact view drew one 22px line a row -- type, name, a short bar, size, a
 status mark -- and it was the table with most of the table taken out. Two views that differ by
 four points of row height and a column of dates are one view and a preference, and the table is

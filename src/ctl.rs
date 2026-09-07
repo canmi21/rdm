@@ -97,6 +97,12 @@ struct State<'a> {
 	drawn: [f32; 5],
 	name_width: f32,
 	window_width: f32,
+	/// How many rows the list holds and how many it is showing: the funnel's files count in both,
+	/// the filters and the status menu cut the second. The list draws only what the window has
+	/// room for, so neither is a count of what is on screen -- but a measurement wants to know
+	/// what the list was asked to hold. See src/ui/list.rs.
+	rows: usize,
+	shown: usize,
 	downloads: &'a [Download],
 }
 
@@ -145,6 +151,8 @@ impl Rdm {
 				CategorySheet::Reorder => "reorder",
 				CategorySheet::Custom(_) => "custom",
 			}),
+			rows: self.rows().count(),
+			shown: self.shown().len(),
 			downloads: &self.downloads,
 		};
 		serde_json::to_string_pretty(&state).unwrap_or_else(|error| failure(&error.to_string()))
