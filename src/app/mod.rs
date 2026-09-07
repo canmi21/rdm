@@ -987,6 +987,10 @@ impl Rdm {
 			self.dismiss_add(cx);
 		} else if self.category_sheet.is_some() {
 			self.dismiss_category_sheet(cx);
+		} else if self.settings_menu_open() {
+			// A dropdown is the topmost thing when one is open, so Escape answers it first and
+			// leaves the sheet where it is; a second Escape then closes the sheet.
+			self.close_settings_menu(cx);
 		} else if self.settings_open() {
 			self.close_settings(cx);
 		} else if self.filter_open {
