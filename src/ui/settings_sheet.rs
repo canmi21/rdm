@@ -11,6 +11,7 @@ use crate::app::Rdm;
 use crate::identity;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
+use crate::ui::tooltip::tooltip_wrapped;
 use crate::ui::{LeavesFocus, backdrop, icon_button};
 use std::collections::HashMap;
 
@@ -32,47 +33,28 @@ pub struct SettingsSheet {
 	pub complaint: Option<(&'static str, String)>,
 }
 
-/// Every field there is: its row's label, its placeholder, and a word on what it takes.
+/// Every field there is: the key that is its setting's identity, its placeholder, and the note
+/// saying what it takes. The note is a key like every other row's rather than the English it used
+/// to be: it lands in `Row::note` and is read there, so a field's explanation is translated and
+/// reaches the pointer by the same path as a switch's. It used to be a second note living inside
+/// `Control::Field`, drawn between the label and the input where there was never room for it --
+/// every row of Transfers showed a sentence cut off at four words. One note, one home.
 const FIELDS: [(&str, &str, &str); 15] = [
-	("settings.label.concurrent_downloads", "3", "How many run at once; the rest wait"),
-	("settings.label.speed_limit", "Off", "KB/s, or with m or g; empty for none"),
-	("settings.label.connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
-	(
-		"settings.label.smallest_segment",
-		"1m",
-		"A file below this is never split; bytes, or with k, m or g",
-	),
-	("settings.label.connect_timeout", "30", "Seconds to establish a connection"),
-	(
-		"settings.label.idle_timeout",
-		"60",
-		"Seconds without a byte before a connection is dropped and retried",
-	),
-	("settings.label.retries", "5", "Times a failing connection is tried again"),
-	("settings.label.retry_wait", "1", "Seconds before the first retry, doubling each time"),
-	(
-		"settings.label.size_limit",
-		"Off",
-		"A file the server declares larger is refused; empty for none",
-	),
-	(
-		"settings.label.user_agent",
-		"rdm/version",
-		"Sent with every request; empty for the engine's own",
-	),
-	("settings.label.proxy", "Address", "http://, https:// or socks5://, credentials in the address"),
-	(
-		"settings.label.name_servers",
-		"1.1.1.1",
-		"Addresses for port 53, https:// URLs over HTTPS; several apart by commas",
-	),
-	(
-		"settings.label.system_domains",
-		"corp.example.com",
-		"Domains the system resolves, apart by commas; .local is always one of them",
-	),
-	("settings.label.headers", "", "Name: value, several apart by semicolons"),
-	("settings.label.redirects", "10", "How many a request follows"),
+	("settings.label.concurrent_downloads", "3", "settings.note.concurrent"),
+	("settings.label.speed_limit", "Off", "settings.note.speed_limit"),
+	("settings.label.connections", "Auto", "settings.note.connections"),
+	("settings.label.smallest_segment", "1m", "settings.note.smallest_segment"),
+	("settings.label.connect_timeout", "30", "settings.note.connect_timeout"),
+	("settings.label.idle_timeout", "60", "settings.note.idle_timeout"),
+	("settings.label.retries", "5", "settings.note.retries"),
+	("settings.label.retry_wait", "1", "settings.note.retry_wait"),
+	("settings.label.size_limit", "Off", "settings.note.size_limit"),
+	("settings.label.user_agent", "rdm/version", "settings.note.user_agent_sent"),
+	("settings.label.proxy", "Address", "settings.note.proxy"),
+	("settings.label.name_servers", "1.1.1.1", "settings.note.name_servers"),
+	("settings.label.system_domains", "corp.example.com", "settings.note.system_domains"),
+	("settings.label.headers", "", "settings.note.headers"),
+	("settings.label.redirects", "10", "settings.note.redirects"),
 ];
 
 /// The sections down the rail, in their order. A setting belongs to exactly one.
@@ -144,10 +126,12 @@ enum Control {
 	Value(String),
 	/// A switch, and what flipping it does.
 	Switch { on: bool, set: fn(&mut Rdm, bool, &mut Context<Rdm>) },
-	/// A word that does something when pressed, with a note on how it last went.
+	/// A word that does something when pressed, with how it last went beside it. That is a value
+	/// and not an explanation -- it changes as the thing runs -- so it stays on screen while the
+	/// row's own note goes to the pointer with every other.
 	Action { word: &'static str, note: String, run: fn(&mut Rdm, &mut Context<Rdm>) },
-	/// A field, applied on Enter, with a word on what it takes.
-	Field { input: Entity<TextInput>, note: &'static str },
+	/// A field, applied on Enter. What it takes is the row's note, like every other row's.
+	Field { input: Entity<TextInput> },
 	/// One of a few words, the chosen one lit.
 	Choice { options: Vec<&'static str>, chosen: usize, set: fn(&mut Rdm, usize, &mut Context<Rdm>) },
 }
@@ -159,6 +143,13 @@ impl Row {
 		self.group = group;
 		self
 	}
+
+	/// Calls the row something other than its setting's key, for the one place where two rows
+	/// share a setting and would otherwise share a name.
+	fn titled(mut self, title: &'static str) -> Row {
+		self.title = Some(title);
+		self
+	}
 }
 
 struct Row {
@@ -167,10 +158,16 @@ struct Row {
 	/// section of a dozen rows in one run is a list to read rather than a page to use; the
 	/// headings are what make it three short lists.
 	group: &'static str,
+	/// The key that is the setting's identity: what `apply_setting` dispatches on, what the field
+	/// is filed under, and what names the row to a test and to the accessibility tree.
 	label: &'static str,
-	/// One line under the label saying what the setting does, empty where the label already says
-	/// it. Most labels do not: `Auto update` names itself and says nothing about what happens,
-	/// and what happens used to be a second row away.
+	/// What the row is called on screen, where that is not the identity above. One row needs it:
+	/// the user agent is chosen on one row and written on another, and both were called `User
+	/// agent` -- two identical labels in one group, which says nothing about which is which.
+	title: Option<&'static str>,
+	/// What the setting does, said in a sentence. It reaches the reader as a tooltip on the label
+	/// rather than as a line under it, so a row is one line; the search still reads it, since a
+	/// setting is looked for by what it does. See spec/ui.md.
 	note: &'static str,
 	control: Control,
 }
@@ -391,10 +388,10 @@ impl Rdm {
 	fn field_row(&self, section: Section, key: &'static str) -> Row {
 		let (_, _, note) = FIELDS.iter().find(|(k, _, _)| *k == key).copied().unwrap_or((key, "", ""));
 		let control = match self.settings.as_ref().and_then(|s| s.fields.get(key)) {
-			Some(input) => Control::Field { input: input.clone(), note },
+			Some(input) => Control::Field { input: input.clone() },
 			None => Control::Value(self.setting_text(key)),
 		};
-		Row { section, group: "", label: key, note: "", control }
+		Row { section, group: "", label: key, title: None, note, control }
 	}
 
 	/// Every setting there is, in the rail's order, with what it shows now.
@@ -409,6 +406,7 @@ impl Rdm {
 				section: Section::General,
 				group: "settings.group.language",
 				label: "settings.label.language",
+				title: None,
 				note: "settings.note.language",
 				control: Control::Choice {
 					options: crate::i18n::Language::ALL.iter().map(|l| l.name()).collect(),
@@ -425,6 +423,7 @@ impl Rdm {
 				section: Section::General,
 				group: "settings.group.starting",
 				label: "settings.label.start_at_login",
+				title: None,
 				note: "settings.note.start_at_login",
 				control: Control::Switch {
 					on: self.preferences.start_at_login,
@@ -435,6 +434,7 @@ impl Rdm {
 				section: Section::General,
 				group: "settings.group.where_things_go",
 				label: "settings.label.download_folder",
+				title: None,
 				note: "settings.note.download_folder",
 				control: Control::Value(folder),
 			},
@@ -443,6 +443,7 @@ impl Rdm {
 				group: "settings.group.where_things_go",
 				note: "settings.note.on_completion",
 				label: "settings.label.on_completion",
+				title: None,
 				control: Control::Value("Do nothing".to_owned()),
 			},
 			// TODO: a picker once there is a second channel to pick.
@@ -451,6 +452,7 @@ impl Rdm {
 				group: "",
 				note: "settings.note.update_channel",
 				label: "settings.label.update_channel",
+				title: None,
 				control: Control::Value(self.preferences.update_channel.name().to_owned()),
 			},
 			Row {
@@ -458,6 +460,7 @@ impl Rdm {
 				group: "",
 				note: "settings.note.check_for_updates",
 				label: "settings.label.check_for_updates",
+				title: None,
 				control: Control::Switch {
 					on: self.preferences.check_updates,
 					set: Rdm::set_check_updates,
@@ -468,6 +471,7 @@ impl Rdm {
 				group: "",
 				note: "settings.note.check_for_updates",
 				label: "settings.label.automatic_updates",
+				title: None,
 				control: Control::Switch { on: self.preferences.auto_update, set: Rdm::set_auto_update },
 			},
 			Row {
@@ -475,6 +479,7 @@ impl Rdm {
 				group: "",
 				note: "settings.note.when_found",
 				label: "settings.label.when_a_build_is_found",
+				title: None,
 				control: Control::Choice {
 					options: Policy::ALL.iter().map(|p| p.name()).collect(),
 					chosen: Policy::ALL
@@ -489,6 +494,7 @@ impl Rdm {
 				group: "",
 				note: "settings.note.latest_build",
 				label: "settings.label.latest_build",
+				title: None,
 				control: Control::Action {
 					word: "Check now",
 					note: self.update_status(),
@@ -500,6 +506,7 @@ impl Rdm {
 				group: "settings.group.what_is_listed",
 				note: "settings.note.folders",
 				label: "settings.label.folders",
+				title: None,
 				control: Control::Choice {
 					options: Folders::ALL.iter().map(|f| f.name()).collect(),
 					chosen: Folders::ALL.iter().position(|f| *f == self.preferences.folders).unwrap_or(0),
@@ -511,6 +518,7 @@ impl Rdm {
 				group: "settings.group.opening_a_file",
 				note: "settings.note.show_with",
 				label: "settings.label.show_with",
+				title: None,
 				control: Control::Value(if cfg!(any(target_os = "macos", windows)) {
 					crate::reveal::manager_name().to_owned()
 				} else if self.preferences.file_manager.trim().is_empty() {
@@ -524,12 +532,14 @@ impl Rdm {
 				group: "settings.group.what_is_listed",
 				note: "settings.note.hide_junk",
 				label: "settings.label.hide_junk",
+				title: None,
 				control: Control::Switch { on: self.preferences.hide_junk, set: Rdm::set_hide_junk },
 			},
 			Row {
 				section: Section::Network,
 				group: "settings.group.proxy",
 				label: "settings.label.proxy_source",
+				title: None,
 				note: "settings.note.proxy_source",
 				control: Control::Choice {
 					options: crate::proxy::Source::ALL.iter().map(|s| s.name()).collect(),
@@ -544,6 +554,7 @@ impl Rdm {
 				section: Section::Network,
 				group: "settings.group.what_we_call_ourselves",
 				label: "settings.label.user_agent",
+				title: None,
 				note: "settings.note.user_agent",
 				control: Control::Choice {
 					options: crate::agent::Agent::offered().iter().map(|a| a.name()).collect(),
@@ -557,14 +568,19 @@ impl Rdm {
 					},
 				},
 			},
+			// The row above chooses a disguise and fills this one, so the two are one setting seen
+			// twice: what was picked, and what will actually be sent. They were both called `User
+			// agent`, which named the pair rather than either half of it.
 			self
 				.field_row(Section::Network, "settings.label.user_agent")
+				.titled("settings.label.user_agent_sent")
 				.under("settings.group.what_we_call_ourselves"),
 			self.field_row(Section::Network, "settings.label.proxy").under("settings.group.proxy"),
 			Row {
 				section: Section::Network,
 				group: "settings.group.proxy",
 				label: "settings.label.proxy_in_use",
+				title: None,
 				note: "settings.note.proxy_in_use",
 				control: Control::Action {
 					word: "Look again",
@@ -604,6 +620,7 @@ impl Rdm {
 				group: "settings.group.per_download",
 				note: "settings.note.http_version",
 				label: "settings.label.http_version",
+				title: None,
 				control: Control::Choice {
 					options: vec!["Auto", "HTTP/1.1", "HTTP/2"],
 					chosen: match self.preferences.http {
@@ -630,6 +647,7 @@ impl Rdm {
 				group: "settings.group.per_download",
 				note: "settings.note.preallocate",
 				label: "settings.label.preallocate",
+				title: None,
 				control: Control::Switch {
 					on: self.preferences.preallocate,
 					set: |this, on, cx| {
@@ -644,6 +662,7 @@ impl Rdm {
 				group: "settings.group.the_table",
 				note: "settings.note.column_widths",
 				label: "settings.label.column_widths",
+				title: None,
 				control: Control::Action {
 					word: "Reset",
 					note: String::new(),
@@ -655,6 +674,7 @@ impl Rdm {
 				group: "settings.group.colors",
 				note: "settings.note.colorful",
 				label: "settings.label.colorful",
+				title: None,
 				control: Control::Switch {
 					on: self.preferences.colorful_categories,
 					set: Rdm::set_colorful_categories,
@@ -665,6 +685,7 @@ impl Rdm {
 				group: "settings.group.colors",
 				note: "settings.note.dim",
 				label: "settings.label.dim",
+				title: None,
 				control: Control::Switch { on: self.preferences.dim_inactive, set: Rdm::set_dim_inactive },
 			},
 			// What this build is: the name in full lives here, and the numbers that tell one
@@ -674,6 +695,7 @@ impl Rdm {
 				group: "settings.group.this_build",
 				note: "",
 				label: "settings.label.application",
+				title: None,
 				control: Control::Value(identity::NAME.to_owned()),
 			},
 			Row {
@@ -681,6 +703,7 @@ impl Rdm {
 				group: "settings.group.this_build",
 				note: "",
 				label: "settings.label.version",
+				title: None,
 				control: Control::Value(match self.updates.this {
 					Some(build) => format!("{} ({build})", identity::VERSION),
 					None => format!("{}, built by hand", identity::VERSION),
@@ -691,6 +714,7 @@ impl Rdm {
 				group: "settings.group.this_build",
 				note: "",
 				label: "settings.label.commit",
+				title: None,
 				control: Control::Value(
 					identity::COMMIT
 						.map(|sha| sha[..sha.len().min(12)].to_owned())
@@ -702,6 +726,7 @@ impl Rdm {
 				group: "",
 				note: "settings.note.identifier",
 				label: "settings.label.identifier",
+				title: None,
 				control: Control::Value(identity::id()),
 			},
 		];
@@ -713,6 +738,7 @@ impl Rdm {
 				group: "settings.group.where_each_is_said",
 				note: occasion.note(),
 				label: occasion.label(),
+				title: None,
 				control: Control::Choice {
 					options: Style::ALL.iter().map(|style| style.name()).collect(),
 					// A style this build no longer offers lands on the first: a row has to light
@@ -732,6 +758,7 @@ impl Rdm {
 			section: Section::Network,
 			group: "settings.group.names",
 			label: "settings.label.dns_force_system",
+			title: None,
 			note: "settings.note.dns_force_system",
 			control: Control::Switch {
 				on: self.preferences.dns_force_system,
@@ -745,6 +772,7 @@ impl Rdm {
 				section: Section::Network,
 				group: "settings.group.names",
 				label: "settings.label.dns_https",
+				title: None,
 				note: "settings.note.dns_https",
 				control: Control::Switch { on: transport.is_https(), set: Rdm::set_dns_https },
 			});
@@ -754,6 +782,7 @@ impl Rdm {
 					section: Section::Network,
 					group: "settings.group.names",
 					label: "settings.label.dns_force_https",
+					title: None,
 					note: "settings.note.dns_force_https",
 					control: Control::Switch {
 						on: self.preferences.dns_force_https,
@@ -765,6 +794,7 @@ impl Rdm {
 				section: Section::Network,
 				group: "settings.group.names",
 				label: "settings.label.dns_servers",
+				title: None,
 				note: "settings.note.dns_servers",
 				control: Control::Choice {
 					options: offered.iter().map(|s| s.name(transport)).collect(),
@@ -907,7 +937,11 @@ impl Rdm {
 				pane = pane.child(self.setting_row(row, cx));
 			}
 		} else {
-			pane = pane.child(section_title(p, sheet.section.name()));
+			// No section title here: the rail two inches to the left already shows which section
+			// is open, lit, and the word repeated at the top of the pane was the same answer to a
+			// question nobody had asked twice. It stays under a search, where the rail is lit by
+			// nothing and the section is the only thing saying where a match came from.
+			//
 			// The headings within a section, emitted as the rows walk past them: a dozen rows in
 			// one run is a list to read, and three short lists is a page to use.
 			let mut group: Option<&'static str> = None;
@@ -1032,14 +1066,9 @@ impl Rdm {
 					}))
 					.into_any_element()
 			}
-			Control::Field { input, note } => div()
-				.flex()
-				.items_center()
-				.gap_3()
-				.min_w_0()
-				.child(div().text_xs().text_color(p.muted).truncate().child(*note))
-				.child(div().w(px(112.0)).flex_none().child(input.clone()))
-				.into_any_element(),
+			Control::Field { input } => {
+				div().w(px(132.0)).flex_none().child(input.clone()).into_any_element()
+			}
 			Control::Action { word, note, run } => {
 				let (word, run) = (*word, *run);
 				div()
@@ -1071,34 +1100,32 @@ impl Rdm {
 		// A choice of several words does not fit beside its label, so it goes under it.
 		let stacked = matches!(row.control, Control::Choice { .. });
 		let note = crate::i18n::t(row.note);
-		let fixed = matches!(row.control, Control::Switch { .. } | Control::Choice { .. });
+		let fixed = matches!(row.control, Control::Switch { .. } | Control::Field { .. });
+		let title = crate::i18n::t(row.title.unwrap_or(row.label));
 		div()
 			.debug_selector(move || format!("setting:{label}"))
 			.flex()
-			.when(!stacked, |s| s.justify_between().items_start().gap_4())
+			.when(!stacked, |s| s.justify_between().items_center().gap_4())
 			.when(stacked, |s| s.flex_col().items_start().gap_1p5())
 			.py_1p5()
-			.border_b_1()
-			.border_color(p.border)
-			// The label and its note give way, and the control does not: a note is a sentence and
-			// will take every point it is given, and a control clipped to nothing is a control
-			// that cannot be pressed -- which is what happened when these were the other way
-			// round, and the switches stopped answering.
+			// The label gives way and the control does not: a control clipped to nothing is a
+			// control that cannot be pressed, which is what happened when these were the other way
+			// round and the switches stopped answering.
 			.child(
 				div()
-					.flex()
-					.flex_col()
-					// Beside a control it gives way; under one there is nothing to give way to,
-					// and saying it may shrink to nothing there leaves the note a character wide
-					// and a row two thousand points tall.
+					// An id because a tooltip needs one: GPUI tracks how long the pointer has
+					// rested on an element, and an element with no id is not one it can follow.
+					.id(SharedString::from(format!("label:{label}")))
 					.when(!stacked, |s| s.flex_1().min_w_0())
-					.gap_0p5()
-					.child(div().truncate().child(crate::i18n::t(label)))
-					.when(!note.is_empty(), |s| s.child(div().text_xs().text_color(p.muted).child(note))),
+					.truncate()
+					// The row is one line, so what the setting does lives under the pointer. A
+					// label with nothing behind it gets no tooltip rather than an empty one.
+					.when(!note.is_empty(), |s| s.tooltip(tooltip_wrapped(note)))
+					.child(title),
 			)
-			// A switch and a row of words are the size they are; a value, a note or a path is as
-			// long as it happens to be, and one of those given its natural width leaves the note
-			// beside it a character wide and the row a thousand points tall.
+			// A switch and a field are the size they are; a value or a status is as long as it
+			// happens to be, and one of those given its natural width pushes the label out of the
+			// row -- so it is capped and truncates instead.
 			.child(
 				div()
 					.when(fixed, |s| s.flex_none())

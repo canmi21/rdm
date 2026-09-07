@@ -7,6 +7,9 @@ use crate::ui::theme;
 
 pub struct Tooltip {
 	text: SharedString,
+	/// A label wider than a few words wraps inside a ceiling instead of running off the display.
+	/// An icon's name never needs it; a setting's note is a whole sentence and always does.
+	wrapped: bool,
 }
 
 impl Render for Tooltip {
@@ -22,7 +25,8 @@ impl Render for Tooltip {
 			.text_xs()
 			.text_color(p.text)
 			.shadow_md()
-			.whitespace_nowrap()
+			.when(!self.wrapped, |s| s.whitespace_nowrap())
+			.when(self.wrapped, |s| s.max_w(gpui::px(260.0)))
 			.child(self.text.clone())
 	}
 }
@@ -30,5 +34,13 @@ impl Render for Tooltip {
 /// The builder an element's `.tooltip(...)` takes, for a fixed piece of text.
 pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView {
 	let text = text.into();
-	move |_, cx| cx.new(|_| Tooltip { text: text.clone() }).into()
+	move |_, cx| cx.new(|_| Tooltip { text: text.clone(), wrapped: false }).into()
+}
+
+/// The same for a sentence rather than a name: it wraps within a ceiling. This is what a
+/// setting's row uses, its note having moved off the screen and under the pointer so that a row
+/// is one line. See spec/ui.md.
+pub fn tooltip_wrapped(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView {
+	let text = text.into();
+	move |_, cx| cx.new(|_| Tooltip { text: text.clone(), wrapped: true }).into()
 }
