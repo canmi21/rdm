@@ -16,6 +16,32 @@ had really changed and the event came from the watcher itself -- a dropped-event
 watchexec reads as a change. `[Command exited with 101]` in the same log is the other kind
 entirely: the application panicked and left, and the next line up says why.
 
+**The loop belongs to a terminal.** It is started where its output will be read, and it ends
+with that terminal. An agent that starts one stops it before the reply ends, under the
+workspace's rule that what an agent starts, an agent stops: a loop put in the background and
+forgotten goes on killing and reopening the window for as long as the machine is up, long after
+the session that started it is gone, and the person whose window it is has nothing to connect
+it to.
+
+**One loop per checkout.** Two of them share `target/` and cargo's lock on it, so the second
+sits at `Blocking waiting for file lock on build directory` and the two windows take turns
+reopening. `pgrep -f 'watchexec --restart'` says whether one is already up; stopping it is
+killing that process and the `mise run dev` above it. `RDM_PID` is for the moment a restart
+leaves the old process up, not a way to live with two loops.
+
+**It watches `src/` and the project root, and nothing else.** Everything else in the tree is
+outside it, and what that costs differs by directory. A change under `spec/` restarts nothing,
+so waiting for the window to come back after one is waiting for an event nothing set in motion.
+`locales/` is `include_str!`, so a translation needs a rebuild the loop will not start on its
+own: touch something under `src/`, or restart the loop. `assets/` needs no rebuild at all --
+rust-embed only embeds when `debug_assertions` are off, so a debug build reads the icons from
+disk and a fetch reaches the window without the compiler.
+
+**The window it opens is not the installed one.** A debug build's state, config and database sit
+under the `.dev` name, so the loop's window and an installed `.app` can both be up at once,
+remembering different things; see [state.md](state.md). That is the usual reason more than one
+build is up, and why `shot` and `ax` want `RDM_PID` when it is.
+
 ## Driving the window without the mouse
 
 A GPUI window is not a web view, so nothing made for a browser reaches it, and there is no
