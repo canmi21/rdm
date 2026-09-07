@@ -191,7 +191,10 @@ fn the_resize_band_takes_the_press_from_the_title_behind_it(cx: &mut TestAppCont
 	let band = cx.debug_bounds("resize:Size").expect("the handle is drawn");
 	let title = cx.debug_bounds("sort:Size").expect("the title is drawn");
 	let over_both = gpui::point(band.origin.x + band.size.width - gpui::px(2.0), title.center().y);
-	assert!(title.contains(&over_both), "the band does lie over the title, which is the case at issue");
+	assert!(
+		title.contains(&over_both),
+		"the band does lie over the title, which is the case at issue"
+	);
 	cx.simulate_click(over_both, Modifiers::default());
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!((rdm.sort, rdm.ascending), before, "pressing a boundary is not sorting by it");
@@ -339,9 +342,7 @@ fn the_folders_own_folders_are_ignored_flattened_or_kept(cx: &mut TestAppContext
 	std::fs::create_dir(directory.join("Thing.app")).unwrap();
 	std::fs::write(directory.join("Thing.app/binary"), b"mach-o").unwrap();
 
-	let names = |rdm: &Rdm| -> Vec<String> {
-		rdm.shown().iter().map(|d| d.name.clone()).collect()
-	};
+	let names = |rdm: &Rdm| -> Vec<String> { rdm.shown().iter().map(|d| d.name.clone()).collect() };
 	rdm.update(&mut cx, |rdm, cx| rdm.set_folders(Folders::Flatten, cx));
 	wait_for_folder(&rdm, &mut cx);
 	rdm.read_with(&cx, |rdm, _| {
@@ -409,9 +410,8 @@ fn the_folders_junk_is_hidden_and_a_torrent_shows_under_its_own_category(cx: &mu
 	click(&mut cx, "preset:Torrents");
 	rdm.update(&mut cx, |rdm, cx| rdm.close_category_sheet(cx));
 	cx.run_until_parked();
-	let torrents = rdm.read_with(&cx, |rdm, _| {
-		rdm.categories.iter().find(|c| c.name == "Torrents").map(|c| c.id)
-	});
+	let torrents =
+		rdm.read_with(&cx, |rdm, _| rdm.categories.iter().find(|c| c.name == "Torrents").map(|c| c.id));
 	let torrents = torrents.expect("the preset was taken");
 	rdm.update(&mut cx, |rdm, cx| rdm.set_filter(Filter::Category(torrents), cx));
 	rdm.read_with(&cx, |rdm, _| {
@@ -518,7 +518,7 @@ fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
 /// twitching there, and letting a fresh press take half of what was left.
 #[gpui::test]
 fn a_drag_past_the_stop_holds_there_and_a_second_takes_no_more(cx: &mut TestAppContext) {
-	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Point, Pixels, point, px};
+	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, point, px};
 
 	/// One press on the Size handle and twenty points of leftward travel per move, which widens
 	/// the column, with the width after every move so the walk itself can be read.
@@ -596,9 +596,8 @@ fn an_extensions_colour_is_set_from_the_chips_and_given_back_by_inherit(cx: &mut
 		assert!(category.extensions().contains(&"docx".to_owned()), "and switched nothing");
 	});
 	// A swatch now paints that extension and leaves the category alone.
-	let before = rdm.read_with(&cx, |rdm, _| {
-		crate::category::Category::find(&rdm.categories, id).unwrap().color
-	});
+	let before = rdm
+		.read_with(&cx, |rdm, _| crate::category::Category::find(&rdm.categories, id).unwrap().color);
 	rdm.update(&mut cx, |rdm, cx| rdm.choose_color(0x00ff00, cx));
 	rdm.read_with(&cx, |rdm, _| {
 		let category = crate::category::Category::find(&rdm.categories, id).unwrap();
@@ -872,7 +871,10 @@ fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAp
 	rdm.read_with(&cx, |rdm, _| {
 		let after = names(rdm);
 		assert_eq!(after[0], "Audio", "{after:?}");
-		assert_eq!(after.iter().position(|n| n == "Videos"), before.iter().position(|n| n == "Programs"));
+		assert_eq!(
+			after.iter().position(|n| n == "Videos"),
+			before.iter().position(|n| n == "Programs")
+		);
 		assert_eq!(rdm.filter, Filter::All, "a row in reorder mode does not filter");
 	});
 	drag(&mut cx, "filter:Audio", "filter:Other");
@@ -1373,7 +1375,11 @@ fn notifications_are_one_row_an_occasion_and_the_choice_is_kept(cx: &mut TestApp
 			Style::Window,
 			"a finished download opens the dialog, which is the notice with something to do next"
 		);
-		assert_eq!(rdm.preferences.notice(Occasion::Queue), Style::Silent, "or the last would say it twice");
+		assert_eq!(
+			rdm.preferences.notice(Occasion::Queue),
+			Style::Silent,
+			"or the last would say it twice"
+		);
 	});
 	// The choice is the user's and is kept, one occasion at a time.
 	rdm.update(&mut cx, |rdm, cx| rdm.set_notice(Occasion::Finished, Style::InApp, cx));
@@ -1393,7 +1399,11 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	assert!(cx.debug_bounds("notice:0").is_none(), "nothing said yet");
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.set_notice(Occasion::Finished, Style::InApp, cx);
-		rdm.tell_of(Occasion::Finished, crate::notify::Notice::new("Download finish", "debian.iso"), cx);
+		rdm.tell_of(
+			Occasion::Finished,
+			crate::notify::Notice::new("Download finish", "debian.iso"),
+			cx,
+		);
 	});
 	cx.run_until_parked();
 	assert!(cx.debug_bounds("notice:0").is_some(), "the corner says so");
@@ -1402,7 +1412,11 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	// Told to say nothing, it says nothing anywhere.
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.set_notice(Occasion::Finished, Style::Silent, cx);
-		rdm.tell_of(Occasion::Finished, crate::notify::Notice::new("Download finish", "debian.iso"), cx);
+		rdm.tell_of(
+			Occasion::Finished,
+			crate::notify::Notice::new("Download finish", "debian.iso"),
+			cx,
+		);
 	});
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.notices.is_empty(), "silent is silent"));
@@ -1410,7 +1424,11 @@ fn a_notice_meant_for_the_window_lands_in_the_corner_and_goes_at_a_press(cx: &mu
 	// are places, not degrees, so a notice goes to exactly one of them.
 	rdm.update(&mut cx, |rdm, cx| {
 		rdm.set_notice(Occasion::Finished, Style::Window, cx);
-		rdm.tell_of(Occasion::Finished, crate::notify::Notice::new("Download finish", "debian.iso"), cx);
+		rdm.tell_of(
+			Occasion::Finished,
+			crate::notify::Notice::new("Download finish", "debian.iso"),
+			cx,
+		);
 	});
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
@@ -1572,7 +1590,9 @@ fn the_update_settings_are_switches_and_a_choice_that_follows_the_switch(cx: &mu
 /// them rather than scrolling to them, since they sit at the end of a section that is longer than
 /// the pane and a row with no bounds would fail this for the wrong reason.
 #[gpui::test]
-fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(cx: &mut TestAppContext) {
+fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(
+	cx: &mut TestAppContext,
+) {
 	let (rdm, mut cx) = open(cx);
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
@@ -1709,7 +1729,6 @@ fn the_transfer_fields_apply_on_enter_and_say_no_to_nonsense(cx: &mut TestAppCon
 	});
 }
 
-
 /// A press at a column's handle, the pointer walked to each offset from it in turn, then the
 /// release. What every step left the row at, so a drag reads as the rows it went through.
 fn drag(
@@ -1778,8 +1797,15 @@ fn widening_squeezes_leftwards_until_everything_left_of_the_handle_is_on_its_flo
 	let before = rdm.read_with(&cx, |rdm, _| rdm.drawn());
 	let rows = drag(&rdm, &mut cx, "resize:Added", &[-100.0, -800.0, 0.0]);
 	assert_eq!(rows[0][..3], before[..3], "the columns further left are not asked yet");
-	assert!(rows[0][3] < before[3], "Status is nearest the handle, so it gives what the name could not");
-	assert_eq!(rows[1][..4], Column::MINS[..4], "far enough, and everything left of it is on its floor");
+	assert!(
+		rows[0][3] < before[3],
+		"Status is nearest the handle, so it gives what the name could not"
+	);
+	assert_eq!(
+		rows[1][..4],
+		Column::MINS[..4],
+		"far enough, and everything left of it is on its floor"
+	);
 	let name = rdm.read_with(&cx, |rdm, _| rdm.name_width(&rows[1]));
 	assert_eq!(name, crate::ui::list::NAME_MIN, "the name column on its own floor with them");
 	assert_eq!(rows[2], before, "and the way back gives back exactly what the way out took");
@@ -1807,6 +1833,10 @@ fn at_the_windows_least_width_the_columns_are_their_floors_and_the_row_still_fit
 	cx.simulate_resize(size(px(960.0), px(600.0)));
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
-		assert_eq!(rdm.drawn(), Column::DEFAULT_WIDTHS, "widened again, and back to what was asked for");
+		assert_eq!(
+			rdm.drawn(),
+			Column::DEFAULT_WIDTHS,
+			"widened again, and back to what was asked for"
+		);
 	});
 }

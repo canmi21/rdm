@@ -226,10 +226,8 @@ impl Preferences {
 		settings.max_size = self.max_size;
 		settings.http = self.http;
 		// The field is what `Something else` sends and nothing else does; the rest is a table.
-		settings.user_agent = self.agent.string(
-			&settings.user_agent,
-			self.user_agent.as_deref().unwrap_or_default(),
-		);
+		settings.user_agent =
+			self.agent.string(&settings.user_agent, self.user_agent.as_deref().unwrap_or_default());
 		settings.headers = self.headers.clone();
 		// What the engine is given: the address typed, whatever was found, or nothing. `found` is
 		// what the last look came to and is None until it has looked. See src/app/network.rs.
@@ -372,8 +370,8 @@ impl Config {
 			.position(|c| c.preset.is_none() && c.pattern.is_empty())
 			.unwrap_or(self.categories.len());
 		for (offset, preset) in new.iter().enumerate() {
-			let category = Category::from_preset(0, preset.name, Overrides::default())
-				.expect("a preset compiles");
+			let category =
+				Category::from_preset(0, preset.name, Overrides::default()).expect("a preset compiles");
 			self.categories.insert(at + offset, CategoryConfig::from(&category));
 			self.offered.push(preset.name.to_owned());
 		}

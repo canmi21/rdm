@@ -14,8 +14,8 @@ use crate::ui::text_input::TextInput;
 use crate::ui::{LeavesFocus, backdrop, icon_button};
 use std::collections::HashMap;
 
-use crate::engine::HttpVersion;
 use crate::download::Folders;
+use crate::engine::HttpVersion;
 use crate::notify::{Occasion, Style};
 use crate::update::Policy;
 
@@ -37,18 +37,30 @@ const FIELDS: [(&str, &str, &str); 14] = [
 	("settings.label.concurrent_downloads", "3", "How many run at once; the rest wait"),
 	("settings.label.speed_limit", "Off", "KB/s, or with m or g; empty for none"),
 	("settings.label.connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
-	("settings.label.smallest_segment", "1m", "A file below this is never split; bytes, or with k, m or g"),
+	(
+		"settings.label.smallest_segment",
+		"1m",
+		"A file below this is never split; bytes, or with k, m or g",
+	),
 	("settings.label.connect_timeout", "30", "Seconds to establish a connection"),
-	("settings.label.idle_timeout", "60", "Seconds without a byte before a connection is dropped and retried"),
+	(
+		"settings.label.idle_timeout",
+		"60",
+		"Seconds without a byte before a connection is dropped and retried",
+	),
 	("settings.label.retries", "5", "Times a failing connection is tried again"),
 	("settings.label.retry_wait", "1", "Seconds before the first retry, doubling each time"),
-	("settings.label.size_limit", "Off", "A file the server declares larger is refused; empty for none"),
-	("settings.label.user_agent", "rdm/version", "Sent with every request; empty for the engine's own"),
 	(
-		"settings.label.proxy",
-		"Address",
-		"http://, https:// or socks5://, credentials in the address",
+		"settings.label.size_limit",
+		"Off",
+		"A file the server declares larger is refused; empty for none",
 	),
+	(
+		"settings.label.user_agent",
+		"rdm/version",
+		"Sent with every request; empty for the engine's own",
+	),
+	("settings.label.proxy", "Address", "http://, https:// or socks5://, credentials in the address"),
 	(
 		"settings.label.name_servers",
 		"1.1.1.1",
@@ -222,7 +234,9 @@ impl Rdm {
 		let number = |n: Option<u64>| n.map(|n| n.to_string()).unwrap_or_default();
 		match key {
 			"settings.label.concurrent_downloads" => p.max_active.to_string(),
-			"settings.label.speed_limit" => p.speed_limit.map(|l| format_rate(Some(l))).unwrap_or_default(),
+			"settings.label.speed_limit" => {
+				p.speed_limit.map(|l| format_rate(Some(l))).unwrap_or_default()
+			}
 			"settings.label.connections" => number(p.connections.map(u64::from)),
 			"settings.label.smallest_segment" => size(p.min_segment),
 			"settings.label.connect_timeout" => number(p.connect_timeout),
@@ -280,16 +294,19 @@ impl Rdm {
 				"settings.label.smallest_segment" => self.preferences.min_segment = parse_size(text)?,
 				"settings.label.connect_timeout" => self.preferences.connect_timeout = parse_number(text)?,
 				"settings.label.idle_timeout" => self.preferences.idle_timeout = parse_number(text)?,
-				"settings.label.retries" => self.preferences.retries = parse_number(text)?.map(|n| n as u32),
+				"settings.label.retries" => {
+					self.preferences.retries = parse_number(text)?.map(|n| n as u32)
+				}
 				"settings.label.retry_wait" => self.preferences.retry_wait = parse_number(text)?,
 				"settings.label.size_limit" => self.preferences.max_size = parse_size(text)?,
-				"settings.label.user_agent" => self.preferences.user_agent = (!text.is_empty()).then(|| text.to_owned()),
+				"settings.label.user_agent" => {
+					self.preferences.user_agent = (!text.is_empty()).then(|| text.to_owned())
+				}
 				"settings.label.proxy" => {
 					// `socks5h://` is taken as well as `socks5://` and means the same thing here:
 					// either way the proxy is the one that resolves. See src/proxy.rs.
-					let schemed = ["http://", "https://", "socks5://", "socks5h://"]
-						.iter()
-						.any(|s| text.starts_with(s));
+					let schemed =
+						["http://", "https://", "socks5://", "socks5h://"].iter().any(|s| text.starts_with(s));
 					if !text.is_empty() && !schemed {
 						return Err("A proxy starts with http://, https:// or socks5://.".to_owned());
 					}
@@ -326,7 +343,9 @@ impl Rdm {
 					}
 					self.preferences.headers = headers;
 				}
-				"settings.label.redirects" => self.preferences.max_redirects = parse_number(text)?.map(|n| n as usize),
+				"settings.label.redirects" => {
+					self.preferences.max_redirects = parse_number(text)?.map(|n| n as usize)
+				}
 				_ => {}
 			}
 			Ok(())
@@ -489,10 +508,7 @@ impl Rdm {
 				group: "settings.group.what_is_listed",
 				note: "settings.note.hide_junk",
 				label: "settings.label.hide_junk",
-				control: Control::Switch {
-					on: self.preferences.hide_junk,
-					set: Rdm::set_hide_junk,
-				},
+				control: Control::Switch { on: self.preferences.hide_junk, set: Rdm::set_hide_junk },
 			},
 			Row {
 				section: Section::Network,
@@ -525,7 +541,9 @@ impl Rdm {
 					},
 				},
 			},
-			self.field_row(Section::Network, "settings.label.user_agent").under("settings.group.what_we_call_ourselves"),
+			self
+				.field_row(Section::Network, "settings.label.user_agent")
+				.under("settings.group.what_we_call_ourselves"),
 			self.field_row(Section::Network, "settings.label.proxy").under("settings.group.proxy"),
 			Row {
 				section: Section::Network,
@@ -538,15 +556,33 @@ impl Rdm {
 					run: |this, cx| this.look_for_proxy(cx),
 				},
 			},
-			self.field_row(Section::Transfers, "settings.label.concurrent_downloads").under("settings.group.at_once"),
-			self.field_row(Section::Transfers, "settings.label.speed_limit").under("settings.group.at_once"),
-			self.field_row(Section::Transfers, "settings.label.connections").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.smallest_segment").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.connect_timeout").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.idle_timeout").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.retries").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.retry_wait").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.size_limit").under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.concurrent_downloads")
+				.under("settings.group.at_once"),
+			self
+				.field_row(Section::Transfers, "settings.label.speed_limit")
+				.under("settings.group.at_once"),
+			self
+				.field_row(Section::Transfers, "settings.label.connections")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.smallest_segment")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.connect_timeout")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.idle_timeout")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.retries")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.retry_wait")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.size_limit")
+				.under("settings.group.per_download"),
 			Row {
 				section: Section::Transfers,
 				group: "settings.group.per_download",
@@ -567,8 +603,12 @@ impl Rdm {
 					},
 				},
 			},
-			self.field_row(Section::Transfers, "settings.label.headers").under("settings.group.per_download"),
-			self.field_row(Section::Transfers, "settings.label.redirects").under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.headers")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.redirects")
+				.under("settings.group.per_download"),
 			Row {
 				section: Section::Transfers,
 				group: "settings.group.per_download",
@@ -651,21 +691,23 @@ impl Rdm {
 		];
 		// One row an occasion, in the order src/notify.rs lists them, so a new occasion is a
 		// variant and nothing here.
-		rows.extend(Occasion::ALL.map(|occasion| Row {
-			section: Section::Notifications,
-			group: "settings.group.where_each_is_said",
-			note: occasion.note(),
-			label: occasion.label(),
-			control: Control::Choice {
-				options: Style::ALL.iter().map(|style| style.name()).collect(),
-				// A style this build no longer offers lands on the first: a row has to light
-				// something, and one lighting nothing reads as broken rather than as unset.
-				chosen: Style::ALL
-					.iter()
-					.position(|style| *style == self.preferences.notice(occasion))
-					.unwrap_or(0),
-				set: notice_setter(occasion),
-			},
+		rows.extend(Occasion::ALL.map(|occasion| {
+			Row {
+				section: Section::Notifications,
+				group: "settings.group.where_each_is_said",
+				note: occasion.note(),
+				label: occasion.label(),
+				control: Control::Choice {
+					options: Style::ALL.iter().map(|style| style.name()).collect(),
+					// A style this build no longer offers lands on the first: a row has to light
+					// something, and one lighting nothing reads as broken rather than as unset.
+					chosen: Style::ALL
+						.iter()
+						.position(|style| *style == self.preferences.notice(occasion))
+						.unwrap_or(0),
+					set: notice_setter(occasion),
+				},
+			}
 		}));
 		// How names are resolved. The switch that hands the whole business back to the machine
 		// comes first, and while it is on the rows under it are not shown: none of them does
@@ -705,7 +747,8 @@ impl Rdm {
 				},
 			});
 			rows.push(
-				self.field_row(Section::Network, "settings.label.name_servers")
+				self
+					.field_row(Section::Network, "settings.label.name_servers")
 					.under("settings.group.names"),
 			);
 		}
@@ -1013,9 +1056,7 @@ impl Rdm {
 					.when(!stacked, |s| s.flex_1().min_w_0())
 					.gap_0p5()
 					.child(div().truncate().child(crate::i18n::t(label)))
-					.when(!note.is_empty(), |s| {
-						s.child(div().text_xs().text_color(p.muted).child(note))
-					}),
+					.when(!note.is_empty(), |s| s.child(div().text_xs().text_color(p.muted).child(note))),
 			)
 			// A switch and a row of words are the size they are; a value, a note or a path is as
 			// long as it happens to be, and one of those given its natural width leaves the note

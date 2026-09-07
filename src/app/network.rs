@@ -15,9 +15,7 @@ impl Rdm {
 	pub(crate) fn proxy_in_use(&self) -> Option<String> {
 		match self.preferences.proxy_source {
 			Source::Direct => None,
-			Source::Fixed => {
-				self.preferences.proxy.clone().filter(|address| !address.trim().is_empty())
-			}
+			Source::Fixed => self.preferences.proxy.clone().filter(|address| !address.trim().is_empty()),
 			Source::Found => self.found_proxy.clone(),
 		}
 	}
@@ -31,9 +29,9 @@ impl Rdm {
 		}
 		self.looking_for_proxy = true;
 		cx.notify();
-		let receiver = self.engine.run(async move {
-			tokio::task::spawn_blocking(proxy::discover).await.unwrap_or(None)
-		});
+		let receiver = self
+			.engine
+			.run(async move { tokio::task::spawn_blocking(proxy::discover).await.unwrap_or(None) });
 		self.proxy_look = Some(receiver);
 	}
 
