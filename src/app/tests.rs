@@ -669,6 +669,48 @@ fn the_custom_form_adds_a_rule_and_advanced_exposes_the_pattern(cx: &mut TestApp
 	assert!(cx.debug_bounds("filter:Rust").is_some(), "the sidebar lists the new category");
 }
 
+/// A window too short to hold the categories scrolls them. Before the list had a scroller of its
+/// own it ran off the bottom edge, where the rows below the fold could not be reached at all --
+/// no scroll bar, no wheel, nothing but a taller window.
+#[gpui::test]
+fn a_short_window_scrolls_the_categories_rather_than_burying_them(cx: &mut TestAppContext) {
+	use gpui::{ScrollDelta, ScrollWheelEvent, TouchPhase, point, px, size};
+
+	let (rdm, mut cx) = open(cx);
+	// Every preset, which is more than a short window holds.
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.categories = crate::category::Category::PRESETS
+			.iter()
+			.enumerate()
+			.map(|(at, preset)| {
+				crate::category::Category::from_preset(at as u64 + 1, preset.name, Default::default())
+					.expect("a preset compiles")
+			})
+			.collect();
+		cx.notify();
+	});
+	cx.simulate_resize(size(px(900.0), px(360.0)));
+	cx.run_until_parked();
+	let first = cx.debug_bounds("filter:Videos").expect("the first category is drawn");
+	assert!(
+		cx.debug_bounds("filter:Torrents").is_none_or(|last| last.origin.y > first.origin.y),
+		"the last category is below the first, not on top of it"
+	);
+	// A wheel over the sidebar moves the rows under it.
+	cx.simulate_event(ScrollWheelEvent {
+		position: first.center(),
+		delta: ScrollDelta::Pixels(point(px(0.0), px(-90.0))),
+		modifiers: Modifiers::default(),
+		touch_phase: TouchPhase::Moved,
+	});
+	cx.run_until_parked();
+	let after = cx.debug_bounds("filter:Videos").expect("the first category is still drawn");
+	assert!(after.origin.y < first.origin.y, "the categories scrolled: {after:?} against {first:?}");
+	// The filters above them did not go anywhere: only the categories scroll.
+	let all = cx.debug_bounds("filter:All Tasks").expect("the state filters are drawn");
+	assert!(all.origin.y < after.origin.y, "the filters stay above the categories");
+}
+
 #[gpui::test]
 fn a_preset_row_toggles_the_category_in_and_out(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);

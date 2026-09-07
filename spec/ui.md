@@ -723,6 +723,13 @@ and the seed records them as offered so that a later launch does not add them be
 back -- the same record that lets a preset added in a new release reach an existing file. See
 `Category::COMMON` and src/config.rs.
 
+**The categories scroll and the filters above them do not.** There is no ceiling on how many
+categories a user writes, and the presets alone are taller than a short window, so the list has a
+scroller of its own between the Categories heading and the status bar. Before it had one the rows
+below the fold could not be reached at all: they were drawn past the window's bottom edge, where
+no wheel and no bar could get at them. The three state filters stay put, since a window short
+enough to hide those is a window with nothing left to show.
+
 **A sidebar label is in Title Case, and plural when it can be counted.** Title Case because
 that is what macOS asks of sidebar items and what Finder's are; the plural because the row
 names a set -- Videos, Documents, Disk Images -- and Finder's rows do the same. What cannot be

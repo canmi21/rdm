@@ -81,7 +81,21 @@ impl Rdm {
 						)
 					}),
 			)
-			.children(categories)
+			// The categories scroll and the filters above them do not. There is no ceiling on how
+			// many a user writes, and the fifteen presets alone are taller than a short window: the
+			// list used to run off the bottom edge, where the rows below it could not be reached at
+			// all. See spec/ui.md.
+			.child(
+				div()
+					.id("categories")
+					.flex()
+					.flex_col()
+					.gap_0p5()
+					.flex_1()
+					.min_h_0()
+					.overflow_y_scroll()
+					.children(categories),
+			)
 	}
 
 	fn filter_row(&self, filter: Filter, cx: &mut Context<Self>) -> impl IntoElement + use<> {
