@@ -293,9 +293,9 @@ pub struct Rdm {
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
 	pub(crate) paths: Option<Paths>,
 	frame: Option<Frame>,
-	/// And the display that frame is on, so a rearranged desktop still puts the window back where
-	/// it was rather than where its coordinates used to point.
-	display: Option<state::Screen>,
+	/// And the display that frame is a frame on, by name, since the frame is a place on that
+	/// display and says nothing on its own about which one it is.
+	display: Option<String>,
 	maximized: bool,
 	/// The pending write. Replacing it cancels the old one, which is the debounce.
 	save: Option<Task<()>>,
@@ -899,9 +899,10 @@ impl Rdm {
 	/// The frame, and the display it is a frame on. Both are read on every move and resize, so
 	/// the file is right whatever ends the process -- a quit, a crash, or a kill, none of which
 	/// gets a hook. The display is written down by the name the system keeps across a restart and
-	/// a replug, beside where that display sat, since a frame alone says where the window was on
-	/// the desktop and the desktop is rearranged every time a monitor comes or goes. A system
-	/// with no such name for a screen simply records none. See src/state.rs and spec/state.md.
+	/// a replug, since GPUI reports the frame in the coordinates of whichever display the window
+	/// is on: the same numbers are a different place on each of them, and mean nothing at all
+	/// without the name. A system with no such name for a screen simply records none. See
+	/// src/screens.rs, src/state.rs and spec/state.md.
 	fn remember_frame(&mut self, window: &Window, cx: &App) {
 		let bounds = window.window_bounds();
 		self.maximized = matches!(bounds, gpui::WindowBounds::Maximized(_));
@@ -912,18 +913,14 @@ impl Rdm {
 			width: b.size.width.into(),
 			height: b.size.height.into(),
 		});
-		// Which display, worked out from where the window is rather than asked of the window.
-		// GPUI reads the window's display once, when it is made, and macOS answers nothing for a
-		// window that is not yet on screen -- so the answer is None at launch and stays None
-		// however far the window is dragged afterwards. The display a window is on is the one it
-		// is mostly on, which the frames say plainly. See src/screens.rs and spec/state.md.
-		let frame = self.frame.expect("set a line ago");
-		self.display = crate::screens::all(cx)
-			.into_iter()
-			.map(|screen| (frame.overlap_with(&screen.frame), screen))
-			.filter(|(overlap, _)| *overlap > 0.0)
-			.max_by(|a, b| a.0.total_cmp(&b.0))
-			.map(|(_, screen)| screen);
+		// Which display, asked of the window: GPUI reads it from the window itself and refreshes it
+		// on every move, so it is the one answer that is right for a window that has been dragged.
+		// It is nothing only before the window is on screen, which is where this is called from
+		// once at launch -- and nothing is kept as no news rather than written down over a name
+		// that is still good. See src/screens.rs and spec/state.md.
+		if let Some(uuid) = window.display(cx).and_then(|display| display.uuid().ok()) {
+			self.display = Some(uuid.to_string());
+		}
 	}
 
 	fn snapshot(&self) -> State {

@@ -13,7 +13,7 @@ use crate::identity::{ORGANIZATION, QUALIFIER};
 
 /// The shape of `state.json`. Bumped only when an older file can no longer be read as-is; fields
 /// added or dropped without breaking that stay at the same version.
-pub const VERSION: u64 = 2;
+pub const VERSION: u64 = 3;
 
 /// Where the application keeps what it owns.
 pub struct Paths {
@@ -69,14 +69,16 @@ pub struct Frame {
 	pub height: f32,
 }
 
-/// A display, as the system names it and as it sat when the window was last on it. The name is
-/// what the system keeps across a restart and a replug, which is what makes it worth writing
-/// down; the frame beside it is what turns the window's coordinates into a place on this screen
-/// rather than a place on the desktop. See `State::frame_on`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A display: the name the system keeps for it across a restart and a replug, and how big it is.
+/// Only the name is written down. The size is not, because the size that decides where a window
+/// fits is the size the display is when the window comes back, not the size it was when the
+/// window left; and where the display sits is not, because no frame here is in the desktop's
+/// coordinates. See `State::frame_on` and src/screens.rs.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Screen {
 	pub uuid: String,
-	pub frame: Frame,
+	pub width: f32,
+	pub height: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -90,11 +92,11 @@ pub struct State {
 	pub widths: Option<[f32; 5]>,
 	#[serde(default)]
 	pub view: Option<View>,
-	/// The display the window was on, and where that display was. Absent in a file written before
-	/// this was recorded, and on a system whose displays have no name to keep; the frame above is
-	/// then read as it always was. See `State::frame_on`.
+	/// The display the frame above is a frame on, by the name the system keeps for it. Absent on a
+	/// system whose displays have no name to keep, and in a file written before there was a window
+	/// to record; the window is then centred at the size it was left. See `State::frame_on`.
 	#[serde(default)]
-	pub display: Option<Screen>,
+	pub display: Option<String>,
 	/// The header's funnel: whether the lists also hold the download folder's other files.
 	/// Absent only in a file this application has never written -- a first launch -- since a save
 	/// writes the field whether the funnel was ever touched or not. That is what makes the
@@ -124,55 +126,37 @@ impl Default for State {
 }
 
 impl State {
-	/// Where to open, given the displays there are now. The window is put back on the display it
-	/// was left on, at the place on that display it was left at -- which is not the same as the
-	/// coordinates it was left at, since a desktop is one plane and a display moves about in it:
-	/// unplug the laptop's second monitor and plug it in on the other side, and the numbers that
-	/// meant "top left of the right-hand screen" now mean somewhere else entirely, or nowhere.
+	/// Where to open, given the displays there are now. The frame is a place on one display and
+	/// nothing without it: unplug a monitor and plug it in on the other side, and the same numbers
+	/// still mean the same corner of that monitor, while the desktop underneath has been renumbered
+	/// entirely. So the display is looked up by name, and the frame is put back on it, cut down to
+	/// it if it came back smaller.
 	///
-	/// So the frame is read as an offset into the display it belongs to, and the offset is what
-	/// survives. A display that is not there falls back to the old rule -- the coordinates as
-	/// they were, if any of the window would land on any screen -- and then to None, which is
-	/// centred. See spec/state.md.
+	/// A display that is not there gives nothing, and nothing means centred -- on the main display,
+	/// at the size the window was left, which the caller reads from `window`. A name that answers
+	/// to no display is no better than no name: it is not a reason to open where nobody can see.
+	/// See spec/state.md.
 	pub fn frame_on(&self, screens: &[Screen]) -> Option<Frame> {
 		let frame = self.window?;
-		if let Some(was) = &self.display
-			&& let Some(now) = screens.iter().find(|s| s.uuid == was.uuid)
-		{
-			return Some(frame.moved_from(&was.frame, &now.frame));
-		}
-		let displays: Vec<Frame> = screens.iter().map(|s| s.frame).collect();
-		displays.iter().any(|d| frame.overlaps(d)).then_some(frame)
+		let uuid = self.display.as_ref()?;
+		let screen = screens.iter().find(|s| &s.uuid == uuid)?;
+		Some(frame.within(screen.width, screen.height))
 	}
 }
 
 impl Frame {
-	/// How much of this frame lies on that one, in square points. Which display a window is on is
-	/// decided by this rather than by asking the window: a window can straddle two screens, and
-	/// the one it is on is the one it is mostly on.
-	pub fn overlap_with(&self, other: &Frame) -> f32 {
-		let across = (self.x + self.width).min(other.x + other.width) - self.x.max(other.x);
-		let down = (self.y + self.height).min(other.y + other.height) - self.y.max(other.y);
-		across.max(0.0) * down.max(0.0)
-	}
-
-	fn overlaps(&self, other: &Frame) -> bool {
-		self.x < other.x + other.width
-			&& other.x < self.x + self.width
-			&& self.y < other.y + other.height
-			&& other.y < self.y + self.height
-	}
-
-	/// The same place on a display that has moved or changed size. The offset into the display is
-	/// what is kept; a window wider or taller than the display it comes back to is cut down to it,
-	/// and one that would hang off an edge is pulled in, so a smaller screen than last time still
-	/// shows the whole window rather than a corner of it.
-	fn moved_from(self, was: &Frame, now: &Frame) -> Frame {
-		let width = self.width.min(now.width);
-		let height = self.height.min(now.height);
-		let offset_x = (self.x - was.x).min(now.width - width).max(0.0);
-		let offset_y = (self.y - was.y).min(now.height - height).max(0.0);
-		Frame { x: now.x + offset_x, y: now.y + offset_y, width, height }
+	/// The same frame kept whole on a display this size. A side longer than the display is cut down
+	/// to it, and a frame that would hang off an edge is pulled in, so a display that came back
+	/// smaller than it was shows the whole window rather than a corner of it.
+	fn within(self, width: f32, height: f32) -> Frame {
+		let across = self.width.min(width);
+		let down = self.height.min(height);
+		Frame {
+			x: self.x.clamp(0.0, (width - across).max(0.0)),
+			y: self.y.clamp(0.0, (height - down).max(0.0)),
+			width: across,
+			height: down,
+		}
 	}
 }
 
@@ -214,6 +198,25 @@ fn migrate(from: u64, mut value: Value) -> Result<Value> {
 				value["view"] = Value::from("Detailed");
 			}
 			value["version"] = Value::from(2u64);
+			Ok(value)
+		}
+		// 2 -> 3: the frame is the window's place on its own display, which is what GPUI reports
+		// and what it takes back; before this it was read as a place on the desktop, which it never
+		// was. The display beside it kept a rectangle nothing reads any more, so the name alone is
+		// left. The name is kept rather than dropped: the old shape recorded the main display
+		// whatever display the window was on, and on the main display the two readings agree, so a
+		// window left there comes back where it was and one left elsewhere is no worse off than the
+		// build that wrote the file left it.
+		2 => {
+			match value.get("display").and_then(|display| display.get("uuid")).cloned() {
+				Some(uuid) => value["display"] = uuid,
+				None => {
+					if let Some(object) = value.as_object_mut() {
+						object.remove("display");
+					}
+				}
+			}
+			value["version"] = Value::from(3u64);
 			Ok(value)
 		}
 		_ => bail!("no migration from state.json version {from}"),
@@ -293,29 +296,24 @@ mod tests {
 		assert!(parse(r#"{ "version": 1.5 }"#).is_err(), "the version is an integer");
 	}
 
-	fn screen(uuid: &str, x: f32, y: f32, width: f32, height: f32) -> Screen {
-		Screen { uuid: uuid.to_owned(), frame: Frame { x, y, width, height } }
+	fn screen(uuid: &str, width: f32, height: f32) -> Screen {
+		Screen { uuid: uuid.to_owned(), width, height }
 	}
 
 	/// The window comes back to the display it was left on, at the place on that display it was
-	/// left at. The coordinates are not that place: unplug a second monitor and plug it in on the
-	/// other side and the same numbers point somewhere else, or off the desk entirely.
+	/// left at. That the display has moved on the desktop since does not enter into it: the frame
+	/// was never in the desktop's coordinates, so there is nothing in it to correct.
 	#[test]
 	fn a_window_comes_back_to_the_display_it_was_left_on_wherever_that_display_moved_to() {
-		let laptop = screen("laptop", 0.0, 0.0, 1512.0, 982.0);
-		// The window sat 100 in and 50 down on a monitor that was then to the right of the laptop.
+		let laptop = screen("laptop", 1512.0, 982.0);
+		// The window sat 100 in and 50 down on the monitor, whichever side of the laptop it was on.
 		let state = State {
-			window: Some(Frame { x: 1612.0, y: 50.0, width: 800.0, height: 600.0 }),
-			display: Some(screen("desk", 1512.0, 0.0, 2560.0, 1440.0)),
+			window: Some(Frame { x: 100.0, y: 50.0, width: 800.0, height: 600.0 }),
+			display: Some("desk".to_owned()),
 			..State::default()
 		};
-		// Plugged in on the left this time, so the same monitor now starts at -2560.
-		let moved = screen("desk", -2560.0, 0.0, 2560.0, 1440.0);
-		let back = state.frame_on(&[laptop.clone(), moved]).expect("the display is here");
-		assert_eq!(back, Frame { x: -2460.0, y: 50.0, width: 800.0, height: 600.0 });
-		// And where it has not moved, nothing moves.
-		let same = screen("desk", 1512.0, 0.0, 2560.0, 1440.0);
-		assert_eq!(state.frame_on(&[laptop, same]), state.window);
+		let desk = screen("desk", 2560.0, 1440.0);
+		assert_eq!(state.frame_on(&[laptop, desk]), state.window);
 	}
 
 	/// A display that came back smaller keeps the window whole rather than showing a corner of
@@ -325,43 +323,43 @@ mod tests {
 	fn a_smaller_display_pulls_the_window_in_and_cuts_only_what_cannot_fit() {
 		let state = State {
 			window: Some(Frame { x: 1400.0, y: 900.0, width: 1200.0, height: 800.0 }),
-			display: Some(screen("desk", 0.0, 0.0, 2560.0, 1440.0)),
+			display: Some("desk".to_owned()),
 			..State::default()
 		};
-		let smaller = screen("desk", 0.0, 0.0, 1280.0, 720.0);
+		let smaller = screen("desk", 1280.0, 720.0);
 		let back = state.frame_on(&[smaller]).expect("the display is here");
 		// 1200 still fits across 1280, so it is kept and the left edge comes in to 80; 800 does
 		// not fit down 720, so it is cut to 720 and there is nowhere left to be but the top.
 		assert_eq!(back, Frame { x: 80.0, y: 0.0, width: 1200.0, height: 720.0 });
 	}
 
-	/// A display that is not there at all falls back to the older rule, which asks only whether
-	/// any of the window would land on any screen; a name nobody answers to is no better than
-	/// none, so it is not an excuse to open somewhere nobody can see.
+	/// A display that is not there gives nothing, and so does a file that names no display at all.
+	/// Nothing is what centres the window, and the size it was left at is read from the frame
+	/// regardless -- a window that has to be centred is still the size the user made it.
 	#[test]
-	fn a_display_that_is_gone_falls_back_to_the_coordinates_and_then_to_nothing() {
-		let state = State {
-			window: Some(Frame { x: 100.0, y: 100.0, width: 800.0, height: 600.0 }),
-			display: Some(screen("unplugged", 0.0, 0.0, 2560.0, 1440.0)),
-			..State::default()
-		};
-		let laptop = screen("laptop", 0.0, 0.0, 1512.0, 982.0);
-		assert_eq!(state.frame_on(&[laptop]), state.window, "the coordinates still land on a screen");
-		let elsewhere = screen("laptop", 4000.0, 0.0, 1512.0, 982.0);
-		assert_eq!(state.frame_on(&[elsewhere]), None, "and off every screen is centred instead");
+	fn a_display_that_is_gone_leaves_the_window_to_be_centred_at_the_size_it_was() {
+		let window = Some(Frame { x: 100.0, y: 100.0, width: 800.0, height: 600.0 });
+		let unplugged = State { window, display: Some("desk".to_owned()), ..State::default() };
+		let laptop = [screen("laptop", 1512.0, 982.0)];
+		assert_eq!(unplugged.frame_on(&laptop), None, "the display it was on is not here");
+		assert_eq!(unplugged.window, window, "and the size it was is still on record");
+		let nameless = State { window, display: None, ..State::default() };
+		assert_eq!(nameless.frame_on(&laptop), None, "no name is no display");
 	}
 
+	/// The window's frame used to be read as a place on the desktop and is now a place on its own
+	/// display, and the display beside it used to carry a rectangle nothing reads any more.
 	#[test]
-	fn a_frame_on_a_display_that_is_gone_is_not_restored() {
-		let state = State {
-			window: Some(Frame { x: 3000.0, y: 100.0, width: 800.0, height: 600.0 }),
-			..State::default()
-		};
-		let laptop = [screen("laptop", 0.0, 0.0, 1512.0, 982.0)];
-		assert_eq!(state.frame_on(&laptop), None);
-		let with_external =
-			[laptop[0].clone(), screen("desk", 1512.0, 0.0, 2560.0, 1440.0)];
-		assert_eq!(state.frame_on(&with_external), state.window);
+	fn a_file_that_named_its_display_with_a_rectangle_keeps_the_name() {
+		let state = parse(
+			r#"{ "version": 2, "window": { "x": 100.0, "y": 50.0, "width": 800.0, "height": 600.0 },
+			     "display": { "uuid": "desk", "frame": { "x": 0.0, "y": 0.0, "width": 2560.0, "height": 1440.0 } } }"#,
+		)
+		.unwrap();
+		assert_eq!(state.display.as_deref(), Some("desk"));
+		assert_eq!(state.frame_on(&[screen("desk", 2560.0, 1440.0)]), state.window);
+		let never_had_one = parse(r#"{ "version": 2, "widths": [1, 2, 3, 4, 5] }"#).unwrap();
+		assert_eq!(never_had_one.display, None);
 	}
 
 	#[test]

@@ -126,8 +126,6 @@ self-replace = "1"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSImage"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSData"] }
-# Where each display sits, which gpui reads and then discards. See src/screens.rs.
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGDirectDisplay", "libc"] }
 
 # The tray on macOS and Windows, where the menu is the system's own. Without libxdo, which only
 # the predefined edit items need. Not on Linux: it reaches gtk3 there through muda, which is not

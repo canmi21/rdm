@@ -58,12 +58,23 @@ fn main() {
 		let saved = paths.as_ref().map(|p| state::load(&p.state)).unwrap_or_default();
 		let config =
 			paths.as_ref().map(|p| config::load_or_seed(&p.config)).unwrap_or_else(config::Config::seed);
-		// Every display there is now, by the name the system keeps for it and where it sits, so the
-		// window can be put back on the one it was left on. See src/screens.rs.
+		// Every display there is now, by the name the system keeps for it, so the window can be put
+		// back on the one it was left on. See src/screens.rs.
 		let screens = screens::all(cx);
-		let bounds = match saved.frame_on(&screens) {
-			Some(f) => Bounds::new(point(px(f.x), px(f.y)), size(px(f.width), px(f.height))),
-			None => Bounds::centered(None, size(px(960.0), px(600.0)), cx),
+		// The size outlives the place: a window whose display is gone comes back centred on the
+		// main one, but at the size the user made it, not at the size a first launch opens with.
+		let extent = saved
+			.window
+			.map_or_else(|| size(px(960.0), px(600.0)), |f| size(px(f.width), px(f.height)));
+		// The frame is a place on the display named beside it, so the display is handed to GPUI
+		// with it; without one GPUI opens on the main display, which is where a centred window
+		// belongs anyway. See src/screens.rs.
+		let (display_id, bounds) = match saved.frame_on(&screens) {
+			Some(f) => (
+				saved.display.as_deref().and_then(|uuid| screens::id_of(cx, uuid)),
+				Bounds::new(point(px(f.x), px(f.y)), size(px(f.width), px(f.height))),
+			),
+			None => (None, Bounds::centered(None, extent, cx)),
 		};
 		let window_bounds = if saved.maximized {
 			WindowBounds::Maximized(bounds)
@@ -77,6 +88,7 @@ fn main() {
 			.open_window(
 				WindowOptions {
 					window_bounds: Some(window_bounds),
+					display_id,
 					// What a Linux desktop matches the window to its .desktop entry by; the same three
 					// words as the bundle identifier. See spec/packaging.md.
 					app_id: Some(identity::id()),
