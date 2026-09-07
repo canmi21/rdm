@@ -392,28 +392,25 @@ answering. The cap that keeps a long value from pushing a label out of its row a
 the two share a line; a segmented control has the line to itself, and holding it to six tenths of
 one cut `No proxy` to `No`.
 
-**A choice is a segmented control or a dropdown, and its words decide which.** Lit and unlit
-words with nothing around them read as a button and some loose text rather than as one control
-offering alternatives, so a short set is drawn as segments inside one track. A long set will not
-fit whatever it is drawn as -- four disguises ran off the pane and the fourth was never on
-screen -- so it becomes a dropdown, which is one word and a chevron and therefore shares the line
-with its label. A segmented control does not: it is as wide as all of its words at once, so it
-goes under the label.
+**A choice is a segmented control: one track, the segments inside it, wrapping to a second line
+where the words need one.** Lit and unlit words with nothing around them read as a button and
+some loose text rather than as one control offering alternatives, which is what they were.
 
-Which one a set gets is **counted, not measured**. A width can only be had after the frame it
-would decide, so a control that changed shape one frame late would flicker between the two every
-time the language changed. The count is in the columns the words draw in rather than in
-characters, a CJK glyph drawing in two: `简体中文` is four characters and eight columns, and
-counting characters would call the Chinese and Japanese windows narrow when they are not. Five
-options are a dropdown whatever they say, a row of five being a list. See `segments_fit` in
-src/ui/settings_sheet.rs.
+**There was a dropdown for the long sets and it is gone.** A menu wants a position, and a
+position is the one thing this place cannot give it. The row it hangs from is inside a pane that
+scrolls and clips, inside a card that is centred in the window, and every way of placing it
+failed differently: laid out in the flow it pushed every row below down, so the row somebody had
+come to press moved out from under the pointer as it opened; taken out of the flow it was clipped
+at the pane's edge with no way to reach the rest; deferred past the clip it drew outside the card
+and over the list; and anchored, it landed in the corner of the window -- the same trap
+`status_bar.rs` records for the funnel, an anchored element inside a centred row being laid out
+off its own origin and landing that far from where it was told.
 
-**The dropdown's panel opens under its row, inside the pane.** It is not floated over the window
-the way the status funnel's menu is. That one hangs off the window root and is positioned in
-window space, and a settings row has no window position to be given: it is inside a pane that
-scrolls, so an anchored panel would part company with its row on the first turn of the wheel. In
-the pane it moves with the row and is clipped by the same edges. It occludes, like everything
-drawn over the window.
+Wrapping has none of those failures because it asks for nothing: no position, no layer, no
+measurement. What it costs is a second line for the few sets long enough to need one, and that is
+cheaper than any of the four. The rule that used to decide between the two shapes -- counting the
+columns the words draw in, a CJK glyph counting two -- went with the dropdown, there being one
+shape left to choose.
 
 **A resolved address fills in the name it will be saved under.** Add Task looks at an address
 before anything is fetched -- what it is, how big, whether it can be split -- and the name the

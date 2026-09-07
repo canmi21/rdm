@@ -15,6 +15,8 @@ use tokio_util::sync::CancellationToken;
 use crate::engine::error::{Error, Result};
 use crate::engine::inspect::{self, Inspection};
 use crate::engine::limiter::Limiter;
+use crate::engine::segments::Segment;
+use crate::engine::settings::Connections;
 use crate::engine::task::{self, Finished, Handle, Progress, Request};
 use crate::engine::verify::{self, Checksum};
 
@@ -61,6 +63,12 @@ pub struct Snapshot {
 	pub connections: u64,
 	/// What `verify::kind` read from the finished file, if anything.
 	pub kind: Option<&'static str>,
+	/// How the file is being divided and how far each part has come, in the order the planner
+	/// made them -- which is not the order they lie in the file, a stolen half being made after
+	/// the segments on either side of it. Empty before the plan is made and for a download that
+	/// was never split. A window that draws these sorts by position first, as everything that
+	/// judges a plan does. See spec/engine.md.
+	pub segments: Vec<Segment>,
 }
 
 impl Snapshot {
@@ -280,6 +288,24 @@ impl Engine {
 		}
 	}
 
+	/// A running download's connection count, changed in place. The scheduler reads the ceiling
+	/// every time it looks for room, so a higher number opens connections at once and a lower one
+	/// is a ceiling the download drifts down to as its connections finish -- there is no way to
+	/// take a byte back from one that is already reading. The request is changed too, so the
+	/// number survives a pause and is what a later run starts from. See spec/engine.md.
+	pub fn set_task_connections(&self, id: TaskId, connections: Connections) {
+		let mut inner = self.inner.lock().unwrap();
+		if let Some(entry) = inner.entries.get_mut(&id) {
+			entry.request.settings.connections = connections;
+			// Not raised above one where the server never offered ranges: the scheduler pinned it
+			// there for a reason, and a ceiling it cannot honour is a number that lies.
+			if entry.handle.ceiling.load(Ordering::Relaxed) > 1 {
+				entry.handle.ceiling.store(connections.max.max(1) as u64, Ordering::Relaxed);
+				entry.handle.auto.store(connections.auto, Ordering::Relaxed);
+			}
+		}
+	}
+
 	pub fn set_max_active(&self, max: usize) {
 		self.inner.lock().unwrap().settings.max_active = max.max(1);
 		self.pump();
@@ -402,6 +428,17 @@ fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
 		speed: p.speed.load(Ordering::Relaxed),
 		connections: p.connections.load(Ordering::Relaxed),
 		kind: entry.kind,
+		// A copy taken under the lock, so the window never holds the plan the connections are
+		// writing through. A dozen segments is nothing to clone and the alternative is a lock the
+		// engine waits on while a frame is drawn.
+		segments: entry
+			.handle
+			.plan
+			.lock()
+			.unwrap()
+			.as_ref()
+			.map(|plan| plan.lock().unwrap().segments.clone())
+			.unwrap_or_default(),
 	}
 }
 

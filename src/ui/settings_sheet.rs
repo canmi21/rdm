@@ -9,7 +9,7 @@
 //! was filed. See spec/ui.md.
 
 use gpui::{
-	Context, Entity, IntoElement, Role, SharedString, deferred, div, prelude::*, px,
+	Context, Entity, IntoElement, Role, SharedString, anchored, deferred, div, prelude::*, px,
 };
 
 use crate::app::Rdm;
@@ -50,9 +50,6 @@ pub struct SettingsSheet {
 	pub fields: HashMap<&'static str, Entity<TextInput>>,
 	/// What the last field said no to, under the row.
 	pub complaint: Option<(&'static str, String)>,
-	/// The row whose dropdown is open, by its label. One at a time: a second opening closes the
-	/// first, since two menus down the same pane would each be answering for the other's row.
-	pub menu: Option<&'static str>,
 }
 
 /// Every field there is: the key that is its setting's identity, its placeholder, and the note
@@ -231,7 +228,6 @@ impl Rdm {
 				search,
 				fields,
 				complaint: None,
-				menu: None,
 			});
 		}
 		cx.notify();
@@ -250,30 +246,9 @@ impl Rdm {
 
 	/// Opens one row's dropdown, or closes whatever is open. Moving to another section closes it
 	/// too: a menu belongs to a row, and the row is gone.
-	pub(crate) fn toggle_settings_menu(&mut self, label: &'static str, cx: &mut Context<Self>) {
-		if let Some(sheet) = &mut self.settings {
-			sheet.menu = if sheet.menu == Some(label) { None } else { Some(label) };
-			cx.notify();
-		}
-	}
-
-	pub(crate) fn close_settings_menu(&mut self, cx: &mut Context<Self>) {
-		if let Some(sheet) = &mut self.settings
-			&& sheet.menu.is_some()
-		{
-			sheet.menu = None;
-			cx.notify();
-		}
-	}
-
-	pub(crate) fn settings_menu_open(&self) -> bool {
-		self.settings.as_ref().is_some_and(|s| s.menu.is_some())
-	}
-
 	pub(crate) fn set_settings_section(&mut self, section: Section, cx: &mut Context<Self>) {
 		if let Some(sheet) = &mut self.settings {
 			sheet.section = section;
-			sheet.menu = None;
 			cx.notify();
 		}
 	}
@@ -1105,12 +1080,6 @@ impl Rdm {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement + use<> {
 		let label = row.label;
-		// A choice is drawn one of two ways and the words decide which: see `segments_fit`.
-		let dropdown = match &row.control {
-			Control::Choice { options, .. } => !segments_fit(options),
-			_ => false,
-		};
-		let open = dropdown && self.settings.as_ref().is_some_and(|sheet| sheet.menu == Some(label));
 		let right = match &row.control {
 			Control::Value(value) => {
 				div().text_color(p.muted).truncate().child(value.clone()).into_any_element()
@@ -1138,44 +1107,29 @@ impl Rdm {
 					.child(div().size(px(14.0)).rounded_full().bg(p.text))
 					.into_any_element()
 			}
-			// One word and a chevron, the options in a panel under the row. It reads as the
-			// closed thing it is, which a row of words too long to draw did not: four disguises
-			// ran off the pane and the fourth was never on screen at all.
-			Control::Choice { options, chosen, .. } if dropdown => {
-				let shown = options.get(*chosen).copied().unwrap_or_default();
-				div()
-					.id(SharedString::from(format!("choice:{label}")))
-					.role(Role::Button)
-					.aria_label(label)
-					.debug_selector(move || format!("choice:{label}"))
-					.flex()
-					.items_center()
-					.justify_between()
-					.gap_2()
-					.w(px(200.0))
-					.flex_none()
-					.px_2()
-					.py_0p5()
-					.rounded_sm()
-					.border_1()
-					.border_color(if open { p.accent } else { p.border })
-					.bg(p.track)
-					.cursor_pointer()
-					.leaves_focus()
-					.on_click(cx.listener(move |this, _, _, cx| this.toggle_settings_menu(label, cx)))
-					.child(div().min_w_0().truncate().child(shown))
-					.child(icon(Icon::ChevronDown, p.muted).size_3())
-					.into_any_element()
-			}
-			// A segmented control: one track with the segments inside it, so the alternatives
-			// read as one control offering a choice. Lit and unlit words with nothing around them
-			// read as a button and some loose text, which is what they were.
+			// A segmented control: one track with the segments inside it, so the alternatives read
+			// as one control offering a choice rather than a button and some loose words, which
+			// is what lit and unlit text with nothing around it read as.
+			//
+			// **It wraps rather than opening a menu.** A dropdown was tried and taken out: it
+			// wants a position, and a position here is the one thing that cannot be had. The
+			// panel hangs off a row inside a pane that scrolls and clips, inside a card that is
+			// centred in the window -- so laying it out in the flow pushed every row below it
+			// down and out from under the pointer that had come to press it; taking it out of the
+			// flow left it clipped at the pane's edge; deferring it past the clip drew it outside
+			// the card; and anchoring it landed it in the corner of the window, which is the same
+			// trap `status_bar.rs` records for the funnel, an anchored element inside a centred
+			// row being placed off its own origin. Wrapping needs no position and has none of
+			// those failures. What it costs is a second line for the few sets long enough to need
+			// one. See spec/ui.md.
 			Control::Choice { options, chosen, set } => {
 				let (chosen, set) = (*chosen, *set);
 				div()
 					.flex()
+					.flex_wrap()
 					.items_center()
 					.p_px()
+					.gap_px()
 					.rounded_md()
 					.bg(p.track)
 					.children(options.iter().enumerate().map(|(index, option)| {
@@ -1237,14 +1191,14 @@ impl Rdm {
 		// A segmented control is as wide as all of its words at once and does not fit beside a
 		// label, so it goes under one. A dropdown is one word and a chevron and stays on the line
 		// with everything else.
-		let stacked = matches!(row.control, Control::Choice { .. }) && !dropdown;
+		let stacked = matches!(row.control, Control::Choice { .. });
 		let note = crate::i18n::t(row.note);
 		// An action sizes itself: its status wraps within its own ceiling, so capping and
 		// truncating the whole thing here would undo the wrapping a line below.
 		let fixed = matches!(
 			row.control,
 			Control::Switch { .. } | Control::Field { .. } | Control::Action { .. }
-		) || dropdown;
+		);
 		let title = crate::i18n::t(row.title.unwrap_or(row.label));
 		let line = div()
 			.flex()
@@ -1272,94 +1226,16 @@ impl Rdm {
 			.flex_col()
 			.gap_1()
 			.py_1p5()
+			// The open menu hangs off this, which is why the row is a positioned box even when
+			// nothing is open: an absolute child is placed against its nearest positioned
+			// ancestor, and without one here it would be placed against the pane.
+			.relative()
 			.child(line)
 			// The note runs the whole width under the row rather than beside the label, which is
 			// the only place it fits: a sentence given the label's column wraps into a gutter,
 			// and given the control's it is cut at four words. See spec/ui.md.
 			.when(!note.is_empty(), |s| s.child(div().text_xs().text_color(p.muted).child(note)))
-			.when(open, |s| s.child(self.choice_menu(p, row, cx)))
 	}
-
-	/// The options of a dropdown, in a panel under its row. It is laid out in the pane rather than
-	/// floated over the window, which the funnel's menu is: that one hangs off the window root and
-	/// is positioned in window space, and a row here has no window position to be given -- it is
-	/// inside a pane that scrolls, so an anchored panel would part company with its row on the
-	/// first turn of the wheel. In the pane it moves with the row and is clipped by the same
-	/// edges. It occludes, like everything drawn over the window. See spec/ui.md.
-	fn choice_menu(
-		&self,
-		p: crate::ui::theme::Palette,
-		row: &Row,
-		cx: &mut Context<Self>,
-	) -> impl IntoElement + use<> {
-		let label = row.label;
-		let Control::Choice { options, chosen, set } = &row.control else {
-			return div().into_any_element();
-		};
-		let (chosen, set) = (*chosen, *set);
-		floating(p, SharedString::from(format!("menu:{label}")))
-			.debug_selector(move || format!("menu:{label}"))
-			.flex()
-			.flex_col()
-			.gap_px()
-			.w(px(200.0))
-			.p_1()
-			.on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_settings_menu(cx)))
-			.children(options.iter().enumerate().map(|(index, option)| {
-				let on = index == chosen;
-				div()
-					.id(SharedString::from(format!("option:{label}:{option}")))
-					.role(Role::RadioButton)
-					.aria_label(*option)
-					.aria_selected(on)
-					.debug_selector(move || format!("choice:{option}"))
-					.flex()
-					.items_center()
-					.px_1p5()
-					.py_0p5()
-					.rounded_sm()
-					.cursor_pointer()
-					.leaves_focus()
-					.text_color(if on { p.text } else { p.muted })
-					.when(on, |s| s.bg(p.selection))
-					.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
-					.on_click(cx.listener(move |this, _, _, cx| {
-						set(this, index, cx);
-						this.close_settings_menu(cx);
-					}))
-					.child(*option)
-			}))
-			.into_any_element()
-	}
-}
-
-/// Whether a choice's options can be drawn side by side as a segmented control, or want a
-/// dropdown instead. What decides is how much room the words ask for, measured in the columns
-/// they draw in rather than in characters: a CJK glyph is twice the width of a Latin one, so
-/// `简体中文` is four characters and eight columns, and counting characters would call the
-/// Japanese and Chinese windows narrow when they are not.
-///
-/// The budget is the pane's width less the padding each segment carries. It is a count and not a
-/// measurement because the alternative -- laying the control out and asking how wide it came
-/// out -- can only be answered after the frame it would decide, and a control that changed shape
-/// one frame late would flicker between the two on every language change.
-///
-/// Five options are a dropdown whatever they say: a row of five is a list, and a list wants the
-/// shape a list has.
-fn segments_fit(options: &[&str]) -> bool {
-	let columns: usize = options
-		.iter()
-		.map(|option| option.chars().map(|c| if wide(c) { 2 } else { 1 }).sum::<usize>())
-		.sum();
-	options.len() <= 4 && columns <= 52
-}
-
-/// The ranges a terminal and a font both draw at two columns: the CJK blocks, the kana, Hangul
-/// and the full-width forms. Enough for the three languages the window is read in.
-fn wide(c: char) -> bool {
-	matches!(c as u32,
-		0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF
-		| 0xFE30..=0xFE6F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6 | 0x20000..=0x3FFFD)
 }
 
 /// A heading within a section: smaller than the section's own and set off above the rows it
@@ -1376,46 +1252,4 @@ fn group_title(p: crate::ui::theme::Palette, name: &'static str) -> gpui::Div {
 
 fn section_title(p: crate::ui::theme::Palette, name: &'static str) -> gpui::Div {
 	div().text_xs().text_color(p.muted).pb_1().child(name)
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	/// The two sets the rule was written between: the languages, which fit and read better as
-	/// segments, and the disguises, whose fourth option was drawn off the edge of the pane.
-	#[test]
-	fn a_choice_is_segments_while_its_words_fit_and_a_dropdown_after_that() {
-		assert!(segments_fit(&["System", "English", "简体中文", "日本語"]));
-		assert!(!segments_fit(&[
-			"This application",
-			"Chrome on Windows",
-			"Chrome on Linux",
-			"Something else",
-		]));
-		// The widest set that still fits, and the one the budget was measured against.
-		assert!(segments_fit(&["Ignore them", "Show what is inside", "Keep them as folders"]));
-	}
-
-	/// A CJK glyph draws in two columns, so the same sentence is half as many characters and the
-	/// same width. Counting characters would have called this set narrow and drawn it off the pane.
-	#[test]
-	fn a_cjk_glyph_counts_as_the_two_columns_it_draws_in() {
-		assert_eq!("简体中文".chars().count(), 4);
-		assert!(wide('简') && wide('日') && wide('ア') && wide('한'));
-		assert!(!wide('a') && !wide('/') && !wide('1'));
-		// Twenty-seven Latin characters fit; twenty-seven CJK characters are fifty-four columns
-		// and do not.
-		let latin = ["aaaaaaaaa", "aaaaaaaaa", "aaaaaaaaa"];
-		let cjk = ["简体中文简体中文简", "简体中文简体中文简", "简体中文简体中文简"];
-		assert!(segments_fit(&latin));
-		assert!(!segments_fit(&cjk));
-	}
-
-	/// However short they are: a row of five words is a list, and a list gets a list's shape.
-	#[test]
-	fn five_options_are_a_dropdown_whatever_they_say() {
-		assert!(segments_fit(&["a", "b", "c", "d"]));
-		assert!(!segments_fit(&["a", "b", "c", "d", "e"]));
-	}
 }

@@ -4,7 +4,7 @@
 //! segment that fails, and writes the plan beside the file as it goes. See spec/engine.md.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -78,6 +78,24 @@ pub struct Handle {
 	/// What the probe learnt, the moment it learnt it, so a snapshot can name the file and its
 	/// size while the download runs rather than only once it is done.
 	pub probed: Mutex<Option<Probe>>,
+	/// The plan the connections are working through, shared with them rather than copied: the
+	/// same `Arc` the scheduler cuts segments out of. A snapshot reads it to say how the file is
+	/// being divided and how far each part has come, which is the whole of what a download's
+	/// window shows about its workers. Nothing until the plan is made, and left where it was when
+	/// the run ends, so a paused download still says how it was cut. See spec/engine.md.
+	pub plan: Mutex<Option<Arc<Mutex<Plan>>>>,
+	/// The most connections this download may hold open, as it stands now. The scheduler reads it
+	/// every time it looks for room rather than keeping the number it started with, so the count
+	/// can be changed while the download runs -- which is what a download's own window offers.
+	///
+	/// **Raising it is felt at once and lowering it is felt as connections finish.** The loop
+	/// that reads this only ever starts connections; it has no way to take a byte back from one
+	/// that is already reading, and cutting a connection off mid-segment would throw away what it
+	/// had. So a lower number is a ceiling the download drifts down to. See spec/engine.md.
+	pub ceiling: AtomicU64,
+	/// Whether the download grows its own connection count and steals halves of segments, or was
+	/// cut into a fixed number at the start. Read beside `ceiling` and changed with it.
+	pub auto: AtomicBool,
 }
 
 impl Handle {
@@ -87,6 +105,10 @@ impl Handle {
 			progress: Arc::new(Progress::default()),
 			limit: Limiter::unlimited(),
 			probed: Mutex::new(None),
+			plan: Mutex::new(None),
+			// Nothing until the settings are read; the scheduler writes both before it starts.
+			ceiling: AtomicU64::new(0),
+			auto: AtomicBool::new(true),
 		}
 	}
 }
@@ -156,6 +178,9 @@ pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<F
 		None => Plan::whole(span),
 	};
 	let plan = Arc::new(Mutex::new(plan));
+	// The same plan the connections cut and fill, handed to the handle so a snapshot can read it
+	// without the scheduler having to report anything.
+	*handle.plan.lock().unwrap() = Some(plan.clone());
 	let writer =
 		Writer::open(&target, (!open_ended).then(|| span.len()), settings.preallocate && !open_ended)?;
 	let controls = Control::new(
@@ -210,8 +235,9 @@ impl LenOrZero for Span {
 }
 
 /// Connections come and go here until the plan is complete. One at a time on a server without
-/// ranges; otherwise up to `max`, each new one allowed once the last has proved itself by
-/// delivering a byte, and each taking an idle segment or cutting the largest remainder in two.
+/// ranges; otherwise up to `handle.ceiling`, which the window may move while this runs, each new
+/// one allowed once the last has proved itself by delivering a byte, and each taking an idle
+/// segment or cutting the largest remainder in two.
 #[allow(clippy::too_many_arguments)]
 async fn schedule(
 	settings: &Settings,
@@ -224,11 +250,20 @@ async fn schedule(
 	global: Limiter,
 ) -> Result<()> {
 	let connections = settings.connections;
-	let max = if probed.ranges { connections.max as usize } else { 1 };
+	// The ceiling the loop reads, and the one the window writes. A server that will not serve
+	// ranges is one connection whatever anybody asks, so it is pinned here rather than left to be
+	// raised into a promise the server would not keep.
+	let ranges = probed.ranges;
+	handle.ceiling.store(if ranges { connections.max as u64 } else { 1 }, Ordering::Relaxed);
+	handle.auto.store(connections.auto && ranges, Ordering::Relaxed);
+	let ceiling = || handle.ceiling.load(Ordering::Relaxed).max(1) as usize;
 	// How many connections are allowed right now: starts at `min` and grows by one each time a
-	// connection delivers its first byte, up to `max`. Without auto, all of `max` at once.
-	let allowed =
-		Arc::new(AtomicU64::new(if connections.auto { connections.min as u64 } else { max as u64 }));
+	// connection delivers its first byte, up to the ceiling. Without auto, all of it at once.
+	let allowed = Arc::new(AtomicU64::new(if connections.auto && ranges {
+		connections.min as u64
+	} else {
+		ceiling() as u64
+	}));
 	// Rung by a connection's first byte, so the next one is started then and not at the next
 	// tick; a file that takes less than a tick would otherwise never see a second connection.
 	let grew = Arc::new(Notify::new());
@@ -249,7 +284,12 @@ async fn schedule(
 			if plan.lock().unwrap().is_complete() {
 				break;
 			}
-			let allowed_now = (allowed.load(Ordering::Relaxed) as usize).min(max);
+			// Both are read every time round: the ceiling because the window may have moved it,
+			// and `allowed` because a connection may have earned the next one. The clamp is
+			// written back so that a ceiling lowered and raised again grows one connection at a
+			// time as it did the first time, rather than opening every one it had earned at once.
+			let allowed_now = (allowed.load(Ordering::Relaxed) as usize).min(ceiling());
+			allowed.store(allowed_now as u64, Ordering::Relaxed);
 			if active.len() >= allowed_now {
 				break;
 			}
@@ -257,7 +297,9 @@ async fn schedule(
 				let mut plan = plan.lock().unwrap();
 				match plan.idle(&active) {
 					Some(i) => Some(i),
-					None if probed.ranges && connections.auto => plan.steal(settings.min_segment),
+					None if ranges && handle.auto.load(Ordering::Relaxed) => {
+						plan.steal(settings.min_segment)
+					}
 					None => None,
 				}
 			};
@@ -266,7 +308,7 @@ async fn schedule(
 				attempts.resize(index + 1, 0);
 			}
 			active.push(index);
-			let split = max > 1;
+			let split = ceiling() > 1;
 			let client = crate::engine::client::build(settings, split)?;
 			let allowed = allowed.clone();
 			let grew = grew.clone();

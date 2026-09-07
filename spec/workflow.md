@@ -23,6 +23,20 @@ forgotten goes on killing and reopening the window for as long as the machine is
 the session that started it is gone, and the person whose window it is has nothing to connect
 it to.
 
+**A link failure of missing `_anon.<hash>.llvm` symbols is the build tree, not the code.** It
+reads as a real error -- `ld: symbol(s) not found for architecture arm64`, naming drop glue in
+whatever crate happened to be compiled last, `rustls` one time and `hickory_resolver` the next --
+and `cargo check` and `cargo test` both pass while it happens, because neither links the binary
+`cargo run` does. It is stale incremental state, and `cargo clean -p rdm` clears it in seconds;
+the dependencies are untouched, so the rebuild that follows is one crate.
+
+**What produces it is two cargo invocations in one `target/`**: the loop's `cargo run` and a
+`cargo test` in another terminal, which is exactly what the "Blocking waiting for file lock on
+build directory" line in the loop's output is announcing. It has happened twice. The way not to
+meet it is to stop the loop before running the suite, which costs one restart; the way out when
+it does happen is the clean above, and reaching for the code first is time spent on a defect that
+is not there.
+
 **One loop per checkout.** Two of them share `target/` and cargo's lock on it, so the second
 sits at `Blocking waiting for file lock on build directory` and the two windows take turns
 reopening. `pgrep -f 'watchexec --restart'` says whether one is already up; stopping it is

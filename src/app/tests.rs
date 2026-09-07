@@ -1863,50 +1863,6 @@ fn at_the_windows_least_width_the_columns_are_their_floors_and_the_row_still_fit
 	});
 }
 
-/// A choice whose words will not fit side by side is a dropdown: closed it shows the one that is
-/// chosen and nothing else, and the alternatives arrive in a panel under the row when it is
-/// pressed. The disguises are the set the rule was written for -- four of them, the last of which
-/// used to be drawn past the edge of the pane where nothing could reach it.
-#[gpui::test]
-fn a_long_choice_is_a_dropdown_that_opens_under_its_row(cx: &mut TestAppContext) {
-	let (rdm, mut cx) = open(cx);
-	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
-	cx.run_until_parked();
-	let search = rdm.read_with(&cx, |rdm, _| rdm.settings.as_ref().unwrap().search.clone());
-	cx.update(|_, cx| search.update(cx, |field, cx| field.set_content("user agent", cx)));
-	cx.run_until_parked();
-
-	assert!(cx.debug_bounds("choice:settings.label.user_agent").is_some(), "the closed button");
-	assert!(cx.debug_bounds("menu:settings.label.user_agent").is_none(), "with nothing open");
-	assert!(
-		cx.debug_bounds("choice:Chrome on Linux").is_none(),
-		"an option of a closed dropdown is not on the pane"
-	);
-
-	click(&mut cx, "choice:settings.label.user_agent");
-	cx.run_until_parked();
-	assert!(cx.debug_bounds("menu:settings.label.user_agent").is_some(), "pressing opens the panel");
-	assert!(cx.debug_bounds("choice:Chrome on Linux").is_some(), "and the options are inside it");
-
-	click(&mut cx, "choice:Chrome on Linux");
-	cx.run_until_parked();
-	rdm.read_with(&cx, |rdm, _| {
-		assert_eq!(rdm.preferences.agent, crate::agent::Agent::Linux, "the option is taken");
-		assert!(rdm.settings.as_ref().unwrap().menu.is_none(), "and choosing closes the panel");
-	});
-	assert!(cx.debug_bounds("choice:Chrome on Linux").is_none(), "the panel is gone with it");
-
-	// Escape answers the dropdown before the sheet: the panel is the topmost thing while it is
-	// open, and closing the sheet under it would be answering a question nobody asked.
-	click(&mut cx, "choice:settings.label.user_agent");
-	cx.run_until_parked();
-	cx.simulate_keystrokes("escape");
-	rdm.read_with(&cx, |rdm, _| {
-		assert!(rdm.settings_open(), "the sheet is still up");
-		assert!(rdm.settings.as_ref().unwrap().menu.is_none(), "and the panel is not");
-	});
-}
-
 /// The row whose setting is written on one line and chosen on another is not called the same
 /// thing twice. The search reads what is on screen, so the second name finds it too.
 #[gpui::test]
