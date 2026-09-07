@@ -45,7 +45,15 @@ pub fn build(settings: &Settings, split: bool) -> Result<reqwest::Client> {
 	// SOCKS request. See src/proxy.rs and src/dns.rs.
 	let proxied = settings.proxy.is_some();
 	if let Some(proxy) = &settings.proxy {
-		builder = builder.proxy(reqwest::Proxy::all(crate::proxy::resolved_there(proxy))?);
+		let mut through = reqwest::Proxy::all(crate::proxy::resolved_there(proxy))?;
+		// The domains the machine answers for do not go through a proxy either. `nas.local` is on
+		// the network this machine is on, and a proxy can neither resolve it nor reach it -- so
+		// without this the list would do nothing at all on a machine with a proxy running, which
+		// is most of them here.
+		if let Some(names) = settings.dns.no_proxy() {
+			through = through.no_proxy(reqwest::NoProxy::from_string(&names));
+		}
+		builder = builder.proxy(through);
 	}
 	// Names go to the proxy where there is one -- unless DNS over HTTPS is on, which says
 	// something stronger than where an answer should come from: who may see and answer the

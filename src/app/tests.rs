@@ -1609,6 +1609,9 @@ fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(
 	assert!(cx.debug_bounds("choice:Follow system").is_some());
 	assert!(cx.debug_bounds("choice:1.1.1.1").is_some());
 	assert!(cx.debug_bounds("choice:8.8.8.8").is_some());
+	// Nothing to write while the machine's own servers are the ones asked, so no field to write
+	// it in: one that is ignored is worse than none.
+	assert!(cx.debug_bounds("setting:settings.label.name_servers").is_none());
 
 	// Choosing one fills the field beside it, so what is being asked is on screen.
 	click(&mut cx, "choice:1.1.1.1");
@@ -1617,6 +1620,7 @@ fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(
 		assert_eq!(rdm.preferences.dns_servers, crate::dns::Servers::Cloudflare);
 		assert_eq!(rdm.preferences.dns_servers_written, "1.1.1.1");
 	});
+	assert!(cx.debug_bounds("setting:settings.label.name_servers").is_some(), "and now there is");
 
 	// Over HTTPS a server is a URL, so the machine's own are not offered and the operators' names
 	// are what the two are called.
@@ -1640,11 +1644,15 @@ fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(
 	assert!(cx.debug_bounds("setting:settings.label.dns_force_https").is_none());
 
 	// And handing the whole business back to the machine leaves nothing under it to set.
+	// The domains the machine answers for are set here whatever the transport is.
+	assert!(cx.debug_bounds("setting:settings.label.system_domains").is_some());
+
 	click(&mut cx, "switch:settings.label.dns_force_system");
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.preferences.dns_force_system));
 	assert!(cx.debug_bounds("setting:settings.label.dns_https").is_none());
 	assert!(cx.debug_bounds("choice:Cloudflare").is_none());
+	assert!(cx.debug_bounds("setting:settings.label.system_domains").is_none());
 }
 
 #[gpui::test]

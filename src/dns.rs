@@ -126,6 +126,18 @@ impl Transport {
 	}
 }
 
+/// Names that are the machine's own business, whatever else is set: they go to its stack and
+/// nothing here is asked. Exactly one is built in.
+///
+/// `.local` is answered by multicast and no unicast server has it, so where it should go is not a
+/// policy question -- there is no other right answer, and a resolver that sends it to Cloudflare
+/// is a resolver that has broken `nas.local` for nothing. **Every other internal domain is
+/// somebody's arrangement and not ours to guess.** `.lan`, `.home`, `.internal`, `.corp` and a
+/// company's own name are all real, all different and all in use for public names somewhere; a
+/// list of guesses would quietly take names away from the servers the user chose, which is the
+/// one thing naming servers is meant to prevent. So the rest is a field.
+pub const ALWAYS_THE_SYSTEM: [&str; 1] = ["local"];
+
 /// The two servers offered, and the addresses they answer on, written down so that choosing one
 /// does not need a question answered before it can ask its own. A DoH server named by a host we
 /// have not got an address for is looked up the ordinary way, which is not a circle -- one
@@ -146,6 +158,9 @@ pub struct Choice {
 	pub servers: Servers,
 	/// The addresses or URLs, as the user wrote them: comma, space or newline apart.
 	pub written: String,
+	/// Domains the system resolves whatever the rest of this says, as the user wrote them.
+	/// `ALWAYS_THE_SYSTEM` is in force beside these and cannot be taken out.
+	pub system_domains: String,
 }
 
 impl Choice {
@@ -168,8 +183,41 @@ impl Choice {
 
 	/// The middle rung: our own stack on port 53, on whatever servers the machine is configured
 	/// with, which is what the default choice already is.
-	fn plain() -> Choice {
-		Choice::default()
+	fn plain(&self) -> Choice {
+		Choice { system_domains: self.system_domains.clone(), ..Choice::default() }
+	}
+
+	/// Every domain the system answers for: the one built in, and the ones written down. Leading
+	/// dots are allowed and dropped, `.corp.example.com` and `corp.example.com` being the same
+	/// thing to anybody who writes either.
+	fn system_domain_list(&self) -> impl Iterator<Item = &str> {
+		ALWAYS_THE_SYSTEM.into_iter().chain(
+			self
+				.system_domains
+				.split([',', ' ', '\n'])
+				.map(|domain| domain.trim().trim_start_matches('.'))
+				.filter(|domain| !domain.is_empty()),
+		)
+	}
+
+	/// The same domains as reqwest wants them for `no_proxy`: comma-separated, which is what
+	/// `NO_PROXY` has always been. None where there is nothing to say, which cannot happen while
+	/// anything is built in but is the honest shape.
+	pub fn no_proxy(&self) -> Option<String> {
+		let list: Vec<&str> = self.system_domain_list().collect();
+		(!list.is_empty()).then(|| list.join(","))
+	}
+
+	/// Whether this name is one of them. A domain matches itself and everything under it, which
+	/// is what anybody writing `corp.example.com` in such a field means and what `NO_PROXY` has
+	/// meant for as long as it has existed.
+	fn goes_to_the_system(&self, name: &str) -> bool {
+		let name = name.trim_end_matches('.');
+		self.system_domain_list().any(|domain| {
+			name.len() >= domain.len()
+				&& name[name.len() - domain.len()..].eq_ignore_ascii_case(domain)
+				&& (name.len() == domain.len() || name.as_bytes()[name.len() - domain.len() - 1] == b'.')
+		})
 	}
 
 	/// Whether a name our resolver could not find is worth putting to the system. It is only when
@@ -251,7 +299,7 @@ impl Held {
 			return Err(Box::new(why));
 		}
 		if self.has_plain_rung() {
-			let rung = Choice::plain();
+			let rung = self.choice.plain();
 			if let Ok(plain) = self.plain.get_or_try_init(|| build(&rung)).await
 				&& let Ok(lookup) = plain.lookup_ip(name).await
 			{
@@ -273,9 +321,13 @@ impl reqwest::dns::Resolve for Resolver {
 		let held = self.0.clone();
 		Box::pin(async move {
 			let name = name.as_str().to_owned();
-			// A resolver that will not build at all -- nothing usable in the settings, a DoH
-			// server whose own address cannot be found -- is one we do without rather than a
-			// download that fails before it starts.
+			// Before any of the chain: a name the machine answers for goes to the machine. This
+			// is a routing rule and not a fallback -- it holds whatever else is set, forced HTTPS
+			// included, because no DoH server has ever been able to answer for `nas.local` and
+			// asking one is not stricter, only broken.
+			if held.choice.goes_to_the_system(&name) {
+				return system(&name).await;
+			}
 			let first = match held.first.get_or_try_init(|| build(&held.choice)).await {
 				Ok(first) => first,
 				// A resolver that will not build at all -- nothing usable in the settings, a DoH
@@ -409,6 +461,7 @@ mod tests {
 			force_https: false,
 			servers,
 			written: written.to_owned(),
+			system_domains: String::new(),
 		}
 	}
 
@@ -498,6 +551,38 @@ mod tests {
 		assert!(!Arc::ptr_eq(&first.0, &proxied.0));
 	}
 
+	/// `.local` is built in and cannot be taken out, because where it goes is not a policy
+	/// question: no unicast server has it. Nothing else is guessed at.
+	#[test]
+	fn only_local_is_built_in() {
+		let bare = choice(Transport::Https, Servers::Cloudflare, "");
+		assert!(bare.goes_to_the_system("nas.local"));
+		assert!(bare.goes_to_the_system("NAS.LOCAL"), "a name is not case");
+		assert!(bare.goes_to_the_system("local"));
+		assert!(bare.goes_to_the_system("nas.local."), "a root dot is still the same name");
+		for guess in ["host.lan", "host.home", "host.internal", "host.corp", "example.com"] {
+			assert!(!bare.goes_to_the_system(guess), "{guess} is somebody's arrangement, not ours");
+		}
+		assert!(!bare.goes_to_the_system("notlocal"), "a suffix is a label, not a substring");
+		assert!(!bare.goes_to_the_system("local.example.com"), "and it is the last one");
+	}
+
+	/// Everything else is written down, a domain standing for itself and all beneath it. A
+	/// written domain never takes `.local` away.
+	#[test]
+	fn what_is_written_joins_it_and_never_replaces_it() {
+		let mut written = choice(Transport::Https, Servers::Cloudflare, "");
+		written.system_domains = " .corp.example.com, lan ".to_owned();
+		assert!(written.goes_to_the_system("git.corp.example.com"));
+		assert!(written.goes_to_the_system("corp.example.com"), "the domain itself as well");
+		assert!(written.goes_to_the_system("host.lan"));
+		assert!(written.goes_to_the_system("nas.local"), "and the built-in one is still there");
+		assert!(!written.goes_to_the_system("example.com"), "not what it is a subdomain of");
+		let names = written.no_proxy().expect("something to say");
+		assert!(names.starts_with("local,"), "reqwest wants them comma-separated");
+		assert!(names.contains("corp.example.com") && names.contains("lan"));
+	}
+
 	/// The chain under the first rung. Our own stack on port 53 sits there only under HTTPS --
 	/// on port 53 it is already the first rung -- only while HTTPS is not forced, and only where
 	/// no proxy carries the request.
@@ -510,6 +595,7 @@ mod tests {
 				force_https,
 				servers: Servers::Cloudflare,
 				written: String::new(),
+				system_domains: String::new(),
 			},
 			proxied,
 			first: tokio::sync::OnceCell::new(),
@@ -575,6 +661,7 @@ mod network {
 					force_https: false,
 					servers,
 					written: String::new(),
+					system_domains: String::new(),
 				};
 				let addresses = answer(choice, "example.com").await.expect("{servers:?} answered");
 				assert!(!addresses.is_empty(), "{servers:?} over {transport:?}");
@@ -588,6 +675,27 @@ mod network {
 	#[ignore = "needs the network"]
 	async fn a_name_nobody_has_fails_rather_than_hanging() {
 		assert!(answer(Choice::default(), "no-such-host.rdm.invalid").await.is_err());
+	}
+
+	/// The routing rule runs before the chain, so a name on the list resolves even where the
+	/// resolver in front of it could answer nothing at all. A DoH server on this machine's own
+	/// port 443, where nothing is listening, is the clearest way to say that: forced, so there is
+	/// no chain under it either, and the only way an answer comes back is the rule.
+	#[tokio::test]
+	#[ignore = "needs the network"]
+	async fn a_name_the_machine_answers_for_never_reaches_the_resolver() {
+		let nowhere = Choice {
+			force_system: false,
+			transport: Transport::Https,
+			force_https: true,
+			servers: Servers::Custom,
+			written: "https://127.0.0.1/dns-query".to_owned(),
+			system_domains: "example.com".to_owned(),
+		};
+		let found = answer(nowhere.clone(), "example.com").await.expect("routed to the system");
+		assert!(!found.is_empty());
+		// And a name that is not on the list gets that resolver and nothing after it.
+		assert!(answer(nowhere, "example.org").await.is_err(), "no chain under a forced HTTPS");
 	}
 
 	/// The way out, on its own: the machine's stack, asked the way everything else on it asks.

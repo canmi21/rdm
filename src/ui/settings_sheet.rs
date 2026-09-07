@@ -33,7 +33,7 @@ pub struct SettingsSheet {
 }
 
 /// Every field there is: its row's label, its placeholder, and a word on what it takes.
-const FIELDS: [(&str, &str, &str); 14] = [
+const FIELDS: [(&str, &str, &str); 15] = [
 	("settings.label.concurrent_downloads", "3", "How many run at once; the rest wait"),
 	("settings.label.speed_limit", "Off", "KB/s, or with m or g; empty for none"),
 	("settings.label.connections", "Auto", "Auto, or a number up to 256, offered first at Add Task"),
@@ -65,6 +65,11 @@ const FIELDS: [(&str, &str, &str); 14] = [
 		"settings.label.name_servers",
 		"1.1.1.1",
 		"Addresses for port 53, https:// URLs over HTTPS; several apart by commas",
+	),
+	(
+		"settings.label.system_domains",
+		"corp.example.com",
+		"Domains the system resolves, apart by commas; .local is always one of them",
 	),
 	("settings.label.headers", "", "Name: value, several apart by semicolons"),
 	("settings.label.redirects", "10", "How many a request follows"),
@@ -247,6 +252,7 @@ impl Rdm {
 			"settings.label.user_agent" => p.user_agent.clone().unwrap_or_default(),
 			"settings.label.proxy" => p.proxy.clone().unwrap_or_default(),
 			"settings.label.name_servers" => p.dns_servers_written.clone(),
+			"settings.label.system_domains" => p.dns_system_domains.clone(),
 			"settings.label.headers" => {
 				p.headers.iter().map(|(n, v)| format!("{n}: {v}")).collect::<Vec<_>>().join("; ")
 			}
@@ -332,6 +338,16 @@ impl Rdm {
 					// offered pair while the field says otherwise would show one thing and ask
 					// another.
 					self.preferences.dns_servers = crate::dns::Servers::Custom;
+				}
+				"settings.label.system_domains" => {
+					// A domain and nothing else: an address here would look like it worked and
+					// would never match, since what is compared is the name being resolved.
+					for part in text.split([',', ' ', '\n']).map(str::trim).filter(|p| !p.is_empty()) {
+						if part.trim_start_matches('.').parse::<std::net::IpAddr>().is_ok() {
+							return Err("A domain, not an address: names are what is matched.".to_owned());
+						}
+					}
+					self.preferences.dns_system_domains = text.to_owned();
 				}
 				"settings.label.headers" => {
 					let mut headers = Vec::new();
@@ -759,9 +775,18 @@ impl Rdm {
 					},
 				},
 			});
+			// Only where the choice above reads it. Following the machine's own servers means
+			// there is nothing to write, and a field that is ignored is worse than no field.
+			if self.preferences.dns_servers != crate::dns::Servers::System {
+				rows.push(
+					self
+						.field_row(Section::Network, "settings.label.name_servers")
+						.under("settings.group.names"),
+				);
+			}
 			rows.push(
 				self
-					.field_row(Section::Network, "settings.label.name_servers")
+					.field_row(Section::Network, "settings.label.system_domains")
 					.under("settings.group.names"),
 			);
 		}

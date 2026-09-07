@@ -160,6 +160,11 @@ pub struct Preferences {
 	/// The servers as the user wrote them, which choosing one of the offered servers fills in.
 	#[serde(default)]
 	pub dns_servers_written: String,
+	/// Domains the machine's own stack resolves whatever the rest of this says, and which never
+	/// go through a proxy either. `.local` is built in beside whatever is written here and cannot
+	/// be taken out; every other internal domain is the user's to name. See src/dns.rs.
+	#[serde(default)]
+	pub dns_system_domains: String,
 	#[serde(default)]
 	pub max_redirects: Option<usize>,
 	#[serde(default = "yes")]
@@ -243,6 +248,7 @@ impl Preferences {
 			force_https: self.dns_force_https,
 			servers: self.dns_servers,
 			written: self.dns_servers_written.clone(),
+			system_domains: self.dns_system_domains.clone(),
 		};
 		settings.proxy = match self.proxy_source {
 			crate::proxy::Source::Direct => None,
@@ -299,6 +305,7 @@ impl Default for Preferences {
 			dns_force_https: false,
 			dns_servers: crate::dns::Servers::default(),
 			dns_servers_written: String::new(),
+			dns_system_domains: String::new(),
 			max_redirects: None,
 			preallocate: true,
 		}

@@ -343,8 +343,25 @@ that somebody might not like. A question that never got through walks it whateve
 were, each rung being a different path to a different set of servers. A name that does not exist
 walks it only while the servers being asked are the machine's own: somebody who named servers
 said this machine's are not to be trusted, and a fallback that asked them anyway would hand back
-exactly what was refused. That is why `.local` resolves under the default and stops resolving
-once servers are named -- the cost of the setting, not an oversight.
+exactly what was refused.
+
+### The names the machine answers for, which never reach the chain at all
+
+Because of that rule, a name only this machine can resolve stops resolving the moment servers are
+named -- so those names are declared rather than discovered. A short list goes to the system's
+stack before anything else is asked, and never through a proxy either, a name on the local network
+being one a proxy can neither resolve nor reach. It is a routing rule and not a fallback: it holds
+whatever else is set, forced HTTPS included, since no DoH server has ever been able to answer for
+`nas.local` and asking one is not stricter, only broken.
+
+**Exactly one entry is built in, and it is `.local`.** Where that one goes is not a policy
+question: it is answered by multicast and no unicast server has it, so there is no other right
+answer and a resolver that sends it to Cloudflare has broken `nas.local` for nothing. **Every
+other internal domain is somebody's arrangement and not ours to guess.** `.lan`, `.home`,
+`.internal`, `.corp` and a company's own name are all real, all different, and all in use for
+public names somewhere; a built-in list of them would quietly take names away from the servers the
+user chose, which is the one thing choosing servers is meant to prevent. So the rest is a field,
+and a domain in it stands for itself and everything under it, as `NO_PROXY` has always meant.
 
 ### One resolver, for the life of the process
 
