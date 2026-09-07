@@ -30,8 +30,10 @@ watchexec = "2"
 #
 # The watch roots are src recursively and this directory non-recursively -- Cargo.toml, mise.toml
 # and build.rs, and nothing below them. Naming them is not tidiness: .gitignore keeps target/ out
-# of the filter but not out of the watch, and target/ here is 46 GB across 118k files, every write
-# in it arriving as an event to be filtered one at a time. A loop left running overnight over that
+# of the filter but not out of the watch, and target/ here is 16 GB across 37k files the moment a
+# clean build finishes and grows from there -- it had reached 84 GB across 137k before a
+# `cargo clean -p rdm` took it back -- every write in it arriving as an event to be filtered one
+# at a time. A loop left running overnight over that
 # tree spent 174 minutes of CPU on it and, worse, made the watcher drop events; watchexec reads
 # the rescan that follows as a change, so the window was closing and reopening on nothing. The
 # extension filter narrows what the roots still let through to source.
