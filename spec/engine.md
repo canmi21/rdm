@@ -265,55 +265,122 @@ built** -- the engine's, the update check's twice over, and the resolver's. Not 
 a test never runs `main` and would otherwise reach a connection with nothing to encrypt it; the
 two ignored network tests are what prove the arrangement, and they are run against both features.
 
-## The proxy is looked for before it is asked for
+## The proxy is looked for before it is asked for, and it is given the name
 
-The machines this runs on usually have a proxy on them, and it is usually one of a handful of
-programs on one of a handful of ports. The address a proxy listens on is the program's choice --
-mihomo picked 7890, not the user -- so asking somebody to type it is asking them to know
-something about their own machine that the machine can be asked instead. `Whatever is running`
-is the default: a socket is opened to each known address in turn and the first that answers is
-the one every download goes through; nothing answering is the same as no proxy at all.
+The machines this runs on usually have a proxy on them, and the address it listens on is the
+program's choice -- mihomo picked 7890, not the user -- so asking somebody to type it is asking
+them to know something about their own machine that the machine can be asked instead. `Whatever
+is running` is the default: a socket is opened to each known address in turn and the first that
+answers is the one every download goes through; nothing answering is the same as no proxy at all.
 
-`src/proxy.rs` holds the list, in the order it is tried: mihomo and Clash's mixed port on its old
-and new defaults, Clash's separate SOCKS port, V2Ray and sing-box as their templates ship them,
-the address a SOCKS proxy has had since before any of them, and Privoxy. Only loopback addresses
-are probed, and a connection opening is all that is asked -- speaking the protocol to find out
-whether it is really a proxy would mean sending a request through a program the user has not
-agreed to send anything through. What is found is shown in Settings and can be overruled by an
-address typed there, or turned off entirely.
+**Three things are looked for, not a catalogue of programs.** `src/proxy.rs` holds the list: the
+mixed port on its old and new defaults, the SOCKS port that usually sits beside it, and the
+address a SOCKS5 proxy has had since before any of them. What matters is not which program is
+listening but what it speaks, and a list of every proxy's default port is a list to fall behind
+on. Ports that something other than a proxy commonly holds are left out on purpose -- 8080 is
+somebody's development server far more often than it is a proxy, and sending every download
+through one would be worse than finding nothing. Only loopback addresses are probed, and a
+connection opening is all that is asked: speaking the protocol to find out whether it is really a
+proxy would mean sending a request through a program the user has not agreed to send anything
+through.
 
-The look runs off the window's thread, at launch and whenever it is asked for. Seven connections
-at a tenth of a second each is most of a second in the worst case, which is nothing on a
-background thread and a visible stall on the main one. What it found is not written to
-`config.json`: it is a fact about the machine now rather than a choice somebody made.
+The look runs off the window's thread, at launch and whenever it is asked for. What is found is
+shown in Settings, can be overruled by an address typed there or turned off entirely, and is not
+written to `config.json`: it is a fact about the machine now rather than a choice somebody made.
 
-## A name is resolved three ways, and each is a separate question
+**A proxy is given the name, never an address.** The address a CDN answers with depends on who
+asked, and the one that matters is the one seen from where the connection is actually made -- an
+address resolved here and handed to an exit in another country sends it to a node picked for this
+one. A proxy that routes by rule is handed the domain its rules are written against, and one
+handed an address can only fall back to matching on the address. And a local network that answers
+with a lie has its lie carried into a channel that would have got the truth. All three point the
+same way, so nothing is resolved for a request that goes through a proxy: not our resolver and
+not the system's either, the name travelling in the CONNECT line or in the SOCKS request.
 
-Who is asked, how they are asked, and what does the asking. They are three settings and not one
-because the reasons for changing them are not the same reason:
+`socks5://` and `socks5h://` are the same wire protocol and differ only in who resolves, which is
+curl trivia rather than something a settings field should make somebody know: whatever is typed
+or found, the client is given the form that sends the name.
 
-- **Who.** The machine's own servers, which is what everything else on it uses, or a pair named
-  in Settings. A network that answers `github.com` with a lie is why anybody sets this, and the
-  pair offered is the pair such a person means: Cloudflare and Google.
-- **How.** Port 53, which anything between here and there can read and rewrite, or DNS over
-  HTTPS, which it cannot. The field holds addresses for one and URLs for the other, and changing
-  the transport clears it -- what was written for one is not an answer for the other.
-- **What.** The system's resolver, which knows the machine's search domains, its hosts file and
-  its VPN, or `hickory-resolver`, which knows only what it is told and can be told to ask anyone.
-  The system's is right far more often; the other exists because the system's cannot be pointed
-  at a server of one's choosing on every platform.
+## Names are resolved here, the same way on every platform
 
-All three are the system's to start with, which is what a download manager should do until
-somebody says otherwise, and in that case nothing is built at all -- reqwest already resolves
-through the system. The resolver is built where the client is built, once a download, rather than
-kept: one that outlived the settings that made it would answer with the servers they used to
-name. An address that will not parse is left out rather than taken as a reason to fail, a
-settings field being typed into a character at a time; a field with nothing usable in it is the
-same as having named nothing, and the system answers.
+**This application resolves names itself.** Not for safety -- asking the machine's own servers
+with our own client gets the machine's own answers, lies included, and what buys trust is
+changing who is asked or how. The reason is that one Rust stack, one cache and one set of
+timeouts behave the same on macOS, Windows and Linux, so a download that will not start is one
+thing to reason about instead of three platform resolvers with three sets of habits. It is
+`hickory-resolver`, reading the machine's own servers to begin with: on Apple from the
+SystemConfiguration store rather than `/etc/resolv.conf`, so the search domains arrive with the
+addresses.
 
-A DoH server is named by its URL and its address is found the ordinary way, which is not a
-circle: the URL's host is resolved once, through whatever is already working, and every question
-after it goes over HTTPS.
+reqwest's own `hickory-dns` feature is deliberately off. It builds from the system's servers and
+offers no way to name others, falls back to Google's when it cannot read them -- a change of who
+is asked, announced in a debug log -- and would leave two places in the tree that build a
+resolver. The version is held to reqwest's anyway, so turning it on stays a one-line change
+rather than a second copy of the crate.
+
+**Port 53 is asked over UDP, and the same question moves to TCP by itself** when an answer comes
+back truncated, and also when it comes back with the wrong case, which is how hickory catches a
+forged reply. A question that simply times out is retried as it was; making it a TCP question
+would be a branch in the default path that only the network being hostile could justify, and a
+hostile network is what DNS over HTTPS is for.
+
+### The fallback is an escape hatch, not a second opinion
+
+What the system's stack knows and no unicast server does is `.local`, answered by multicast, and
+whatever a VPN's own scoped resolver answers for -- neither of which is in the machine's global
+DNS configuration, so reading that configuration does not bring them along. A name our resolver
+cannot find is therefore put to the system once before the download fails.
+
+It runs where nobody could have answered and not where an answer came back that somebody might
+not like. A question that never got through falls back whatever the servers were, that being a
+different path to a different set of servers. A name that does not exist falls back only while
+the servers being asked are the machine's own: somebody who named servers said this machine's are
+not to be trusted, and a fallback that asked them anyway would hand back exactly what was
+refused.
+
+### One resolver, for the life of the process
+
+A resolver holds a cache, and a cache thrown away with the client that made it answers nothing
+twice -- a download builds a client per connection, so this is the difference between one query
+for a name and sixteen, and between one DoH handshake and sixteen. So one is built and kept, with
+the choice that built it beside it: a settings change replaces it, and it is never left answering
+with servers the settings used to name.
+
+It is built at the first name asked rather than where it is made, because building it may have to
+look a DoH server's own address up, which is a question, and a question wants a runtime.
+
+### Three switches, and each turns something off
+
+- **Force the system's resolver.** Off. On, nothing of ours is built and reqwest resolves the way
+  everything else on the machine does. It is the way out if resolving here is ever the problem,
+  which is worth having on the screen rather than in a config file.
+- **DNS over HTTPS.** Off. On, the question cannot be read or rewritten on the way, which is what
+  somebody whose network answers `github.com` with a lie is after. It buys integrity and not
+  reach: a DoH server that is blocked is blocked.
+- **Which servers.** The machine's own, one of the two anybody in that position already knows, or
+  whatever is written in the field. On port 53 the offered two are named by their address, because
+  that is what a person remembers; over HTTPS they are named by their operator, because nobody
+  remembers a DoH URL. Choosing one fills the field beside it, as choosing a user agent does, so
+  what is being asked is on screen rather than implied.
+
+**Both offered DoH servers have their addresses written down**, so the ordinary way to turn DoH on
+never has to ask the network where its DoH server is. A URL may name an address itself; anything
+else is looked up once through whatever is already working, which is not a circle -- one question
+before the first, and every question after it over HTTPS -- but it does mean a bootstrap that goes
+through the thing being worked around. Whatever the address came from, the host beside it is what
+the certificate is checked against, so an address rewritten on the way fails the handshake rather
+than answering the questions.
+
+An address that will not parse is left out rather than taken as a reason to fail, a settings field
+being typed into a character at a time. A field with nothing usable in it is the same as having
+named nothing, and the machine's own servers answer -- except over HTTPS, where dropping back to
+port 53 would be answering a question nobody asked, and the server offered first is what it comes
+to instead.
+
+Four tests in `src/dns.rs` reach the network and are ignored by default, like the engine's own.
+The one that matters most goes straight at the built resolver rather than through the fallback:
+a DoH server that never answered would otherwise be carried by the system's stack and the test
+would pass on an answer the thing under test did not give.
 
 ## What this application calls itself, and the two disguises it offers
 

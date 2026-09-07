@@ -334,7 +334,7 @@ the fallback for anything a translation has not caught up with. A test compares 
 sets, so a string added in English and forgotten in the others is caught before it is shipped.
 
 **Not everything is translated, on purpose.** A name is a name: `rdm`, `Downloads`, `Finder`,
-`Chrome`, `Hickory`, `HTTPS`, `SOCKS5`, `.DS_Store`, `Download finish`. A Chinese or Japanese
+`Chrome`, `Cloudflare`, `HTTPS`, `SOCKS5`, `.DS_Store`, `Download finish`. A Chinese or Japanese
 sentence with those left in English is what somebody who uses this software writes; one with them
 translated is what a machine writes. Debug selectors name the key rather than the text, so a test
 means the same thing whatever language the machine running it is set to, and the tests pin

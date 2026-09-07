@@ -8,7 +8,7 @@
 //! window that can come up blank.
 //!
 //! **Not everything is translated, on purpose.** A name is a name: `rdm`, `Downloads`, `Finder`,
-//! `Chrome`, `Hickory`, `HTTPS`, `SOCKS5`, `.DS_Store`. A Chinese or Japanese sentence with those
+//! `Chrome`, `Cloudflare`, `HTTPS`, `SOCKS5`, `.DS_Store`. A Chinese or Japanese sentence with those
 //! left in English is what somebody who uses this software writes; one with them translated is
 //! what a machine writes. The English file is the source of truth for the set of keys and the
 //! fallback for anything a translation has not caught up with, so a missing string shows in
