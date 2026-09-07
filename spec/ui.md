@@ -740,6 +740,16 @@ below the fold could not be reached at all: they were drawn past the window's bo
 no wheel and no bar could get at them. The three state filters stay put, since a window short
 enough to hide those is a window with nothing left to show.
 
+**The fold fades.** A list cut by the window's height says so where it was cut: fourteen points
+of the sidebar's own colour, fading to nothing, over the row at the fold -- at the bottom while
+there is list below, at the top while there is list above, and at neither end while the whole of
+it fits. A row is twenty-two points, so the wash takes half of one and never a whole one; where
+the fold happens to fall between two rows there is nothing under the wash but the sidebar itself,
+which is the case that wants no fade and gets one nobody can see. It is painted rather than laid
+out, because how far a list is scrolled and how far it can scroll are known only after it has
+been laid out -- a fade built at the same time as the rows would answer from the frame before,
+arriving late and lingering after. See `fades` in src/ui/sidebar.rs.
+
 **A sidebar label is in Title Case, and plural when it can be counted.** Title Case because
 that is what macOS asks of sidebar items and what Finder's are; the plural because the row
 names a set -- Videos, Documents, Disk Images -- and Finder's rows do the same. What cannot be

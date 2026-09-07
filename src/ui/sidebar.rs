@@ -87,14 +87,24 @@ impl Rdm {
 			// all. See spec/ui.md.
 			.child(
 				div()
-					.id("categories")
+					.relative()
 					.flex()
 					.flex_col()
-					.gap_0p5()
 					.flex_1()
 					.min_h_0()
-					.overflow_y_scroll()
-					.children(categories),
+					.child(
+						div()
+							.id("categories")
+							.flex()
+							.flex_col()
+							.gap_0p5()
+							.flex_1()
+							.min_h_0()
+							.overflow_y_scroll()
+							.track_scroll(&self.categories_scroll)
+							.children(categories),
+					)
+					.child(fades(p, &self.categories_scroll)),
 			)
 	}
 
@@ -219,4 +229,64 @@ impl Render for DragPreview {
 				.child(self.name.clone()),
 		)
 	}
+}
+
+/// Whether the categories run past the top of their scroller, and past the bottom of it. Read
+/// where the two are read from: the scroll handle, which the scroller fills in as it is laid out.
+pub(crate) fn cut_above(scroll: &gpui::ScrollHandle) -> bool {
+	scroll.offset().y < px(-0.5)
+}
+
+pub(crate) fn cut_below(scroll: &gpui::ScrollHandle) -> bool {
+	scroll.offset().y.abs() < scroll.max_offset().y - px(0.5)
+}
+
+/// The short wash over a cut row. A list longer than its window has to say so, and the row at the
+/// fold says it best: it dissolves into the sidebar instead of ending in a straight line, which
+/// reads as more list rather than as the end of one. Fourteen points against a row of twenty-two,
+/// so it takes a row's lower half and never a whole one -- and where the fold happens to fall
+/// between two rows there is nothing under the wash but the sidebar itself, which is the case
+/// that wants no fade and gets none by drawing one nobody can see.
+///
+/// It is painted rather than laid out because of when it has to be decided. How far the list is
+/// scrolled and how far it can scroll are known once it has been laid out, which is after
+/// everything in the same frame has been built: an element that asked the question while being
+/// built would answer it from the frame before, and be a fade that arrives late and lingers after
+/// the scroll that earned it. Painting happens after layout, so the question is asked when it can
+/// be answered.
+///
+/// The colour is the sidebar's own, fading to that colour at no opacity rather than to a
+/// transparent black, since the two are mixed as they are and black would leave a dark bloom
+/// through the middle of the gradient. See spec/ui.md.
+fn fades(p: Palette, scroll: &gpui::ScrollHandle) -> impl IntoElement {
+	const DEEP: f32 = 14.0;
+	let scroll = scroll.clone();
+	gpui::canvas(
+		|_, _, _| (),
+		move |bounds, (), window, _| {
+			let wash = |angle: f32| {
+				gpui::linear_gradient(
+					angle,
+					gpui::linear_color_stop(p.sidebar, 0.0),
+					gpui::linear_color_stop(p.sidebar.opacity(0.0), 1.0),
+				)
+			};
+			let strip = |top: Pixels| {
+				gpui::Bounds::new(
+					gpui::point(bounds.origin.x, top),
+					gpui::size(bounds.size.width, px(DEEP)),
+				)
+			};
+			if cut_above(&scroll) {
+				window.paint_quad(gpui::fill(strip(bounds.origin.y), wash(180.0)));
+			}
+			if cut_below(&scroll) {
+				window.paint_quad(gpui::fill(strip(bounds.bottom() - px(DEEP)), wash(0.0)));
+			}
+		},
+	)
+	.absolute()
+	.top_0()
+	.left_0()
+	.size_full()
 }

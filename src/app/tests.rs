@@ -711,6 +711,57 @@ fn a_short_window_scrolls_the_categories_rather_than_burying_them(cx: &mut TestA
 	assert!(all.origin.y < after.origin.y, "the filters stay above the categories");
 }
 
+/// The fold tells the reader there is more: the list fades where it was cut, at whichever end has
+/// something past it, and nowhere else. A list that fits shows neither fade.
+#[gpui::test]
+fn the_categories_fade_at_the_fold_and_only_there(cx: &mut TestAppContext) {
+	use gpui::{ScrollDelta, ScrollWheelEvent, TouchPhase, point, px, size};
+
+	let (rdm, mut cx) = open(cx);
+	// The two questions the fades are painted from, asked of the scroller after it was laid out --
+	// which is where the fades ask them too. See src/ui/sidebar.rs.
+	let fades = |rdm: &Entity<Rdm>, cx: &mut VisualTestContext| {
+		rdm.read_with(cx, |rdm, _| {
+			let scroll = &rdm.categories_scroll;
+			(crate::ui::sidebar::cut_above(scroll), crate::ui::sidebar::cut_below(scroll))
+		})
+	};
+	// A window with room for every category shows no fade at all.
+	cx.simulate_resize(size(px(900.0), px(900.0)));
+	cx.run_until_parked();
+	assert_eq!(fades(&rdm, &mut cx), (false, false), "a list that fits is cut nowhere");
+
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.categories = crate::category::Category::PRESETS
+			.iter()
+			.enumerate()
+			.map(|(at, preset)| {
+				crate::category::Category::from_preset(at as u64 + 1, preset.name, Default::default())
+					.expect("a preset compiles")
+			})
+			.collect();
+		cx.notify();
+	});
+	cx.simulate_resize(size(px(900.0), px(360.0)));
+	cx.run_until_parked();
+	assert_eq!(fades(&rdm, &mut cx), (false, true), "at the top, only the bottom is cut");
+
+	let over = cx.debug_bounds("filter:Videos").expect("the first category is drawn").center();
+	let wheel = |cx: &mut VisualTestContext, by: f32| {
+		cx.simulate_event(ScrollWheelEvent {
+			position: over,
+			delta: ScrollDelta::Pixels(point(px(0.0), px(by))),
+			modifiers: Modifiers::default(),
+			touch_phase: TouchPhase::Moved,
+		});
+		cx.run_until_parked();
+	};
+	wheel(&mut cx, -40.0);
+	assert_eq!(fades(&rdm, &mut cx), (true, true), "in the middle, both ends are cut");
+	wheel(&mut cx, -10_000.0);
+	assert_eq!(fades(&rdm, &mut cx), (true, false), "at the bottom, only the top is cut");
+}
+
 #[gpui::test]
 fn a_preset_row_toggles_the_category_in_and_out(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);

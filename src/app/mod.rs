@@ -314,6 +314,9 @@ pub struct Rdm {
 	/// drawing is the only thing that asks and drawing has the window by shared reference; the
 	/// alternative is asking the window server once a row a frame. See src/thumbnail.rs.
 	pub(crate) thumbnails: std::cell::RefCell<crate::thumbnail::Thumbnails>,
+	/// Where the sidebar's categories are scrolled to. Read while drawing, to know whether there
+	/// is anything above or below the fold worth telling the reader about. See src/ui/sidebar.rs.
+	pub(crate) categories_scroll: gpui::ScrollHandle,
 	/// Which files the system has marked as having come from the internet, by path. Read once a
 	/// file and kept: the answer is one attribute lookup, and the list draws every row it has.
 	/// Interior mutability for the reason the pictures have it -- drawing is what asks.
@@ -439,6 +442,7 @@ impl Rdm {
 			thumbnails: std::cell::RefCell::new(crate::thumbnail::Thumbnails::keeping_pictures_in(
 				paths_for_thumbnails,
 			)),
+			categories_scroll: gpui::ScrollHandle::new(),
 			marked: std::cell::RefCell::default(),
 			found_proxy: None,
 			looking_for_proxy: false,
