@@ -9,7 +9,8 @@
 //! was filed. See spec/ui.md.
 
 use gpui::{
-	Context, Entity, IntoElement, Role, SharedString, anchored, deferred, div, prelude::*, px,
+	Context, Entity, IntoElement, Role, SharedString, anchored, canvas, deferred, div, point,
+	prelude::*, px, relative,
 };
 
 use crate::app::Rdm;
@@ -41,7 +42,6 @@ const SHEET_H: f32 = 440.0;
 /// The strip at the top of the card: its name and the button that closes it.
 const HEADER_H: f32 = 36.0;
 
-
 /// The sheet while it is up: which section is open, and the field that searches all of them.
 pub struct SettingsSheet {
 	pub section: Section,
@@ -50,10 +50,10 @@ pub struct SettingsSheet {
 	pub fields: HashMap<&'static str, Entity<TextInput>>,
 	/// What the last field said no to, under the row.
 	pub complaint: Option<(&'static str, String)>,
-	/// The row whose dropdown is open, and where the press that opened it landed in the window.
-	/// The place is kept because it is the only one available: see `choice_menu`. One menu at a
-	/// time -- two down the same pane would each be answering for the other's row.
-	pub menu: Option<(&'static str, gpui::Point<gpui::Pixels>)>,
+	/// The row whose dropdown is open. Only which one: where it opens is the button's own
+	/// business, and the panel hangs off it. See `choice_menu`. One menu at a time -- two down
+	/// the same pane would each be answering for the other's row.
+	pub menu: Option<&'static str>,
 	/// The row whose menu a press outside it has just closed. A press on the button its menu
 	/// belongs to is a press outside the panel, so it closes the menu on the way down and would
 	/// open it again on the way up -- a menu that will not shut. This is what the second half of
@@ -259,13 +259,7 @@ impl Rdm {
 
 	/// Opens one row's dropdown, or closes whatever is open. Moving to another section closes it
 	/// too: a menu belongs to a row, and the row is gone.
-	/// Opens one row's dropdown at the point the press landed, or closes whatever is open.
-	pub(crate) fn toggle_settings_menu(
-		&mut self,
-		label: &'static str,
-		at: gpui::Point<gpui::Pixels>,
-		cx: &mut Context<Self>,
-	) {
+	pub(crate) fn toggle_settings_menu(&mut self, label: &'static str, cx: &mut Context<Self>) {
 		if let Some(sheet) = &mut self.settings {
 			// The press that got here may have closed this very menu a moment ago, on its way
 			// down; opening it again would make the button unable to shut what it opened.
@@ -274,8 +268,8 @@ impl Rdm {
 				return;
 			}
 			sheet.menu = match sheet.menu {
-				Some((open, _)) if open == label => None,
-				_ => Some((label, at)),
+				Some(open) if open == label => None,
+				_ => Some(label),
 			};
 			cx.notify();
 		}
@@ -294,7 +288,7 @@ impl Rdm {
 	/// on the button does not reopen it. See `SettingsSheet::dismissed`.
 	pub(crate) fn dismiss_settings_menu(&mut self, cx: &mut Context<Self>) {
 		if let Some(sheet) = &mut self.settings
-			&& let Some((label, _)) = sheet.menu.take()
+			&& let Some(label) = sheet.menu.take()
 		{
 			sheet.dismissed = Some(label);
 			cx.notify();
@@ -1091,30 +1085,30 @@ impl Rdm {
 			.into_any_element()
 	}
 
-	/// The options of an open dropdown, anchored in **window** coordinates at the point the press
-	/// landed. That point is kept on the sheet rather than worked out here because it is the only
-	/// one to be had: the row is inside a pane that scrolls and clips, inside a card centred in
-	/// the window, and nothing in that stack knows where it ended up on screen. Anchoring
-	/// locally lands the panel in the corner of the window -- an anchored element inside a centred
-	/// row is placed off its own origin, which is the same trap `status_bar.rs` records for the
-	/// funnel and the reason that one is positioned in window space too.
+	/// The options of an open dropdown, hung off the button they belong to. The wrapper covers
+	/// the button exactly -- absolute, so it is out of the button's own flow and costs it no
+	/// room -- and the panel is anchored a hundred percent down it, which is the button's bottom
+	/// edge whatever the row turned out to be. Anchoring locally is what keeps the two together:
+	/// the panel is laid out inside the pane like everything else, so the pane's scroll and the
+	/// card's centring move it exactly as they move the button, and there is no point to carry
+	/// on the sheet and go stale. Deferred above the sheet, which is itself deferred, or the card
+	/// would paint over it; a deferred draw carries no clip, so the panel is free to fall past
+	/// the pane's bottom edge.
 	///
-	/// `snap_to_window_with_margin` is what makes it usable near an edge: GPUI measures the panel
-	/// and flips or slides it to fit, so a row at the bottom of the card opens upward without
-	/// anything here having to work out which way there is room. Deferred above the sheet, which
-	/// is itself deferred, or the card would paint over it.
+	/// A hundred percent of an element is its padding box, so the point of border the wrapper
+	/// sits inside is given back on both axes, and four more points below the button leave the
+	/// gap. `snap_to_window_with_margin` is what makes it usable near an edge: GPUI measures the
+	/// panel and slides it to fit, so a row at the bottom of the card opens upward without
+	/// anything here having to work out which way there is room.
 	fn choice_menu(
 		&self,
 		p: crate::ui::theme::Palette,
-		row: &Row,
+		label: &'static str,
+		options: &[&'static str],
+		chosen: usize,
+		set: fn(&mut Rdm, usize, &mut Context<Rdm>),
 		cx: &mut Context<Self>,
 	) -> impl IntoElement + use<> {
-		let label = row.label;
-		let at = self.settings.as_ref().and_then(|sheet| sheet.menu).map(|(_, at)| at);
-		let (Control::Choice { options, chosen, set }, Some(at)) = (&row.control, at) else {
-			return div().into_any_element();
-		};
-		let (chosen, set) = (*chosen, *set);
 		let panel = floating(p, SharedString::from(format!("menu:{label}")))
 			.debug_selector(move || format!("menu:{label}"))
 			.flex()
@@ -1130,10 +1124,11 @@ impl Rdm {
 			.on_mouse_down_out(cx.listener(|this, _, _, cx| this.dismiss_settings_menu(cx)))
 			.children(options.iter().enumerate().map(|(index, option)| {
 				let on = index == chosen;
+				let option = *option;
 				div()
 					.id(SharedString::from(format!("option:{label}:{option}")))
 					.role(Role::RadioButton)
-					.aria_label(*option)
+					.aria_label(option)
 					.aria_selected(on)
 					.debug_selector(move || format!("choice:{option}"))
 					.flex()
@@ -1150,18 +1145,42 @@ impl Rdm {
 						set(this, index, cx);
 						this.close_settings_menu(cx);
 					}))
-					.child(*option)
+					.child(option)
 			}));
-		deferred(
-			anchored()
-				.position_mode(gpui::AnchoredPositionMode::Window)
-				.anchor(gpui::Anchor::TopLeft)
-				.position(at)
-				.snap_to_window_with_margin(px(8.0))
-				.child(panel),
+		div().absolute().inset_0().child(self.menu_watch(cx)).child(
+			div().absolute().left_0().top(relative(1.0)).w_0().h_0().child(
+				deferred(
+					anchored()
+						.position_mode(gpui::AnchoredPositionMode::Local)
+						.anchor(gpui::Anchor::TopLeft)
+						.offset(point(px(-1.0), px(5.0)))
+						.snap_to_window_with_margin(px(8.0))
+						.child(panel),
+				)
+				.priority(3),
+			),
 		)
-		.priority(3)
-		.into_any_element()
+	}
+
+	/// The menu is glued to its button, and the button rides the pane's scroll. When the button
+	/// leaves what the pane shows, the menu leaves with it rather than hanging over the card:
+	/// this reads the pane's own clip where it is in force -- at prepaint, inside the pane's
+	/// subtree -- and closes the menu the frame its button is no longer within it. The closing is
+	/// deferred, a frame being laid out being no place to change what it says.
+	fn menu_watch(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let sheet = cx.entity().downgrade();
+		canvas(
+			move |bounds, window, cx| {
+				if !window.content_mask().bounds.intersects(&bounds) {
+					cx.defer(move |cx| {
+						sheet.update(cx, |this, cx| this.close_settings_menu(cx)).ok();
+					});
+				}
+			},
+			|_, (), _, _| {},
+		)
+		.absolute()
+		.inset_0()
 	}
 
 	/// The strip at the top of the card: its name and the one button that closes it, laid out as
@@ -1234,7 +1253,7 @@ impl Rdm {
 			Control::Choice { options, .. } => !segments_fit(options),
 			_ => false,
 		};
-		let open = self.settings.as_ref().is_some_and(|sheet| sheet.menu.is_some_and(|(l, _)| l == label));
+		let open = self.settings.as_ref().is_some_and(|sheet| sheet.menu == Some(label));
 		let right = match &row.control {
 			Control::Value(value) => {
 				div().text_color(p.muted).truncate().child(value.clone()).into_any_element()
@@ -1262,11 +1281,12 @@ impl Rdm {
 					.child(div().size(px(14.0)).rounded_full().bg(p.text))
 					.into_any_element()
 			}
-			// One word and a chevron, the options in a panel anchored where the press landed.
+			// One word and a chevron, the options in a panel hung off the button's bottom edge.
 			// A long set has no other shape: side by side its words run off the pane, and the
 			// fourth disguise was drawn where nothing could reach it. See `segments_fit`.
-			Control::Choice { options, chosen, .. } if dropdown => {
+			Control::Choice { options, chosen, set } if dropdown => {
 				let shown = options.get(*chosen).copied().unwrap_or_default();
+				let (chosen, set) = (*chosen, *set);
 				div()
 					.id(SharedString::from(format!("choice:{label}")))
 					.role(Role::Button)
@@ -1286,21 +1306,16 @@ impl Rdm {
 					.bg(p.track)
 					.cursor_pointer()
 					.leaves_focus()
-					.on_click(cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
-						// Where the press landed, which is the only place the menu can be told to
-						// open at; a keyboard or a touch activation carries no pointer, and the
-						// middle of the window is what those get. See `choice_menu`.
-						let at = match event {
-							gpui::ClickEvent::Mouse(mouse) => mouse.down.position,
-							_ => {
-								let size = window.viewport_size();
-								gpui::point(size.width / 2.0, size.height / 2.0)
-							}
-						};
-						this.toggle_settings_menu(label, at, cx);
-					}))
+					// The panel is placed against this, so the button is a positioned box even
+					// while nothing is open. Where the press landed within it does not come into
+					// it: a menu belongs to the control, not to the pointer, and an activation
+					// with no pointer behind it -- the keyboard, the control socket -- opens the
+					// same menu in the same place.
+					.relative()
+					.on_click(cx.listener(move |this, _, _, cx| this.toggle_settings_menu(label, cx)))
 					.child(div().min_w_0().truncate().child(shown))
 					.child(icon(Icon::ChevronDown, p.muted).size_3())
+					.when(open, |s| s.child(self.choice_menu(p, label, options, chosen, set, cx)))
 					.into_any_element()
 			}
 			// A segmented control: one track with the segments inside it, so the alternatives read
@@ -1413,16 +1428,11 @@ impl Rdm {
 			.flex_col()
 			.gap_1()
 			.py_1p5()
-			// The open menu hangs off this, which is why the row is a positioned box even when
-			// nothing is open: an absolute child is placed against its nearest positioned
-			// ancestor, and without one here it would be placed against the pane.
-			.relative()
 			.child(line)
 			// The note runs the whole width under the row rather than beside the label, which is
 			// the only place it fits: a sentence given the label's column wraps into a gutter,
 			// and given the control's it is cut at four words. See spec/ui.md.
 			.when(!note.is_empty(), |s| s.child(div().text_xs().text_color(p.muted).child(note)))
-			.when(open, |s| s.child(self.choice_menu(p, row, cx)))
 	}
 }
 

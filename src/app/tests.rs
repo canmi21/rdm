@@ -1864,15 +1864,14 @@ fn at_the_windows_least_width_the_columns_are_their_floors_and_the_row_still_fit
 }
 
 /// A choice whose words will not fit side by side is a dropdown: closed it shows the one that is
-/// chosen, and the alternatives arrive in a panel when it is pressed.
+/// chosen, and the alternatives arrive in a panel under the button when it is pressed.
 ///
 /// **It names no option.** `Agent::offered` leaves out the disguise that would be this machine
 /// telling the truth, so the set is a different set on every system -- and an assertion naming
 /// one of them passes here and fails on two of the four runners, which is exactly what it did.
 /// The options are read from the same place the row reads them. See spec/workflow.md.
 #[gpui::test]
-fn a_long_choice_is_a_dropdown_that_opens_where_it_was_pressed(cx: &mut TestAppContext) {
-	use gpui::{point, px};
+fn a_long_choice_is_a_dropdown_that_opens_under_its_button(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
 	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
 	cx.run_until_parked();
@@ -1890,9 +1889,7 @@ fn a_long_choice_is_a_dropdown_that_opens_where_it_was_pressed(cx: &mut TestAppC
 	assert!(cx.debug_bounds("menu:settings.label.user_agent").is_none(), "with nothing open");
 	assert!(cx.debug_bounds(other_name).is_none(), "and no option of it on the pane");
 
-	rdm.update(&mut cx, |rdm, cx| {
-		rdm.toggle_settings_menu("settings.label.user_agent", point(px(300.0), px(200.0)), cx)
-	});
+	rdm.update(&mut cx, |rdm, cx| rdm.toggle_settings_menu("settings.label.user_agent", cx));
 	cx.run_until_parked();
 	assert!(cx.debug_bounds("menu:settings.label.user_agent").is_some(), "pressing opens it");
 
@@ -1903,15 +1900,87 @@ fn a_long_choice_is_a_dropdown_that_opens_where_it_was_pressed(cx: &mut TestAppC
 	});
 
 	// Escape answers the menu before the sheet: the panel is the topmost thing while it is open.
-	rdm.update(&mut cx, |rdm, cx| {
-		rdm.toggle_settings_menu("settings.label.user_agent", point(px(300.0), px(200.0)), cx)
-	});
+	rdm.update(&mut cx, |rdm, cx| rdm.toggle_settings_menu("settings.label.user_agent", cx));
 	cx.run_until_parked();
 	cx.simulate_keystrokes("escape");
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(rdm.settings_open(), "the sheet is still up");
 		assert!(rdm.settings.as_ref().unwrap().menu.is_none(), "and the panel is not");
 	});
+}
+
+/// The panel belongs to the button, not to the pointer: it opens under the button's bottom left
+/// whatever part of the button was pressed, and it costs the pane no room, so the rows around it
+/// stay where they were. They did not -- the menu used to be a child of the row, and the row it
+/// was not drawn for still paid a flex gap for the empty element that stood in for it, so every
+/// row under it slid down four points as a menu opened. See spec/ui.md.
+#[gpui::test]
+fn a_dropdown_opens_under_its_button_and_moves_nothing(cx: &mut TestAppContext) {
+	use crate::ui::settings_sheet::Section;
+	use gpui::{Modifiers, point, px};
+	let (rdm, mut cx) = open(cx);
+	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
+	cx.run_until_parked();
+	rdm.update(&mut cx, |rdm, cx| rdm.set_settings_section(Section::Network, cx));
+	cx.run_until_parked();
+
+	let button = cx.debug_bounds("choice:settings.label.user_agent").expect("the closed button");
+	// The row under it, which is the one the empty stand-in used to push down.
+	let under = cx.debug_bounds("setting:settings.label.user_agent").expect("the row under it");
+
+	// Pressed at its right edge, as far from its left corner as the button allows.
+	cx.simulate_click(point(button.right() - px(6.0), button.center().y), Modifiers::default());
+	cx.run_until_parked();
+	let menu = cx.debug_bounds("menu:settings.label.user_agent").expect("the panel");
+	assert_eq!(menu.origin.x, button.origin.x, "the panel's left edge is the button's");
+	assert_eq!(menu.origin.y, button.bottom() + px(4.0), "and it hangs four points under it");
+	assert_eq!(cx.debug_bounds("setting:settings.label.user_agent"), Some(under), "nothing moved");
+	assert_eq!(cx.debug_bounds("choice:settings.label.user_agent"), Some(button), "the button too");
+}
+
+/// An open menu rides the pane it was opened in: the pane scrolls, the row moves, and the panel
+/// moves exactly as far, being laid out against the button rather than pinned to a point of the
+/// window. Scrolled far enough that the button leaves what the pane shows, the menu goes with
+/// it rather than hanging over the card on its own. See spec/ui.md.
+#[gpui::test]
+fn an_open_menu_follows_its_button_and_lets_go_when_it_leaves(cx: &mut TestAppContext) {
+	use crate::ui::settings_sheet::Section;
+	use gpui::{ScrollDelta, ScrollWheelEvent, point, px};
+	let (rdm, mut cx) = open(cx);
+	rdm.update(&mut cx, |rdm, cx| rdm.open_settings(cx));
+	cx.run_until_parked();
+	// Network is longer than the card, so its pane is one that scrolls.
+	rdm.update(&mut cx, |rdm, cx| rdm.set_settings_section(Section::Network, cx));
+	cx.run_until_parked();
+	rdm.update(&mut cx, |rdm, cx| rdm.toggle_settings_menu("settings.label.user_agent", cx));
+	cx.run_until_parked();
+	let button = cx.debug_bounds("choice:settings.label.user_agent").expect("the button");
+	let menu = cx.debug_bounds("menu:settings.label.user_agent").expect("the panel");
+
+	let scroll = |cx: &mut VisualTestContext, at: gpui::Point<gpui::Pixels>, by: f32| {
+		cx.simulate_event(ScrollWheelEvent {
+			position: at,
+			delta: ScrollDelta::Pixels(point(px(0.0), px(by))),
+			..Default::default()
+		});
+		cx.run_until_parked();
+	};
+
+	scroll(&mut cx, button.center(), -40.0);
+	let moved = cx.debug_bounds("choice:settings.label.user_agent").expect("the button, moved");
+	let panel = cx.debug_bounds("menu:settings.label.user_agent").expect("the panel, moved");
+	assert_eq!(moved.origin.y, button.origin.y - px(40.0), "the button rode the scroll");
+	assert_eq!(panel.origin.y, menu.origin.y - px(40.0), "and the panel rode it exactly as far");
+	assert_eq!(panel.origin.x, moved.origin.x, "still under the button");
+
+	// Far enough that the button is no longer within what the pane shows.
+	let sheet = cx.debug_bounds("settings-sheet").expect("the card").center();
+	scroll(&mut cx, sheet, -400.0);
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.settings.as_ref().unwrap().menu.is_none(), "the menu let go with its button");
+		assert!(rdm.settings_open(), "and the sheet is still up");
+	});
+	assert!(cx.debug_bounds("menu:settings.label.user_agent").is_none(), "nothing is drawn for it");
 }
 
 /// The row whose setting is written on one line and chosen on another is not called the same
@@ -1929,4 +1998,3 @@ fn the_two_user_agent_rows_are_named_apart_and_both_are_searchable(cx: &mut Test
 		"the field row answers to the name it is drawn under"
 	);
 }
-

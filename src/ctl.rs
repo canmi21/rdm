@@ -188,9 +188,9 @@ impl Rdm {
 			}
 			// Alone, the sheet is toggled; with a section's name, it is opened on that section.
 			"settings" if label.is_empty() => self.toggle_settings(!self.settings_open(), cx),
-			// Opens or closes one row's dropdown, by any part of its label. A menu is a press
-			// away and the pointer is not ours to move, so the place is the window's middle
-			// rather than a button's edge. See spec/workflow.md.
+			// Opens or closes one row's dropdown, by any part of its label: a menu is a press
+			// away and the pointer is not ours to move. Where it opens is the button's own
+			// business, so this says only which row. See spec/workflow.md.
 			"menu" => {
 				let wanted = label.to_ascii_lowercase();
 				let Some(row) = self
@@ -200,8 +200,7 @@ impl Rdm {
 				else {
 					return failure("menu takes part of the label of a row that has a dropdown");
 				};
-				let middle = gpui::point(self.viewport.width / 2.0, self.viewport.height / 2.0);
-				self.toggle_settings_menu(row, middle, cx);
+				self.toggle_settings_menu(row, cx);
 			}
 			"settings" => {
 				let Some(section) = crate::ui::settings_sheet::Section::ALL

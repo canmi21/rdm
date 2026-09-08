@@ -402,21 +402,41 @@ The count is in the columns the words draw in rather than in characters, a CJK g
 two, or the Chinese and Japanese windows would be called narrow when they are not. Five options
 are a dropdown whatever they say, a row of five being a list. See `segments_fit`.
 
-**The menu is anchored in window coordinates, at the point the press landed.** That point is
-carried on the sheet because it is the only one to be had: the row is inside a pane that scrolls
-and clips, inside a card centred in the window, and nothing in that stack knows where it ended up
-on screen. Every other placement was tried and each failed differently -- laid out in the flow it
-pushed the rows below down, so the row somebody had come to press moved out from under the
-pointer as it opened; taken out of the flow it was clipped at the pane's edge; deferred past the
-clip it drew outside the card; and anchored locally it landed in the corner of the window, an
-anchored element inside a centred row being placed off its own origin, which is the same trap
-`status_bar.rs` records for the funnel and the reason that one is positioned in window space too.
+**The menu hangs off its button, not off the pointer.** A wrapper covers the button exactly --
+absolute, so it is out of the button's flow and costs it no room -- and the panel is anchored a
+hundred percent down that wrapper, which is the button's bottom edge whatever the row turned out
+to be. A hundred percent of an element is its padding box, so the point of border the wrapper sits
+inside is given back on both axes and four more points below leave the gap. The sheet remembers
+which row is open and nothing else: where the panel goes is the button's own business, so an
+activation with no pointer behind it -- the keyboard, the control socket -- opens the same menu in
+the same place.
 
-`snap_to_window_with_margin` is what makes it usable near an edge: GPUI measures the panel and
-flips or slides it to fit, so a row at the bottom of the card opens upward without anything here
-working out which way there is room. An activation with no pointer behind it -- a keyboard press
-through the accessibility tree, the control socket -- opens at the middle of the window, there
-being nowhere better to put it.
+**Anchoring it locally is what keeps the two together.** The panel is laid out inside the pane
+like everything else, so the pane's scroll and the card's centring move it exactly as they move
+the button. It is deferred above the sheet, which is itself deferred, or the card would paint over
+it; a deferred draw carries no clip, so the panel is free to fall past the pane's bottom edge
+rather than being cut at it. `snap_to_window_with_margin` is what makes it usable near an edge:
+GPUI measures the panel and slides it to fit, so a row at the bottom of the card opens upward
+without anything here having to work out which way there is room.
+
+It opened at the point the press landed once, carried on the sheet in window coordinates, and that
+was wrong three ways at a time. The panel landed wherever within the two hundred points of the
+button the pointer happened to be, over the button itself as often as under it. The point was
+frozen at the press while the row was not: scrolling the pane moved the row and left the panel
+where it had been. And the panel was a child of the row, so the row it was **not** drawn for --
+`Network` names one setting twice, the disguise chosen on one line and what is sent on another,
+and both rows answer to the same key -- still paid a flex gap for the empty element that stood in
+for its menu, and everything under it slid four points down as one opened. Local anchoring was
+recorded here as having been tried and having landed in the corner of the window; that is what
+`Local` does with a window-space point, which it adds to the element's own origin. Given no point
+at all it uses that origin, which is exactly where the panel belongs.
+
+**A menu lets go when its button leaves.** The panel follows the button, and a button scrolled out
+of the pane would carry it over the card and past the card's edge, a menu belonging to a row
+nobody can see. So the pane's own clip is read where it is in force -- at prepaint, from inside the
+pane's subtree -- against the button's bounds, and the menu closes the frame the button is no
+longer within it. The closing is deferred, a frame being laid out being no place to change what it
+says.
 
 **A press on the button its own menu belongs to has to be read once, not twice.** That press is
 outside the panel, so it closes the menu on the way down and the button would open it again on
