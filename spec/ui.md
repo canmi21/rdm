@@ -392,25 +392,38 @@ answering. The cap that keeps a long value from pushing a label out of its row a
 the two share a line; a segmented control has the line to itself, and holding it to six tenths of
 one cut `No proxy` to `No`.
 
-**A choice is a segmented control: one track, the segments inside it, wrapping to a second line
-where the words need one.** Lit and unlit words with nothing around them read as a button and
-some loose text rather than as one control offering alternatives, which is what they were.
+**A choice is a segmented control while its words fit side by side, and a dropdown after that.**
+Lit and unlit words with nothing around them read as a button and some loose text rather than as
+one control offering alternatives, so the segments sit in one track; a set too wide for that runs
+off the pane, which the four disguises did, the fourth drawn where nothing could reach it. Which
+one a set gets is **counted, not measured** -- a width can only be had after the frame it would
+decide, and a control that changed shape one frame late would flicker on every language change.
+The count is in the columns the words draw in rather than in characters, a CJK glyph drawing in
+two, or the Chinese and Japanese windows would be called narrow when they are not. Five options
+are a dropdown whatever they say, a row of five being a list. See `segments_fit`.
 
-**There was a dropdown for the long sets and it is gone.** A menu wants a position, and a
-position is the one thing this place cannot give it. The row it hangs from is inside a pane that
-scrolls and clips, inside a card that is centred in the window, and every way of placing it
-failed differently: laid out in the flow it pushed every row below down, so the row somebody had
-come to press moved out from under the pointer as it opened; taken out of the flow it was clipped
-at the pane's edge with no way to reach the rest; deferred past the clip it drew outside the card
-and over the list; and anchored, it landed in the corner of the window -- the same trap
-`status_bar.rs` records for the funnel, an anchored element inside a centred row being laid out
-off its own origin and landing that far from where it was told.
+**The menu is anchored in window coordinates, at the point the press landed.** That point is
+carried on the sheet because it is the only one to be had: the row is inside a pane that scrolls
+and clips, inside a card centred in the window, and nothing in that stack knows where it ended up
+on screen. Every other placement was tried and each failed differently -- laid out in the flow it
+pushed the rows below down, so the row somebody had come to press moved out from under the
+pointer as it opened; taken out of the flow it was clipped at the pane's edge; deferred past the
+clip it drew outside the card; and anchored locally it landed in the corner of the window, an
+anchored element inside a centred row being placed off its own origin, which is the same trap
+`status_bar.rs` records for the funnel and the reason that one is positioned in window space too.
 
-Wrapping has none of those failures because it asks for nothing: no position, no layer, no
-measurement. What it costs is a second line for the few sets long enough to need one, and that is
-cheaper than any of the four. The rule that used to decide between the two shapes -- counting the
-columns the words draw in, a CJK glyph counting two -- went with the dropdown, there being one
-shape left to choose.
+`snap_to_window_with_margin` is what makes it usable near an edge: GPUI measures the panel and
+flips or slides it to fit, so a row at the bottom of the card opens upward without anything here
+working out which way there is room. An activation with no pointer behind it -- a keyboard press
+through the accessibility tree, the control socket -- opens at the middle of the window, there
+being nowhere better to put it.
+
+**A press on the button its own menu belongs to has to be read once, not twice.** That press is
+outside the panel, so it closes the menu on the way down and the button would open it again on
+the way up: a menu that will not shut. The sheet remembers which row a press outside just closed,
+and the second half of the same press reads that and does nothing. Ordering the two handlers
+instead does not work -- `default_prevented`, which is how `backdrop` tells a switch's press from
+a plain one, is not yet set when the panel hears it.
 
 **A resolved address fills in the name it will be saved under.** Add Task looks at an address
 before anything is fetched -- what it is, how big, whether it can be split -- and the name the

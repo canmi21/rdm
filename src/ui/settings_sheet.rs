@@ -50,6 +50,17 @@ pub struct SettingsSheet {
 	pub fields: HashMap<&'static str, Entity<TextInput>>,
 	/// What the last field said no to, under the row.
 	pub complaint: Option<(&'static str, String)>,
+	/// The row whose dropdown is open, and where the press that opened it landed in the window.
+	/// The place is kept because it is the only one available: see `choice_menu`. One menu at a
+	/// time -- two down the same pane would each be answering for the other's row.
+	pub menu: Option<(&'static str, gpui::Point<gpui::Pixels>)>,
+	/// The row whose menu a press outside it has just closed. A press on the button its menu
+	/// belongs to is a press outside the panel, so it closes the menu on the way down and would
+	/// open it again on the way up -- a menu that will not shut. This is what the second half of
+	/// that press reads to know the first half already answered it, and it is cleared by the
+	/// reading. Ordering the two handlers instead was tried: `default_prevented` is not set yet
+	/// when the panel hears the press.
+	pub dismissed: Option<&'static str>,
 }
 
 /// Every field there is: the key that is its setting's identity, its placeholder, and the note
@@ -228,6 +239,8 @@ impl Rdm {
 				search,
 				fields,
 				complaint: None,
+				menu: None,
+				dismissed: None,
 			});
 		}
 		cx.notify();
@@ -246,9 +259,72 @@ impl Rdm {
 
 	/// Opens one row's dropdown, or closes whatever is open. Moving to another section closes it
 	/// too: a menu belongs to a row, and the row is gone.
+	/// Opens one row's dropdown at the point the press landed, or closes whatever is open.
+	pub(crate) fn toggle_settings_menu(
+		&mut self,
+		label: &'static str,
+		at: gpui::Point<gpui::Pixels>,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(sheet) = &mut self.settings {
+			// The press that got here may have closed this very menu a moment ago, on its way
+			// down; opening it again would make the button unable to shut what it opened.
+			if sheet.dismissed.take() == Some(label) {
+				cx.notify();
+				return;
+			}
+			sheet.menu = match sheet.menu {
+				Some((open, _)) if open == label => None,
+				_ => Some((label, at)),
+			};
+			cx.notify();
+		}
+	}
+
+	pub(crate) fn close_settings_menu(&mut self, cx: &mut Context<Self>) {
+		if let Some(sheet) = &mut self.settings
+			&& sheet.menu.take().is_some()
+		{
+			sheet.dismissed = None;
+			cx.notify();
+		}
+	}
+
+	/// The same, from a press outside the panel, which remembers what it closed so that a press
+	/// on the button does not reopen it. See `SettingsSheet::dismissed`.
+	pub(crate) fn dismiss_settings_menu(&mut self, cx: &mut Context<Self>) {
+		if let Some(sheet) = &mut self.settings
+			&& let Some((label, _)) = sheet.menu.take()
+		{
+			sheet.dismissed = Some(label);
+			cx.notify();
+		}
+	}
+
+	pub(crate) fn settings_menu_open(&self) -> bool {
+		self.settings.as_ref().is_some_and(|sheet| sheet.menu.is_some())
+	}
+
+	/// The labels of the rows whose control is a dropdown, for the control socket: a menu is
+	/// opened by a press and the pointer is not ours to move. See spec/workflow.md.
+	#[cfg(all(debug_assertions, unix))]
+	pub(crate) fn settings_dropdowns(&self) -> Vec<&'static str> {
+		self
+			.settings_rows()
+			.iter()
+			.filter(|row| match &row.control {
+				Control::Choice { options, .. } => !segments_fit(options),
+				_ => false,
+			})
+			.map(|row| row.label)
+			.collect()
+	}
+
 	pub(crate) fn set_settings_section(&mut self, section: Section, cx: &mut Context<Self>) {
 		if let Some(sheet) = &mut self.settings {
 			sheet.section = section;
+			sheet.menu = None;
+			sheet.dismissed = None;
 			cx.notify();
 		}
 	}
@@ -1015,6 +1091,79 @@ impl Rdm {
 			.into_any_element()
 	}
 
+	/// The options of an open dropdown, anchored in **window** coordinates at the point the press
+	/// landed. That point is kept on the sheet rather than worked out here because it is the only
+	/// one to be had: the row is inside a pane that scrolls and clips, inside a card centred in
+	/// the window, and nothing in that stack knows where it ended up on screen. Anchoring
+	/// locally lands the panel in the corner of the window -- an anchored element inside a centred
+	/// row is placed off its own origin, which is the same trap `status_bar.rs` records for the
+	/// funnel and the reason that one is positioned in window space too.
+	///
+	/// `snap_to_window_with_margin` is what makes it usable near an edge: GPUI measures the panel
+	/// and flips or slides it to fit, so a row at the bottom of the card opens upward without
+	/// anything here having to work out which way there is room. Deferred above the sheet, which
+	/// is itself deferred, or the card would paint over it.
+	fn choice_menu(
+		&self,
+		p: crate::ui::theme::Palette,
+		row: &Row,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
+		let label = row.label;
+		let at = self.settings.as_ref().and_then(|sheet| sheet.menu).map(|(_, at)| at);
+		let (Control::Choice { options, chosen, set }, Some(at)) = (&row.control, at) else {
+			return div().into_any_element();
+		};
+		let (chosen, set) = (*chosen, *set);
+		let panel = floating(p, SharedString::from(format!("menu:{label}")))
+			.debug_selector(move || format!("menu:{label}"))
+			.flex()
+			.flex_col()
+			.gap_px()
+			.w(px(200.0))
+			.p_1()
+			// A press anywhere else closes it -- except on the button it belongs to, which would
+			// otherwise close it here and open it again in the same press, and read as a menu
+			// that will not shut. The button marks its press the way every control that keeps the
+			// keyboard does, which is what `default_prevented` reports; `backdrop` reads the same
+			// flag for the same reason. See src/ui/mod.rs.
+			.on_mouse_down_out(cx.listener(|this, _, _, cx| this.dismiss_settings_menu(cx)))
+			.children(options.iter().enumerate().map(|(index, option)| {
+				let on = index == chosen;
+				div()
+					.id(SharedString::from(format!("option:{label}:{option}")))
+					.role(Role::RadioButton)
+					.aria_label(*option)
+					.aria_selected(on)
+					.debug_selector(move || format!("choice:{option}"))
+					.flex()
+					.items_center()
+					.px_1p5()
+					.py_0p5()
+					.rounded_sm()
+					.cursor_pointer()
+					.leaves_focus()
+					.text_color(if on { p.text } else { p.muted })
+					.when(on, |s| s.bg(p.selection))
+					.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
+					.on_click(cx.listener(move |this, _, _, cx| {
+						set(this, index, cx);
+						this.close_settings_menu(cx);
+					}))
+					.child(*option)
+			}));
+		deferred(
+			anchored()
+				.position_mode(gpui::AnchoredPositionMode::Window)
+				.anchor(gpui::Anchor::TopLeft)
+				.position(at)
+				.snap_to_window_with_margin(px(8.0))
+				.child(panel),
+		)
+		.priority(3)
+		.into_any_element()
+	}
+
 	/// The strip at the top of the card: its name and the one button that closes it, laid out as
 	/// every other sheet's is -- the name at the left, the cross at the right, on every system.
 	/// A sheet is not a window and its cross is not a window button, so there is nothing here for
@@ -1080,6 +1229,12 @@ impl Rdm {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement + use<> {
 		let label = row.label;
+		// A choice is drawn one of two ways and its words decide which: see `segments_fit`.
+		let dropdown = match &row.control {
+			Control::Choice { options, .. } => !segments_fit(options),
+			_ => false,
+		};
+		let open = self.settings.as_ref().is_some_and(|sheet| sheet.menu.is_some_and(|(l, _)| l == label));
 		let right = match &row.control {
 			Control::Value(value) => {
 				div().text_color(p.muted).truncate().child(value.clone()).into_any_element()
@@ -1107,21 +1262,51 @@ impl Rdm {
 					.child(div().size(px(14.0)).rounded_full().bg(p.text))
 					.into_any_element()
 			}
+			// One word and a chevron, the options in a panel anchored where the press landed.
+			// A long set has no other shape: side by side its words run off the pane, and the
+			// fourth disguise was drawn where nothing could reach it. See `segments_fit`.
+			Control::Choice { options, chosen, .. } if dropdown => {
+				let shown = options.get(*chosen).copied().unwrap_or_default();
+				div()
+					.id(SharedString::from(format!("choice:{label}")))
+					.role(Role::Button)
+					.aria_label(label)
+					.debug_selector(move || format!("choice:{label}"))
+					.flex()
+					.items_center()
+					.justify_between()
+					.gap_2()
+					.w(px(200.0))
+					.flex_none()
+					.px_2()
+					.py_0p5()
+					.rounded_sm()
+					.border_1()
+					.border_color(if open { p.accent } else { p.border })
+					.bg(p.track)
+					.cursor_pointer()
+					.leaves_focus()
+					.on_click(cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+						// Where the press landed, which is the only place the menu can be told to
+						// open at; a keyboard or a touch activation carries no pointer, and the
+						// middle of the window is what those get. See `choice_menu`.
+						let at = match event {
+							gpui::ClickEvent::Mouse(mouse) => mouse.down.position,
+							_ => {
+								let size = window.viewport_size();
+								gpui::point(size.width / 2.0, size.height / 2.0)
+							}
+						};
+						this.toggle_settings_menu(label, at, cx);
+					}))
+					.child(div().min_w_0().truncate().child(shown))
+					.child(icon(Icon::ChevronDown, p.muted).size_3())
+					.into_any_element()
+			}
 			// A segmented control: one track with the segments inside it, so the alternatives read
 			// as one control offering a choice rather than a button and some loose words, which
-			// is what lit and unlit text with nothing around it read as.
-			//
-			// **It wraps rather than opening a menu.** A dropdown was tried and taken out: it
-			// wants a position, and a position here is the one thing that cannot be had. The
-			// panel hangs off a row inside a pane that scrolls and clips, inside a card that is
-			// centred in the window -- so laying it out in the flow pushed every row below it
-			// down and out from under the pointer that had come to press it; taking it out of the
-			// flow left it clipped at the pane's edge; deferring it past the clip drew it outside
-			// the card; and anchoring it landed it in the corner of the window, which is the same
-			// trap `status_bar.rs` records for the funnel, an anchored element inside a centred
-			// row being placed off its own origin. Wrapping needs no position and has none of
-			// those failures. What it costs is a second line for the few sets long enough to need
-			// one. See spec/ui.md.
+			// is what lit and unlit text with nothing around it read as. It wraps, so a set that
+			// is a little too wide costs a second line rather than a menu.
 			Control::Choice { options, chosen, set } => {
 				let (chosen, set) = (*chosen, *set);
 				div()
@@ -1191,14 +1376,16 @@ impl Rdm {
 		// A segmented control is as wide as all of its words at once and does not fit beside a
 		// label, so it goes under one. A dropdown is one word and a chevron and stays on the line
 		// with everything else.
-		let stacked = matches!(row.control, Control::Choice { .. });
+		// A segmented control is as wide as all of its words and goes under the label; a dropdown
+		// is one word and a chevron and stays on the line with everything else.
+		let stacked = matches!(row.control, Control::Choice { .. }) && !dropdown;
 		let note = crate::i18n::t(row.note);
 		// An action sizes itself: its status wraps within its own ceiling, so capping and
 		// truncating the whole thing here would undo the wrapping a line below.
 		let fixed = matches!(
 			row.control,
 			Control::Switch { .. } | Control::Field { .. } | Control::Action { .. }
-		);
+		) || dropdown;
 		let title = crate::i18n::t(row.title.unwrap_or(row.label));
 		let line = div()
 			.flex()
@@ -1235,7 +1422,33 @@ impl Rdm {
 			// the only place it fits: a sentence given the label's column wraps into a gutter,
 			// and given the control's it is cut at four words. See spec/ui.md.
 			.when(!note.is_empty(), |s| s.child(div().text_xs().text_color(p.muted).child(note)))
+			.when(open, |s| s.child(self.choice_menu(p, row, cx)))
 	}
+}
+
+/// Whether a choice's options can be drawn side by side as a segmented control, or want a
+/// dropdown instead. What decides is how much room the words ask for, measured in the columns
+/// they draw in rather than in characters: a CJK glyph is twice the width of a Latin one, so
+/// `简体中文` is four characters and eight columns, and counting characters would call the
+/// Japanese and Chinese windows narrow when they are not.
+///
+/// It is a count and not a measurement because a width can only be had after the frame it would
+/// decide, and a control that changed shape one frame late would flicker on every language
+/// change. Five options are a dropdown whatever they say, a row of five being a list.
+fn segments_fit(options: &[&str]) -> bool {
+	let columns: usize = options
+		.iter()
+		.map(|option| option.chars().map(|c| if wide(c) { 2 } else { 1 }).sum::<usize>())
+		.sum();
+	options.len() <= 4 && columns <= 52
+}
+
+/// The ranges a font draws at two columns: the CJK blocks, the kana, Hangul and the full-width
+/// forms. Enough for the three languages the window is read in.
+fn wide(c: char) -> bool {
+	matches!(c as u32,
+		0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF
+		| 0xFE30..=0xFE6F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6 | 0x20000..=0x3FFFD)
 }
 
 /// A heading within a section: smaller than the section's own and set off above the rows it
@@ -1252,4 +1465,44 @@ fn group_title(p: crate::ui::theme::Palette, name: &'static str) -> gpui::Div {
 
 fn section_title(p: crate::ui::theme::Palette, name: &'static str) -> gpui::Div {
 	div().text_xs().text_color(p.muted).pb_1().child(name)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The two sets the rule was written between: the languages, which fit and read better as
+	/// segments, and the disguises, whose fourth option ran off the pane.
+	#[test]
+	fn a_choice_is_segments_while_its_words_fit_and_a_dropdown_after_that() {
+		assert!(segments_fit(&["System", "English", "简体中文", "日本語"]));
+		assert!(!segments_fit(&[
+			"This application",
+			"Chrome on Windows",
+			"Chrome on Linux",
+			"Something else",
+		]));
+		// The widest set that still fits, and the one the budget was measured against.
+		assert!(segments_fit(&["Ignore them", "Show what is inside", "Keep them as folders"]));
+	}
+
+	/// A CJK glyph draws in two columns, so the same sentence is half as many characters and the
+	/// same width. Counting characters would have called this set narrow and drawn it off the pane.
+	#[test]
+	fn a_cjk_glyph_counts_as_the_two_columns_it_draws_in() {
+		assert_eq!("简体中文".chars().count(), 4);
+		assert!(wide('简') && wide('日') && wide('ア') && wide('한'));
+		assert!(!wide('a') && !wide('/') && !wide('1'));
+		let latin = ["aaaaaaaaa", "aaaaaaaaa", "aaaaaaaaa"];
+		let cjk = ["简体中文简体中文简", "简体中文简体中文简", "简体中文简体中文简"];
+		assert!(segments_fit(&latin));
+		assert!(!segments_fit(&cjk));
+	}
+
+	/// However short they are: a row of five words is a list, and a list gets a list's shape.
+	#[test]
+	fn five_options_are_a_dropdown_whatever_they_say() {
+		assert!(segments_fit(&["a", "b", "c", "d"]));
+		assert!(!segments_fit(&["a", "b", "c", "d", "e"]));
+	}
 }
