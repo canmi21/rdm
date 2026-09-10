@@ -15,7 +15,6 @@ use crate::app::Rdm;
 use crate::download::format_bytes;
 use crate::ui::icon::{Icon, icon};
 use crate::ui::icon_button;
-use crate::ui::status_bar;
 use crate::ui::theme::Palette;
 use crate::notify::Occasion;
 use crate::update::{self, Available, Manifest, Policy, Region, install};
@@ -485,9 +484,11 @@ impl Rdm {
 		let busy = action.is_none();
 		Some(
 			crate::ui::floating(p, "update-toast")
-				.absolute()
-				.bottom(px(status_bar::HEIGHT + 12.0))
-				.right(px(12.0))
+				// Where it sits is the corner's to say, not the card's: the corner is one column
+				// placed once, and a card that placed itself as well would be placed twice --
+				// its own inset measured from a box that is already inset by the same amount,
+				// which put it a status bar and a gap further in than either meant. See
+				// `Rdm::corner`.
 				.max_w(px(420.0))
 				.role(Role::Alert)
 				.debug_selector(|| "toast:update".to_owned())

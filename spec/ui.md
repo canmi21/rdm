@@ -773,6 +773,16 @@ right by occluding, because the title was never behind it. The zone is `deferred
 after the whole header; that is what puts it on top, at priority zero, so a sheet or the menu
 still covers it.
 
+**An inset is measured from the parent, not from the window.** `absolute` positions an element
+against the box it is written inside, so a thing placed in the corner is placed once, by whatever
+owns the corner. The corner is one column -- the notices, oldest at the top, the update's card
+under them -- laid out 12 from the right and clear of the status bar; a card that also gave
+itself the same insets got them twice, and sat a status bar and a gap in from the corner it was
+written for. It still followed the window, which is why it read as a card that had been placed at
+a point: wrong by a fixed amount at every size, and looking wrongest where the window was short
+enough for the gap to matter. Placement belongs to the container; a child inside it says how big
+it is and nothing about where.
+
 **A hot zone stops the press; it does not occlude.** The column drag is driven by the window
 root's own move and up handlers, and a listener on an element runs only while that element is the
 one under the pointer. A zone that occluded would take the press and then never hear the drag it

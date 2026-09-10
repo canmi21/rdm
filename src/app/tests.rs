@@ -1998,3 +1998,57 @@ fn the_two_user_agent_rows_are_named_apart_and_both_are_searchable(cx: &mut Test
 		"the field row answers to the name it is drawn under"
 	);
 }
+
+/// The card belongs to the window's bottom right corner, and a window is resized. What is
+/// checked is the gap rather than the point: 12 from the right, and the status bar and 12 from
+/// the bottom, whatever the window's size, since a card placed at a point rather than a gap is a
+/// card that is in the corner of the size it was opened at and nowhere near one after a drag.
+#[gpui::test]
+fn the_update_card_keeps_to_the_corner_however_the_window_is_sized(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open(cx);
+	let manifest = crate::update::Manifest::parse(
+		r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
+			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
+			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
+			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
+			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
+		] }"#,
+	)
+	.unwrap();
+	rdm.update(&mut cx, |rdm, _| {
+		rdm.updates.this = None;
+		rdm.updates.announces = true;
+	});
+	rdm.update(&mut cx, |rdm, cx| rdm.apply_manifest(manifest, true, cx));
+	cx.run_until_parked();
+	for extent in [(900.0, 600.0), (1280.0, 900.0), (720.0, 380.0)] {
+		let (width, height) = extent;
+		cx.simulate_resize(gpui::size(gpui::px(width), gpui::px(height)));
+		cx.run_until_parked();
+		cx.draw(gpui::Point::default(), gpui::size(gpui::px(width), gpui::px(height)), |_, _| {
+			gpui::div()
+		});
+		let card = cx.debug_bounds("toast:update").expect("the card is drawn");
+		assert_eq!(width - f32::from(card.right()), 12.0, "12 from the right at {width}x{height}");
+		assert_eq!(
+			height - f32::from(card.bottom()),
+			crate::ui::status_bar::HEIGHT + 12.0,
+			"clear of the status bar at {width}x{height}"
+		);
+	}
+	// A notice arriving stacks above the card rather than moving it: the corner is one column,
+	// laid out from its bottom, so what is already there stays where it is.
+	let card = cx.debug_bounds("toast:update").expect("the card is drawn");
+	rdm.update(&mut cx, |rdm, cx| {
+		rdm.set_notice(crate::notify::Occasion::Finished, crate::notify::Style::InApp, cx);
+		rdm.tell_of(
+			crate::notify::Occasion::Finished,
+			crate::notify::Notice::new("Download finish", "debian.iso"),
+			cx,
+		);
+	});
+	cx.run_until_parked();
+	let notice = cx.debug_bounds("notice:0").expect("the notice is drawn");
+	assert_eq!(cx.debug_bounds("toast:update"), Some(card), "the card did not move");
+	assert!(notice.bottom() <= card.origin.y, "and the notice sits above it");
+}
