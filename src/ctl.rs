@@ -84,10 +84,10 @@ struct AddState {
 	more: bool,
 	name: String,
 	folder: Option<String>,
-	mirrors: String,
 	checksum: String,
-	range: String,
 	limit: String,
+	range_start: String,
+	range_end: String,
 }
 
 #[derive(Serialize)]
@@ -127,7 +127,7 @@ struct State<'a> {
 	windows: Vec<u64>,
 	settings: bool,
 	category_sheet: Option<&'static str>,
-	/// The Add Task sheet while it is up: what each field holds and what looking at the address
+	/// The New Task sheet while it is up: what each field holds and what looking at the address
 	/// found. See spec/ui.md.
 	add: Option<AddState>,
 	/// The table, as the header has it: the widths asked for, the widths there is room to draw,
@@ -273,10 +273,10 @@ impl Rdm {
 			more: sheet.more,
 			name: read(&sheet.name),
 			folder: sheet.folder.as_ref().map(|path| path.display().to_string()),
-			mirrors: read(&sheet.mirrors),
 			checksum: read(&sheet.checksum),
-			range: read(&sheet.range),
 			limit: read(&sheet.limit),
+			range_start: read(&sheet.range_start),
+			range_end: read(&sheet.range_end),
 		})
 	}
 
@@ -549,7 +549,7 @@ impl Rdm {
 			// is dropped first: with it in place, Enter is the second step and adds the download.
 			"look" if !label.is_empty() => {
 				let Some(sheet) = &mut self.adding else {
-					return failure("look needs the Add Task sheet open: ax press \"Add Task\"");
+					return failure("look needs the New Task sheet open: ax press \"Add Task\"");
 				};
 				sheet.found = None;
 				sheet.page = None;

@@ -100,12 +100,12 @@ restart or a new window costs one extra round. **Only an element with both an id
 node.** A plain string child has neither, so text a tool or VoiceOver should read is written
 `text!(...)`: a `Label` whose id is its source location, or `text!(id = ..., ...)` where one
 call site draws several. A container that should gather what is inside it takes an id, a role
-and a label, as the Add Task card does with `Dialog`. `TextInput` is a `TextInput` node with its
+and a label, as the New Task card does with `Dialog`. `TextInput` is a `TextInput` node with its
 content as the value, so a field's text is read rather than inferred from a screenshot. The dump
 carries no bounds, so layout is read from `ax tree`, which ends each line with the element's
 frame in points from the window's top-left.
 
-`ctl state` covers the sheets as well as the list: `add` is the Add Task sheet's fields and what
+`ctl state` covers the sheets as well as the list: `add` is the New Task sheet's fields and what
 looking at the address found. `ctl look <address>` types an address into the open sheet and looks
 at it as Enter would, which reaches the found and page faces without the keyboard and adds
 nothing. The sheet itself is opened with `ax press "Add Task"`.

@@ -1,11 +1,11 @@
-//! Adding a download is a sheet inside the main window: one field over a dimmed list, filled
-//! from the clipboard when what is there reads as an address. Enter or Add has the engine look
-//! at the address first; a file is queued at once, a web page is said to be one, with the files
-//! it links to offered instead. See spec/ui.md.
+//! Adding a download is a sheet inside the main window, titled New Task: one field over a dimmed
+//! list, filled from the clipboard when what is there reads as an address. Enter or Check has the
+//! engine look at the address first; a file is shown and Enter or Download queues it, a web page
+//! is said to be one, with the files it links to offered instead. See spec/ui.md.
 
 use std::sync::mpsc::Receiver;
 
-use gpui::{Context, Entity, IntoElement, Window, deferred, div, prelude::*, px, text};
+use gpui::{App, Context, Entity, IntoElement, Window, deferred, div, prelude::*, px, text};
 use reqwest::Url;
 
 use crate::app::Rdm;
@@ -29,15 +29,16 @@ pub struct AddSheet {
 	/// The address is a file, looked at: what the server said of it. How it downloads is not
 	/// asked here; the download's window changes that while it runs. See spec/ui.md.
 	pub found: Option<Found>,
-	/// The rest of what can be asked for, behind More: the name to save under, the folder,
-	/// other addresses of the same file, a checksum, a range and a limit of its own.
-	pub more: bool,
+	/// The name to save under and a checksum, on the face of the sheet.
 	pub name: Entity<TextInput>,
-	pub folder: Option<std::path::PathBuf>,
-	pub mirrors: Entity<TextInput>,
 	pub checksum: Entity<TextInput>,
-	pub range: Entity<TextInput>,
+	/// More options: the folder, a limit of its own, and the part of the file wanted, as the
+	/// first byte and the byte it stops before.
+	pub more: bool,
+	pub folder: Option<std::path::PathBuf>,
 	pub limit: Entity<TextInput>,
+	pub range_start: Entity<TextInput>,
+	pub range_end: Entity<TextInput>,
 	pub error: Option<String>,
 }
 
@@ -68,6 +69,33 @@ pub fn parse_connections(text: &str) -> Result<Option<u16>, String> {
 	if text.is_empty() || text.eq_ignore_ascii_case("auto") { Ok(None) } else { parse_count(text).map(Some) }
 }
 
+/// The two range fields as the row keeps them: `start-end` in bytes, the end excluded, or None for
+/// the whole file -- both empty, or a start of zero with the end empty or at the file's size.
+pub fn part_of_file(start: &str, end: &str, size: Option<u64>) -> Result<Option<String>, String> {
+	let number = |text: &str| -> Result<Option<u64>, String> {
+		let text = text.trim().replace([' ', ','], "");
+		if text.is_empty() {
+			Ok(None)
+		} else {
+			text.parse().map(Some).map_err(|_| "A range is counted in whole bytes.".to_owned())
+		}
+	};
+	let (start, end) = (number(start)?.unwrap_or(0), number(end)?);
+	if let Some(size) = size
+		&& (start >= size || end.is_some_and(|end| end > size))
+	{
+		return Err(format!("The file is {size} bytes; the range must lie inside it."));
+	}
+	if end.is_some_and(|end| end <= start) {
+		return Err("A range ends after it starts.".to_owned());
+	}
+	let whole = start == 0 && end.is_none_or(|end| Some(end) == size);
+	Ok((!whole).then(|| match end {
+		Some(end) => format!("{start}-{end}"),
+		None => format!("{start}-"),
+	}))
+}
+
 /// Whatever was typed or pasted, as an address if it can be one. With a scheme, it must be
 /// http or https. Without one, `example.org/file.zip` is tried as https, which is what the
 /// person meant; anything with whitespace or no dot in it is not tried at all.
@@ -86,6 +114,14 @@ pub fn parse_address(text: &str) -> Option<Url> {
 		return None;
 	}
 	Url::parse(&format!("https://{text}")).ok().filter(|u| u.host().is_some())
+}
+
+/// Whether what was found is for the address now in the field: then Enter downloads it, and
+/// otherwise Enter looks again.
+fn found_is_current(sheet: &AddSheet, cx: &App) -> bool {
+	sheet.found.as_ref().is_some_and(|found| {
+		parse_address(&sheet.input.read(cx).content).is_some_and(|url| url == found.url)
+	})
 }
 
 impl Rdm {
@@ -121,25 +157,25 @@ impl Rdm {
 					cx.observe(&field, |_, _, cx| cx.notify()).detach();
 					field
 				};
-				let (name, mirrors, checksum, range, limit) = (
+				let (name, checksum, limit, range_start, range_end) = (
 					field("As the server names it"),
-					field("Other addresses of the same file, apart by spaces"),
-					field("sha256, sha512 or md5 hex; the length says which"),
-					field("start-end, in bytes"),
+					field("sha256, sha512 or md5"),
 					field("Off"),
+					field("0"),
+					field("End of file"),
 				);
 				self.adding = Some(AddSheet {
 					input: input.clone(),
 					checking: None,
 					page: None,
 					found: None,
-					more: false,
 					name,
-					folder: None,
-					mirrors,
 					checksum,
-					range,
+					more: false,
+					folder: None,
 					limit,
+					range_start,
+					range_end,
 					error: None,
 				});
 				input
@@ -171,15 +207,12 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Enter, or Add: the address is handed to the engine to look at; what happens next depends
-	/// on its answer, which the pump collects. Once the address has been looked at and found to
-	/// be a file, Enter or Add is the second step: the download, with the connections chosen.
+	/// Enter, or Check: the address is handed to the engine to look at; what happens next depends
+	/// on its answer, which the pump collects. Once the address in the field has been looked at
+	/// and found to be a file, Enter or Download is the second step: the download itself.
 	pub(crate) fn submit_add(&mut self, cx: &mut Context<Self>) {
 		let Some(sheet) = &mut self.adding else { return };
-		if let Some(found) = &sheet.found
-			&& found.url.as_str()
-				== parse_address(&sheet.input.read(cx).content).map(|u| u.to_string()).unwrap_or_default()
-		{
+		if found_is_current(sheet, cx) {
 			// The settings' default; the download's window changes it while it runs.
 			let connections = self.preferences.connections;
 			let asked = match self.asked(connections, cx) {
@@ -225,42 +258,33 @@ impl Rdm {
 	) -> Result<crate::app::Asked, String> {
 		let Some(sheet) = &self.adding else { return Ok(crate::app::Asked::default()) };
 		let text = |field: &Entity<TextInput>| field.read(cx).content.trim().to_owned();
-		let mirrors: Vec<String> = text(&sheet.mirrors).split_whitespace().map(str::to_owned).collect();
-		for mirror in &mirrors {
-			if parse_address(mirror).is_none() {
-				return Err(format!("{mirror} is not a web address."));
-			}
-		}
 		let checksum = text(&sheet.checksum);
 		let checksum = if checksum.is_empty() {
 			None
 		} else {
 			crate::engine::Checksum::parse(&checksum)
 				.map(|_| checksum)
-				.ok_or_else(|| {
-					"A checksum is sha256, sha512 or md5 hex, its length saying which.".to_owned()
-				})
+				.ok_or_else(|| "A checksum is sha256, sha512 or md5, written in hex.".to_owned())
 				.map(Some)?
 		};
-		let range = text(&sheet.range);
-		let range = if range.is_empty() {
-			None
-		} else {
-			crate::download::parse_range(&range)?;
-			Some(range)
-		};
+		let size = sheet.found.as_ref().and_then(|found| found.probe.size);
+		let range = part_of_file(&text(&sheet.range_start), &text(&sheet.range_end), size)?;
+		// A checksum is checked against a whole file; a part of one has nothing to match.
+		if range.is_some() && checksum.is_some() {
+			return Err("A checksum is for the whole file; clear it to download a part.".to_owned());
+		}
 		let speed_limit = crate::download::parse_rate(&text(&sheet.limit))?;
 		Ok(crate::app::Asked {
 			connections,
 			directory: sheet.folder.as_ref().map(|p| p.display().to_string()),
-			mirrors,
+			mirrors: Vec::new(),
 			checksum,
 			range,
 			speed_limit,
 		})
 	}
 
-	/// More, or less: the rest of the fields, shown or put away.
+	/// More options, or fewer: the folder, the limit and the range, shown or put away.
 	pub(crate) fn toggle_add_more(&mut self, cx: &mut Context<Self>) {
 		if let Some(sheet) = &mut self.adding {
 			sheet.more = !sheet.more;
@@ -315,15 +339,25 @@ impl Rdm {
 				// The name it will be saved under is filled in from what the look turned up, so
 				// the user is changing a name rather than being asked to invent one -- the field
 				// was empty before, and an empty field beside a resolved address reads as though
-				// nothing was resolved.
+				// nothing was resolved. The range starts as the whole file, in the server's bytes,
+				// so a part is asked for by moving an end rather than by working out a number.
 				let name = inspection.probe.file_name.clone();
+				let whole = inspection.probe.size.filter(|_| inspection.probe.ranges);
 				sheet.found = Some(Found { url, probe: inspection.probe });
-				let field = sheet.name.clone();
-				field.update(cx, |input, cx| {
-					if input.content.to_string().trim().is_empty() {
-						input.set_content(&name, cx);
-					}
-				});
+				let fill = |field: &Entity<TextInput>, text: &str, cx: &mut Context<Self>| {
+					field.update(cx, |input, cx| {
+						if input.content.trim().is_empty() {
+							input.set_content(text, cx);
+						}
+					});
+				};
+				let (field, start, end) =
+					(sheet.name.clone(), sheet.range_start.clone(), sheet.range_end.clone());
+				fill(&field, &name, cx);
+				if let Some(size) = whole {
+					fill(&start, "0", cx);
+					fill(&end, &size.to_string(), cx);
+				}
 			}
 			Err(message) => sheet.error = Some(message),
 		}
@@ -362,14 +396,18 @@ impl Rdm {
 		let typed = !input.read(cx).content.trim().is_empty();
 		let checking = sheet.checking.is_some();
 		let ready = typed && !checking;
+		let current = found_is_current(sheet, cx);
+		// The button says what it does next: look at the address, or download what was found there.
+		let (glyph, action) = if current { (Icon::Download, "Download") } else { (Icon::Search, "Check") };
+		let options = if sheet.more { "Fewer options" } else { "More options" };
 		deferred(
 			// The backdrop takes every mouse event, so nothing behind the sheet can be pressed through it.
 			backdrop(p).child(
 				div()
 					.id("add-dialog")
-					// A node that holds the sheet's own, so `ctl tree "Add Task"` finds it whole.
+					// A node that holds the sheet's own, so `ctl tree "New Task"` finds it whole.
 					.role(gpui::Role::Dialog)
-					.aria_label("Add Task")
+					.aria_label("New Task")
 					.flex()
 					.flex_col()
 					.gap_3()
@@ -386,7 +424,7 @@ impl Rdm {
 							.flex()
 							.items_center()
 							.justify_between()
-							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(text!("Add Task")))
+							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(text!("New Task")))
 							.child(crate::ui::icon_button(
 								p,
 								"add-close",
@@ -407,23 +445,43 @@ impl Rdm {
 						)
 					})
 					.when_some(sheet.page.as_ref(), |s, page| s.child(self.page_notice(page, cx)))
-					.when_some(sheet.found.as_ref(), |s, found| s.child(self.found_notice(found, sheet, cx)))
+					.when_some(sheet.found.as_ref().filter(|_| current), |s, found| {
+						s.child(self.found_notice(found, sheet, cx))
+					})
+					// One line for the end of the sheet: the options or the look in progress at the
+					// left, the button at the right, rather than a line of its own for the button.
 					.child(
 						div()
 							.flex()
 							.items_center()
 							.justify_between()
+							.gap_3()
 							.child(
 								div()
+									.flex()
+									.items_center()
 									.text_xs()
 									.text_color(p.muted)
-									.when(checking, |s| s.child(text!("Looking at the address"))),
+									.when(checking, |s| s.child(text!("Looking at the address")))
+									.when(!checking && current, |s| {
+										s.child(
+											div()
+												.id("add-more")
+												.role(gpui::Role::Button)
+												.aria_label(options)
+												.debug_selector(move || format!("button:{options}"))
+												.cursor_pointer()
+												.hover(move |s| s.text_color(p.text))
+												.on_click(cx.listener(|this, _, _, cx| this.toggle_add_more(cx)))
+												.child(options),
+										)
+									}),
 							)
 							.child(button(
 								p,
 								"add-confirm",
-								Icon::Plus,
-								"Add",
+								glyph,
+								action,
 								ready,
 								cx.listener(|this, _, _, cx| this.submit_add(cx)),
 							)),
@@ -433,12 +491,11 @@ impl Rdm {
 		.priority(2)
 	}
 
-	/// The address is a file: what the look turned up beyond its name, which the address and Save as
-	/// already say -- the category it will be filed under, where the bytes really come from, its
-	/// size with a grey mark for whether the server lets it be split and resumed, and a line of
-	/// what the server said of the file and of itself -- then the name it will be saved under. How
-	/// many connections to open is not asked: the settings' default starts the download and its
-	/// window changes the count while it runs. See spec/ui.md.
+	/// The address is a file: a card of what the look turned up, each fact beside its label, then
+	/// the name it will be saved under and a checksum, then More options when they are open. The
+	/// file's name is not in the card, since the address and Save as already say it. How many
+	/// connections to open is not asked: the settings' default starts the download and its window
+	/// changes the count while it runs. See spec/ui.md.
 	fn found_notice(
 		&self,
 		found: &Found,
@@ -447,15 +504,6 @@ impl Rdm {
 	) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let probe = &found.probe;
-		let size =
-			probe.size.map(crate::download::format_bytes).unwrap_or_else(|| "size unknown".to_owned());
-		// A mark rather than a sentence: what it says matters once the download runs, and there it
-		// is a setting of the download's window rather than a question here.
-		let (mark, meaning) = if probe.ranges {
-			(Icon::Split, "Resumable, can be split across connections")
-		} else {
-			(Icon::MoveRight, "One connection, cannot resume")
-		};
 		// Filed by the name it will be saved under, so renaming it in the field refiles it here.
 		let typed = sheet.name.read(cx).content.trim().to_owned();
 		let name = if typed.is_empty() { probe.file_name.clone() } else { typed };
@@ -469,107 +517,93 @@ impl Rdm {
 				(c.icon, tint, c.name.clone())
 			});
 		// The host after redirects, which is not always the one typed.
-		let host = probe.url.host_str().unwrap_or_default();
-		let source = match (&filed, host.is_empty()) {
-			(_, true) => String::new(),
-			(Some(_), false) => format!("\u{b7} {host}"),
-			(None, false) => host.to_owned(),
-		};
+		let from = probe.url.host_str().unwrap_or_default().to_owned();
+		let size =
+			probe.size.map(crate::download::format_bytes).unwrap_or_else(|| "Unknown".to_owned());
+		let resume = if probe.ranges { "Supported" } else { "Not supported" };
 		let updated = probe
 			.last_modified
 			.as_deref()
 			.and_then(|date| chrono::DateTime::parse_from_rfc2822(date).ok())
-			.map(|date| format!("Updated {}", date.with_timezone(&chrono::Local).format("%b %-d, %Y")));
-		let details = [updated, Some(probe.version.to_owned()), probe.server.clone()]
-			.into_iter()
-			.flatten()
-			.collect::<Vec<_>>()
-			.join(" \u{b7} ");
+			.map(|date| date.with_timezone(&chrono::Local).format("%b %-d, %Y").to_string());
+		let server = match &probe.server {
+			Some(server) => format!("{server} ({})", probe.version),
+			None => probe.version.to_owned(),
+		};
+		// A fact beside its grey label, in half the card's width; the labels share one width so
+		// the values line up down the card.
+		let cell = |label: &'static str, value: String| {
+			div()
+				.flex()
+				.flex_1()
+				.min_w_0()
+				.gap_2()
+				.child(div().w(px(56.0)).flex_none().text_color(p.muted).child(text!(id = label, label)))
+				.child(div().min_w_0().truncate().child(text!(id = (label, 1usize), value)))
+		};
+		let field = |label: &'static str, input: Entity<TextInput>| {
+			div()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(div().text_xs().text_color(p.muted).child(text!(id = label, label)))
+				.child(input)
+		};
 		div()
-			.debug_selector(|| "add-found".to_owned())
 			.flex()
 			.flex_col()
-			.gap_2()
-			.p_3()
-			.rounded_md()
-			.bg(p.hover)
+			.gap_3()
 			.child(
 				div()
+					.debug_selector(|| "add-found".to_owned())
 					.flex()
 					.flex_col()
-					.gap_0p5()
+					.gap_1p5()
+					.p_3()
+					.rounded_md()
+					.bg(p.hover)
+					.when_some(filed, |s, (glyph, tint, filed)| {
+						s.child(
+							div()
+								.flex()
+								.items_center()
+								.gap_1p5()
+								.child(icon(glyph, tint).size_3p5())
+								.child(text!(filed)),
+						)
+					})
 					.child(
 						div()
 							.flex()
-							.items_center()
-							.justify_between()
-							.gap_3()
+							.flex_col()
+							.gap_1()
+							.text_xs()
+							.child(div().flex().child(cell("From", from)))
+							.child(div().flex().gap_3().child(cell("Size", size)).child(cell("Resume", resume.to_owned())))
 							.child(
 								div()
 									.flex()
-									.min_w_0()
-									.items_center()
-									.gap_1p5()
-									.when_some(filed, |s, (glyph, tint, filed)| {
-										s.child(icon(glyph, tint).size_3p5())
-											.child(div().flex_none().child(text!(filed)))
-									})
-									.when(!source.is_empty(), |s| {
-										s.child(div().min_w_0().truncate().text_color(p.muted).child(text!(source)))
-									}),
-							)
-							.child(
-								div()
-									.flex()
-									.flex_none()
-									.items_center()
-									.gap_1p5()
-									.text_color(p.muted)
-									.child(
-										div()
-											.id("add-ranges")
-											.role(gpui::Role::Image)
-											.aria_label(meaning)
-											.debug_selector(|| "add-ranges".to_owned())
-											.child(icon(mark, p.muted).size_3p5()),
-									)
-									.child(text!(size)),
+									.gap_3()
+									.when_some(updated, |s, updated| s.child(cell("Updated", updated)))
+									.child(cell("Server", server)),
 							),
-					)
-					.child(div().text_xs().text_color(p.muted).truncate().child(text!(details))),
+					),
 			)
-			// The name it will be saved under, on the face rather than behind More: it is filled
-			// in from what the look turned up, and a name somebody may want to change is not a
-			// thing to hide behind a word. Everything else behind More is a thing most people
-			// never touch; this is not.
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.text_xs()
-					.child(div().flex_none().text_color(p.muted).child(text!("Save as")))
-					.child(div().flex_1().min_w_0().child(sheet.name.clone())),
-			)
-			.child(
-				div()
-					.id("add-more")
-					.role(gpui::Role::Button)
-					.aria_label(if sheet.more { "Less" } else { "More" })
-					.debug_selector(|| "button:More".to_owned())
-					.text_xs()
-					.text_color(p.muted)
-					.cursor_pointer()
-					.hover(move |s| s.text_color(p.text))
-					.on_click(cx.listener(|this, _, _, cx| this.toggle_add_more(cx)))
-					.child(if sheet.more { "Less" } else { "More" }),
-			)
-			.when(sheet.more, |s| s.child(self.more_fields(sheet, cx)))
+			// The name on a line of its own under its label: a name can be long, and a field that
+			// shares its line with the label shows less of it.
+			.child(field("Save as", sheet.name.clone()))
+			.child(field("Checksum (optional)", sheet.checksum.clone()))
+			.when(sheet.more, |s| s.child(self.more_fields(found, sheet, cx)))
 	}
 
-	/// The rest of what can be asked for, one labelled field each, and the folder as a word
-	/// that opens the system's picker.
-	fn more_fields(&self, sheet: &AddSheet, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+	/// What most downloads never touch: the folder as a word that opens the system's picker, a
+	/// limit of the download's own, and the part of the file wanted when the server serves parts.
+	fn more_fields(
+		&self,
+		found: &Found,
+		sheet: &AddSheet,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
 		let p = self.palette;
 		let row = |label: &'static str, field: gpui::AnyElement| {
 			div()
@@ -585,12 +619,18 @@ impl Rdm {
 			.as_ref()
 			.map(|f| f.display().to_string())
 			.unwrap_or_else(|| "Download folder".to_owned());
+		// How much the two ends take in, so a part is read as a size rather than as two numbers.
+		let parts = found.probe.size.filter(|_| found.probe.ranges).map(|size| {
+			let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
+			let start = read(&sheet.range_start).unwrap_or(0);
+			let end = read(&sheet.range_end).unwrap_or(size);
+			if end > start { crate::download::format_bytes(end - start) } else { String::new() }
+		});
 		div()
 			.debug_selector(|| "add-more".to_owned())
 			.flex()
 			.flex_col()
 			.gap_1p5()
-			.pt_1()
 			.child(row(
 				"Folder",
 				div()
@@ -625,10 +665,21 @@ impl Rdm {
 					})
 					.into_any_element(),
 			))
-			.child(row("Mirrors", sheet.mirrors.clone().into_any_element()))
-			.child(row("Checksum", sheet.checksum.clone().into_any_element()))
-			.child(row("Range", sheet.range.clone().into_any_element()))
 			.child(row("Speed limit", sheet.limit.clone().into_any_element()))
+			.when_some(parts, |s, part| {
+				s.child(row(
+					"Range",
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(div().w(px(104.0)).flex_none().child(sheet.range_start.clone()))
+						.child(div().flex_none().text_color(p.muted).child(text!("to")))
+						.child(div().w(px(104.0)).flex_none().child(sheet.range_end.clone()))
+						.child(div().min_w_0().truncate().text_color(p.muted).child(text!(part)))
+						.into_any_element(),
+				))
+			})
 	}
 
 	/// The address is a page: say so, offer the files it links to, and let the page itself be
@@ -733,5 +784,17 @@ mod tests {
 		assert!(parse_connections("0").is_err());
 		assert!(parse_connections("257").is_err());
 		assert!(parse_connections("lots").is_err());
+	}
+
+	#[test]
+	fn the_range_fields_are_no_range_at_all_until_they_leave_out_part_of_the_file() {
+		assert_eq!(part_of_file("", "", Some(5000)), Ok(None));
+		assert_eq!(part_of_file("0", "5000", Some(5000)), Ok(None), "the whole file, as prefilled");
+		assert_eq!(part_of_file("0", "1000", Some(5000)), Ok(Some("0-1000".into())));
+		assert_eq!(part_of_file("1,000", "", Some(5000)), Ok(Some("1000-".into())));
+		assert_eq!(part_of_file("", "", None), Ok(None), "a file of unknown size, untouched");
+		assert!(part_of_file("0", "6000", Some(5000)).is_err(), "past the end");
+		assert!(part_of_file("300", "200", Some(5000)).is_err(), "backwards");
+		assert!(part_of_file("a", "", Some(5000)).is_err());
 	}
 }

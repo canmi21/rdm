@@ -316,7 +316,13 @@ impl Rdm {
 		request.settings = self.preferences.engine_settings(self.proxy_in_use().as_deref());
 		request.settings.connections = connections_for(download.connections);
 		request.settings.speed_limit = download.speed_limit;
-		let checksum = download.checksum.as_deref().and_then(engine::Checksum::parse);
+		// A checksum is for a whole file: a row that asked for a part of one carries none, since the
+		// part could never match it. See spec/engine.md.
+		let checksum = download
+			.checksum
+			.as_deref()
+			.filter(|_| request.range.is_none())
+			.and_then(engine::Checksum::parse);
 		Some((request, checksum))
 	}
 

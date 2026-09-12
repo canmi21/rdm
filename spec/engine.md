@@ -148,7 +148,7 @@ the first byte is a server ignoring ranges, and harmless for that segment alone.
 Every setting here reaches the window: the ones that hold for every download are the
 Transfers section of Settings, kept in `config.json` and written over the engine's defaults
 for each new request, and the ones a download can have of its own -- the folder, the name, the
-mirrors, the checksum, the range and a limit -- are Add Task's, while the connections and the
+checksum, the range and a limit -- are New Task's, while the connections and the
 limit are its window's, changed as it runs; all of them are kept on the row. A download asks for connections in one of two shapes, `Connections::auto` or
 `Connections::fixed(n)`, and never more than `Connections::MAX`, 256, whatever it asks. In
 automatic mode a download starts with `min` connections and is allowed one more each time a
@@ -186,6 +186,11 @@ out and a plan written after the discard would be a ghost. A completed file is n
 by the engine; it is the user's.
 
 ## After the last byte
+
+**A checksum is checked only against a whole file.** A download of a part of one has nothing it
+could be compared with, so New Task does not take both and the application hands the engine no
+checksum for a row with a range. The engine itself would check whatever it was given; the rule
+sits where the row becomes a request, in `src/app/transfers.rs`.
 
 A checksum the caller supplies -- SHA-256, SHA-512 or MD5, written any of the ways people write
 them -- is checked against the finished file, and a file that fails is deleted, because a file

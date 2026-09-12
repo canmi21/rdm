@@ -621,22 +621,18 @@ Command on macOS and Control on Windows and Linux, bound once in `text_input.rs`
 field bound to Command alone could not be pasted into anywhere else, which is how it shipped
 first.
 
-**Add Task asks only what has to be settled before the first byte.** An address that turns out
-to be a file is not added on the spot: the sheet shows what the look turned up, and the name it
-will be saved under, filled in from the look. The file's name is not shown a second time, since
-the address and that field already say it; the card says what neither does. Its first line is the
-category the file will be filed under, with that category's icon and judged by the name in the
-field, so a rename refiles it, then the host the bytes really come from once redirects are
-followed, and on the right the size. Under it, one line of what the server said of the file and
-of itself: when it was last modified, the protocol the answer came over and its Server header,
-each left out when the server did not say. The address and the name are the whole question --
-where from, and kept as what -- because how a file downloads can be changed while it downloads, in the download's own
-window, and a choice asked before anything has moved is a choice made blind. So the connections
-are not asked: a new download starts from the settings' default, `Auto` unless it was changed,
-which is the engine's own judgement in [engine.md](engine.md). Whether the server serves ranges
--- resumable, and splittable across connections -- is a grey mark beside the size, `split` when it
-does and `move-right` when it does not, with no sentence beside it: it says how the download will
-be able to run, which only matters once it runs. Enter or Add again adds it. A page's links and
+**The toolbar says Add Task; the sheet it opens is New Task, and a download's window is Edit
+Task.** The button names what pressing it does, and each card names what is in front of it: a
+task not yet made, or one that exists and is being changed. The download's window therefore
+starts its body with the file's name, which its title no longer carries.
+
+**New Task asks only what has to be settled before the first byte.** An address that turns out
+to be a file is not added on the spot: the sheet shows what the look turned up and asks for the
+name it will be saved under. The address and the name are the whole question -- where from, and
+kept as what -- because how a file downloads can be changed while it downloads, in the download's
+own window, and a choice asked before anything has moved is a choice made blind. So the
+connections are not asked: a new download starts from the settings' default, `Auto` unless it
+was changed, which is the engine's own judgement in [engine.md](engine.md). A page's links and
 the page itself take the settings' default too.
 
 The sheet used to ask for `Auto` or `Fixed` and a count, under a line saying whether the file
@@ -644,34 +640,60 @@ was resumable. The user took that out: the address and the name are the two thin
 be changed once bytes arrive, and the count is exactly the kind of thing that can, so asking it
 here put a decision in front of the one step that did not need it.
 
-**Everything else the engine can be asked is behind `More`.** Under the notice a word opens
-the rest: the name to save under, the folder -- the system's picker, and the download folder
-unless one is chosen -- other addresses of the same file apart by spaces, a checksum the
-finished file must match, sha256, sha512 or md5 as hex with the length saying which, the part
-of the file wanted as `start-end` in bytes, and a limit of the download's own. Each is checked
-before anything is added and a wrong one is said under the field; each empty one is left to
-the defaults. What was asked travels with the row into the database, and a resume after a
-restart asks for the same. The download's window shows what was asked and lets the limit and
-the connections be changed while it runs. The transfer settings, a section of their own, are the engine's
-defaults for every new download and are listed in [release.md](release.md)'s neighbour,
-[engine.md](engine.md); the two the engine takes live, concurrent downloads and the speed
-limit, reach it as they are typed.
+**What the look found is a card of labels and values.** The file's name is not in it, since the
+address and the Save as field already say it. Its header is the category the file will be filed
+under, with that category's icon, judged by the name in the field so a rename refiles it. Under
+the header each fact sits beside a grey label, two to a line: `From`, the host the bytes really
+come from once redirects are followed; `Size`; `Resume`, supported when the server serves ranges
+and so the download can be resumed and split; `Updated`, the file's Last-Modified; and `Server`,
+its Server header with the protocol in brackets. A fact the server did not give is left out.
+Labels, because the first version joined the values with dots and left the reader to work out
+which was which, and marked resuming with an icon -- a forked arrow -- that said nothing to anyone
+who had not been told what it meant.
 
-**Add Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
+**The name and a checksum are on the face; the rest is More options.** Save as has a line of its
+own under its label, since a name can be long and a field sharing its line with a label shows
+less of it. Under it is `Checksum (optional)`, whose placeholder names the kinds it takes --
+sha256, sha512 or md5 -- and nothing more; the length of what is pasted says which. More options
+holds what most downloads never touch: the folder, a limit of the download's own, and the part
+of the file wanted. The part is two fields, the first byte and the byte it stops before,
+prefilled with the whole file when the server serves ranges and not offered when it does not;
+left at the whole file it is no range at all. **A part of a file is not checked**, since a
+checksum is of the whole file: the sheet refuses a checksum and a part together rather than keep
+one it could never test, and the application gives the engine no checksum for a row with a
+range. **Mirrors are not asked.** Nobody has other addresses of the same file to type; finding
+them is the application's work when it is done at all, not the user's, and the engine's support
+for them waits for that. Each field is checked before anything is added and a wrong one is said
+under the address; each empty one is left to the defaults. What was asked travels with the row
+into the database, and a resume after a restart asks for the same. The transfer settings, a
+section of their own, are the engine's defaults for every new download and are listed in
+[engine.md](engine.md); the two the engine takes live, concurrent downloads and the speed limit,
+reach it as they are typed.
+
+**The button says what it does next, and shares the sheet's last line.** Before the address in
+the field has been looked at it reads `Check`; once a file has been found there it reads
+`Download`, and changing the address turns it back. It sits at the right of the last line, with
+More options at the left of the same line once there are options, or the words for a look in
+progress while there is one. A line holding one button and nothing else read as an afterthought.
+
+**New Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
 clipboard, and if what is there is under a thousand characters and reads as an address --
 with a scheme, or without one and tried as https -- the field starts with it; anything else
 leaves the field empty rather than guessing. A thousand is a hard ceiling: an address is never
-longer, and a document that happens to be on the clipboard is not worth parsing. Enter or Add
+longer, and a document that happens to be on the clipboard is not worth parsing. Enter or Check
 does not queue the address; it has the engine look at it first. What is not an address is said
 to be one, under the field. A file is queued and the sheet closes. A web page is said to be a
 page, with a button to save it anyway and, under that, the files the page links to, each a row
 that queues it when pressed and stays pressed; the sheet stays up so several can be taken. The
 field itself scrolls under its cursor when the address is longer than the box, as every
 native field does: wrapping would make a one-line field two, and an ellipsis would hide the
-part being edited.
+part being edited. A drag that selects keeps selecting past either edge, and a pointer held
+there keeps the line moving, a character a frame: the field first listened for the pointer only
+while it was over the field, so a selection stopped a few characters past the edge with most of
+the address still out of view.
 
-**A download's window says what was asked and takes the changes a running download can.** Under
-the address and the size: the folder, the mirrors, the checksum and the range where there were
+**Edit Task says what was asked and takes the changes a running download can.** Under the
+file's name, the address and the size: the folder, the mirrors, the checksum and the range where there were
 any, the error while there is one, and two fields applied on Enter to the engine and kept on the
 row. One is the download's own limit. The other is its connections: empty or `auto` for the
 engine's judgement, a number from one to 256 for a fixed count, and beside it how many are open

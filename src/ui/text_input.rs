@@ -4,7 +4,8 @@
 use std::ops::Range;
 
 use gpui::{
-	App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, Entity,
+	App, Bounds, ClipboardItem, Context, CursorStyle, DispatchPhase, ElementId, ElementInputHandler,
+	Entity,
 	EntityInputHandler, FocusHandle, Focusable, GlobalElementId, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString,
 	Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill, point, prelude::*,
@@ -82,6 +83,8 @@ pub struct TextInput {
 	/// under its cursor, the way every native field does, rather than wrapping or eliding.
 	pub scroll: Pixels,
 	is_selecting: bool,
+	/// Where the pointer is while a selection is being dragged, inside the field or not.
+	drag_at: Option<Point<Pixels>>,
 	/// A glyph drawn inside the box before the text, for a field whose purpose is a shape.
 	leading: Option<Icon>,
 	/// Enter was pressed; the owning window decides what that means.
@@ -102,6 +105,7 @@ impl TextInput {
 			last_bounds: None,
 			scroll: px(0.0),
 			is_selecting: false,
+			drag_at: None,
 			leading: None,
 			on_confirm: None,
 			on_cancel: None,
@@ -217,6 +221,7 @@ impl TextInput {
 		cx: &mut Context<Self>,
 	) {
 		self.is_selecting = true;
+		self.drag_at = Some(event.position);
 		if event.modifiers.shift {
 			self.select_to(self.index_for_mouse_position(event.position), cx);
 		} else {
@@ -226,12 +231,30 @@ impl TextInput {
 
 	fn on_mouse_up(&mut self, _: &MouseUpEvent, _window: &mut Window, _: &mut Context<Self>) {
 		self.is_selecting = false;
+		self.drag_at = None;
 	}
 
-	fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-		if self.is_selecting {
-			self.select_to(self.index_for_mouse_position(event.position), cx);
+	/// The pointer moved during a drag, wherever it is; a button let go outside the window ends
+	/// the drag here, since the release was never heard.
+	fn drag_to(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+		if event.pressed_button != Some(MouseButton::Left) {
+			self.is_selecting = false;
+			self.drag_at = None;
+			return;
 		}
+		self.drag_at = Some(event.position);
+		self.select_to(self.index_for_mouse_position(event.position), cx);
+	}
+
+	/// One character further toward the side the pointer is held past, for a frame of a drag;
+	/// whether it moved, so a drag held at the line's end asks for no more frames.
+	fn step_selection(&mut self, rightward: bool) -> bool {
+		let cursor = self.cursor_offset();
+		let to = if rightward { self.next_boundary(cursor) } else { self.previous_boundary(cursor) };
+		if to != cursor {
+			self.extend_selection(to);
+		}
+		to != cursor
 	}
 
 	fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
@@ -283,6 +306,11 @@ impl TextInput {
 	}
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+		self.extend_selection(offset);
+		cx.notify()
+	}
+
+	fn extend_selection(&mut self, offset: usize) {
 		if self.selection_reversed {
 			self.selected_range.start = offset
 		} else {
@@ -292,7 +320,6 @@ impl TextInput {
 			self.selection_reversed = !self.selection_reversed;
 			self.selected_range = self.selected_range.end..self.selected_range.start;
 		}
-		cx.notify()
 	}
 
 	fn offset_from_utf16(&self, offset: usize) -> usize {
@@ -623,6 +650,28 @@ impl gpui::Element for TextElement {
 	) {
 		let focus_handle = self.input.read(cx).focus_handle.clone();
 		window.handle_input(&focus_handle, ElementInputHandler::new(bounds, self.input.clone()), cx);
+		// A drag that leaves the field keeps selecting. An element's own move listener hears the
+		// pointer only while it is over the element, which stopped a selection a few characters
+		// past either edge; the window's hears it anywhere. A pointer held still past an edge
+		// moves the selection a character a frame, as a native field's does. See spec/ui.md.
+		let (selecting, drag_at) = {
+			let input = self.input.read(cx);
+			(input.is_selecting, input.drag_at)
+		};
+		if selecting {
+			let input = self.input.clone();
+			window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+				if phase == DispatchPhase::Bubble {
+					input.update(cx, |input, cx| input.drag_to(event, cx));
+				}
+			});
+			if let Some(at) = drag_at
+				&& (at.x < bounds.left() || at.x > bounds.right())
+				&& self.input.update(cx, |input, _| input.step_selection(at.x > bounds.right()))
+			{
+				window.request_animation_frame();
+			}
+		}
 		// Whatever scrolled out of the field is clipped, not drawn over the neighbours.
 		let scroll = prepaint.scroll;
 		let line = prepaint.line.take().expect("prepaint shaped the line");
@@ -688,7 +737,6 @@ impl Render for TextInput {
 			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
-			.on_mouse_move(cx.listener(Self::on_mouse_move))
 			.w_full()
 			.px_2()
 			.py_1()
@@ -714,7 +762,7 @@ impl Focusable for TextInput {
 // then committed. Every offset it hands over is UTF-16 and relative to what it inserted.
 #[cfg(test)]
 mod tests {
-	use gpui::{TestAppContext, VisualTestContext};
+	use gpui::{Modifiers, TestAppContext, VisualTestContext};
 
 	use super::*;
 
@@ -745,6 +793,42 @@ mod tests {
 		});
 		cx.run_until_parked();
 		assert_eq!(input.read_with(&cx, |input, _| input.scroll), px(0.0), "home scrolls back");
+	}
+
+	#[gpui::test]
+	fn a_drag_held_past_the_left_edge_selects_to_the_start(cx: &mut TestAppContext) {
+		let (input, mut cx) = field(cx);
+		let long = "https://example.org/".to_owned() + &"segment/".repeat(40) + "file.bin";
+		cx.update(|window, cx| {
+			window.focus(&input.read(cx).focus(), cx);
+			input.update(cx, |input, cx| input.replace_text_in_range(None, &long, window, cx));
+		});
+		cx.update(|window, _| window.refresh());
+		cx.run_until_parked();
+		let bounds = input.read_with(&cx, |input, _| input.last_bounds).expect("the field was drawn");
+		let y = bounds.center().y;
+		cx.simulate_mouse_down(point(bounds.right() - px(4.0), y), MouseButton::Left, Modifiers::default());
+		// Just past the edge and held there: the pointer alone reaches only what is in view, and
+		// the rest comes a character a frame.
+		let past = point(bounds.left() - px(4.0), y);
+		cx.simulate_mouse_move(past, MouseButton::Left, Modifiers::default());
+		for _ in 0..1000 {
+			if input.read_with(&cx, |input, _| input.selected_range.start == 0) {
+				break;
+			}
+			cx.update(|window, _| window.refresh());
+			cx.run_until_parked();
+		}
+		// The last step lands in a paint, after that frame's scroll was set; the next frame shows it.
+		cx.update(|window, _| window.refresh());
+		cx.run_until_parked();
+		let (range, scroll) =
+			input.read_with(&cx, |input, _| (input.selected_range.clone(), input.scroll));
+		assert_eq!(range.start, 0, "the selection reached the start of the address");
+		assert!(range.end + 2 >= long.len(), "and kept its other end where the press was: {range:?}");
+		assert_eq!(scroll, px(0.0), "with the line scrolled back to show the start");
+		cx.simulate_mouse_up(past, MouseButton::Left, Modifiers::default());
+		assert!(!input.read_with(&cx, |input, _| input.is_selecting), "a release outside ends it");
 	}
 
 	#[gpui::test]

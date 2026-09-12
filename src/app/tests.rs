@@ -1092,13 +1092,13 @@ fn add_task_reads_the_clipboard_names_junk_and_offers_a_pages_files(cx: &mut Tes
 		input.update(cx, |i, cx| i.set_content("not an address at all", cx));
 		let _ = window;
 	});
-	click(&mut cx, "button:Add");
+	click(&mut cx, "button:Check");
 	assert!(cx.debug_bounds("add-error").is_some(), "junk is named as such");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_some(), "the sheet stays"));
 
 	let address = page.url("/downloads/").to_string();
 	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
-	click(&mut cx, "button:Add");
+	click(&mut cx, "button:Check");
 	// The engine looks at the address on its own threads; the pump collects the answer.
 	let mut seen = false;
 	for _ in 0..200 {
@@ -1670,7 +1670,7 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	let input = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().input.clone());
 	let address = server.url("/tool.bin").to_string();
 	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
-	click(&mut cx, "button:Add");
+	click(&mut cx, "button:Check");
 	let mut seen = false;
 	for _ in 0..200 {
 		std::thread::sleep(Duration::from_millis(10));
@@ -1683,37 +1683,46 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	}
 	assert!(seen, "the address was looked at and found to be a file");
 	assert!(cx.debug_bounds("add-found").is_some(), "the file is shown before it is added");
-	assert!(cx.debug_bounds("add-ranges").is_some(), "the server's ranges are a mark beside the size");
-	rdm.read_with(&cx, |rdm, _| {
-		assert!(rdm.downloads.iter().all(|d| d.url != address), "not added yet")
+	rdm.read_with(&cx, |rdm, cx| {
+		assert!(rdm.downloads.iter().all(|d| d.url != address), "not added yet");
+		let sheet = rdm.adding.as_ref().unwrap();
+		assert_eq!(sheet.range_end.read(cx).content.as_ref(), "300000", "the whole file, prefilled");
 	});
-	// More: the rest of what can be asked, each checked before anything is added.
-	click(&mut cx, "button:More");
-	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
-	let (name, mirrors, checksum, range, limit) = rdm.read_with(&cx, |rdm, _| {
+	let (name, checksum) = rdm.read_with(&cx, |rdm, _| {
 		let s = rdm.adding.as_ref().unwrap();
-		(s.name.clone(), s.mirrors.clone(), s.checksum.clone(), s.range.clone(), s.limit.clone())
+		(s.name.clone(), s.checksum.clone())
 	});
 	cx.update(|_, cx| checksum.update(cx, |i, cx| i.set_content("not-a-hash", cx)));
-	click(&mut cx, "button:Add");
+	click(&mut cx, "button:Download");
 	assert!(cx.debug_bounds("add-error").is_some(), "a checksum that is none is refused");
-	let mirror = server.url("/mirror.bin").to_string();
+	// More options: the folder, a limit of its own and a part of the file.
+	click(&mut cx, "button:More options");
+	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
+	let (start, end, limit) = rdm.read_with(&cx, |rdm, _| {
+		let s = rdm.adding.as_ref().unwrap();
+		(s.range_start.clone(), s.range_end.clone(), s.limit.clone())
+	});
 	cx.update(|_, cx| {
 		name.update(cx, |i, cx| i.set_content("renamed.bin", cx));
-		mirrors.update(cx, |i, cx| i.set_content(&mirror, cx));
 		checksum.update(cx, |i, cx| i.set_content("d41d8cd98f00b204e9800998ecf8427e", cx));
-		range.update(cx, |i, cx| i.set_content("0-1000", cx));
+		start.update(cx, |i, cx| i.set_content("0", cx));
+		end.update(cx, |i, cx| i.set_content("1000", cx));
 		limit.update(cx, |i, cx| i.set_content("500", cx));
 	});
-	click(&mut cx, "button:Add");
+	click(&mut cx, "button:Download");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.adding.is_some(), "a checksum is not kept for a part of the file")
+	});
+	cx.update(|_, cx| checksum.update(cx, |i, cx| i.set_content("", cx)));
+	click(&mut cx, "button:Download");
 	cx.run_until_parked();
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(rdm.adding.is_none(), "added and closed");
 		let row = rdm.downloads.iter().find(|d| d.url == address).expect("the download");
-		assert_eq!(row.connections, None, "not asked at Add Task: the settings' default, auto");
+		assert_eq!(row.connections, None, "not asked at New Task: the settings' default, auto");
 		assert_eq!(row.name, "renamed.bin");
-		assert_eq!(row.mirrors, vec![mirror.clone()]);
-		assert_eq!(row.checksum.as_deref(), Some("d41d8cd98f00b204e9800998ecf8427e"));
+		assert!(row.mirrors.is_empty(), "mirrors are not asked");
+		assert_eq!(row.checksum, None);
 		assert_eq!(row.range.as_deref(), Some("0-1000"));
 		assert_eq!(row.speed_limit, Some(500 * 1024));
 	});

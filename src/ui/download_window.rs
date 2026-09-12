@@ -1,4 +1,4 @@
-//! One download in a window of its own, opened by double-clicking its row.
+//! One download in a window of its own, titled Edit Task, opened by double-clicking its row.
 
 use gpui::{
 	Context, Entity, IntoElement, Render, Subscription, Window, div, prelude::*, px, relative, text,
@@ -76,7 +76,7 @@ impl Render for DownloadWindow {
 			window.remove_window();
 			return frame;
 		};
-		window.set_window_title(&download.name);
+		window.set_window_title("Edit Task");
 		let tint = p.status(download.status);
 		let mut state = download.status.label().to_owned();
 		if download.speed > 0 {
@@ -96,8 +96,8 @@ impl Render for DownloadWindow {
 		let can_resume = matches!(download.status, Status::Paused | Status::Failed | Status::Queued);
 		let resume = rdm.clone();
 		let remove = rdm.clone();
-		// The name is the window's title; the body starts with what the title cannot hold.
-		// Where it came from, which is the first thing anybody opening this window wants. A row
+		// The title says what the window is for, so the body starts with the file's name, then
+		// where it came from, which is the first thing anybody opening this window wants. A row
 		// with no address was not downloaded here: it is a file the folder already held, and
 		// saying so is better than showing an empty line.
 		let came_from = if download.url.is_empty() {
@@ -106,6 +106,13 @@ impl Render for DownloadWindow {
 			download.url.clone()
 		};
 		frame
+			.child(
+				div()
+					.text_sm()
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.truncate()
+					.child(text!(download.name.clone())),
+			)
 			.child(field(p.muted, "From", came_from))
 			.when_some(download.source.clone(), |s, page| {
 				// The page it was found on, where it was found on one rather than typed in.

@@ -1012,7 +1012,7 @@ impl Rdm {
 		cx.defer(move |cx| {
 			// Tall enough for the two live fields, the limit and the connections, and one of the
 			// optional lines -- mirrors, checksum, range, error -- above the buttons.
-			let options = child_window(cx, "Download", size(px(480.0), px(420.0)));
+			let options = child_window(cx, "Edit Task", size(px(480.0), px(440.0)));
 			let view = rdm.clone();
 			if let Ok(handle) =
 				cx.open_window(options, |_, cx| cx.new(|cx| DownloadWindow::new(view, id, cx)))
