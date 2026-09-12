@@ -85,8 +85,13 @@ func topLevelWindows() -> [AXUIElement] {
 
 // AccessKit builds the tree lazily: the first query only switches it on, and the elements arrive
 // with the next frame. So read once to wake it, and again if the first read came back bare.
+// Every window is asked for its content on each pass -- a check that stopped at the first awake
+// window left the ones after it asleep -- and a pass is repeated while any is still bare.
+func bare(_ window: AXUIElement) -> Bool {
+	children(window).allSatisfy { children($0).isEmpty }
+}
 var windows = topLevelWindows()
-for _ in 0..<5 where windows.allSatisfy({ children($0).allSatisfy { children($0).isEmpty } }) {
+for _ in 0..<5 where windows.map(bare).contains(true) {
 	usleep(300_000)
 	windows = topLevelWindows()
 }

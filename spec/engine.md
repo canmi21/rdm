@@ -76,6 +76,11 @@ on its way and is dropped unread, the size is `Content-Length` if there is one, 
 keep it. A HEAD would cost the same and answer less: servers that ignore Range on HEAD and
 honour it on GET are common, and the reverse is not.
 
+The same answer says something of the server too: the protocol version it came over and its
+`Server` header. The probe keeps both for Add Task to show beside the size and the date, and
+nothing after it reads them -- they decide nothing about how the file is fetched, so a server that
+sends no `Server` header is simply not named.
+
 The file's name comes from `Content-Disposition` when the server gives one, the starred form
 first because it is the one that can spell a name outside ASCII, else the address's last path
 segment, decoded, else `download`. Whatever the source, it passes through one function that
@@ -142,9 +147,9 @@ the first byte is a server ignoring ranges, and harmless for that segment alone.
 
 Every setting here reaches the window: the ones that hold for every download are the
 Transfers section of Settings, kept in `config.json` and written over the engine's defaults
-for each new request, and the ones a download can have of its own -- the connections, the
-folder, the name, the mirrors, the checksum, the range and a limit -- are Add Task's, kept on
-the row. A download asks for connections in one of two shapes, `Connections::auto` or
+for each new request, and the ones a download can have of its own -- the folder, the name, the
+mirrors, the checksum, the range and a limit -- are Add Task's, while the connections and the
+limit are its window's, changed as it runs; all of them are kept on the row. A download asks for connections in one of two shapes, `Connections::auto` or
 `Connections::fixed(n)`, and never more than `Connections::MAX`, 256, whatever it asks. In
 automatic mode a download starts with `min` connections and is allowed one more each time a
 connection delivers its first byte, up to `max`: a server that accepts the first is asked for a

@@ -69,6 +69,10 @@ pub enum Icon {
 	Flag,
 	FlagOff,
 	Info,
+	/// Whether a server serves ranges, as a grey mark beside a file's size: split when a download
+	/// can be resumed and cut across connections, one arrow when it cannot. See spec/ui.md.
+	Split,
+	MoveRight,
 }
 
 impl Icon {
@@ -92,6 +96,8 @@ impl Icon {
 			Icon::Flag => "lucide/flag.svg",
 			Icon::FlagOff => "lucide/flag-off.svg",
 			Icon::Info => "lucide/info.svg",
+			Icon::Split => "lucide/split.svg",
+			Icon::MoveRight => "lucide/move-right.svg",
 			Icon::Pause => "lucide/pause.svg",
 			Icon::Play => "lucide/play.svg",
 			Icon::Trash => "lucide/trash.svg",

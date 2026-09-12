@@ -621,15 +621,28 @@ Command on macOS and Control on Windows and Linux, bound once in `text_input.rs`
 field bound to Command alone could not be pasted into anywhere else, which is how it shipped
 first.
 
-**Add Task looks, shows what it found, and asks one thing before it adds.** An address that
-turns out to be a file is not added on the spot: the sheet shows its name and size, whether
-the server serves ranges -- resumable, and splittable across connections -- or not, and,
-when it does, a choice of `Auto` or `Fixed` with a field for the number, one to 256, offered
-as the settings' default. Enter or Add again adds it, and the count travels with the row to
-the engine and into the database, so a resume after a restart opens what was asked for.
-Without ranges there is nothing to choose and the notice says so. A page's links and the page
-itself take the settings' default. `Auto` is the engine's own judgement, in
-[engine.md](engine.md).
+**Add Task asks only what has to be settled before the first byte.** An address that turns out
+to be a file is not added on the spot: the sheet shows what the look turned up, and the name it
+will be saved under, filled in from the look. The file's name is not shown a second time, since
+the address and that field already say it; the card says what neither does. Its first line is the
+category the file will be filed under, with that category's icon and judged by the name in the
+field, so a rename refiles it, then the host the bytes really come from once redirects are
+followed, and on the right the size. Under it, one line of what the server said of the file and
+of itself: when it was last modified, the protocol the answer came over and its Server header,
+each left out when the server did not say. The address and the name are the whole question --
+where from, and kept as what -- because how a file downloads can be changed while it downloads, in the download's own
+window, and a choice asked before anything has moved is a choice made blind. So the connections
+are not asked: a new download starts from the settings' default, `Auto` unless it was changed,
+which is the engine's own judgement in [engine.md](engine.md). Whether the server serves ranges
+-- resumable, and splittable across connections -- is a grey mark beside the size, `split` when it
+does and `move-right` when it does not, with no sentence beside it: it says how the download will
+be able to run, which only matters once it runs. Enter or Add again adds it. A page's links and
+the page itself take the settings' default too.
+
+The sheet used to ask for `Auto` or `Fixed` and a count, under a line saying whether the file
+was resumable. The user took that out: the address and the name are the two things that cannot
+be changed once bytes arrive, and the count is exactly the kind of thing that can, so asking it
+here put a decision in front of the one step that did not need it.
 
 **Everything else the engine can be asked is behind `More`.** Under the notice a word opens
 the rest: the name to save under, the folder -- the system's picker, and the download folder
@@ -638,8 +651,8 @@ finished file must match, sha256, sha512 or md5 as hex with the length saying wh
 of the file wanted as `start-end` in bytes, and a limit of the download's own. Each is checked
 before anything is added and a wrong one is said under the field; each empty one is left to
 the defaults. What was asked travels with the row into the database, and a resume after a
-restart asks for the same. The download's window shows what was asked and lets the limit be
-changed while it runs. The transfer settings, a section of their own, are the engine's
+restart asks for the same. The download's window shows what was asked and lets the limit and
+the connections be changed while it runs. The transfer settings, a section of their own, are the engine's
 defaults for every new download and are listed in [release.md](release.md)'s neighbour,
 [engine.md](engine.md); the two the engine takes live, concurrent downloads and the speed
 limit, reach it as they are typed.
@@ -657,10 +670,14 @@ field itself scrolls under its cursor when the address is longer than the box, a
 native field does: wrapping would make a one-line field two, and an ellipsis would hide the
 part being edited.
 
-**A download's window says what was asked and takes one change.** Under the address and the
-size: the folder, the connections, the mirrors, the checksum and the range where there were
-any, the error while there is one, and a field for the download's own limit, applied on Enter
-to the engine and kept on the row.
+**A download's window says what was asked and takes the changes a running download can.** Under
+the address and the size: the folder, the mirrors, the checksum and the range where there were
+any, the error while there is one, and two fields applied on Enter to the engine and kept on the
+row. One is the download's own limit. The other is its connections: empty or `auto` for the
+engine's judgement, a number from one to 256 for a fixed count, and beside it how many are open
+while it runs. A higher count opens connections at once; a lower one is a ceiling the download
+drifts down to as its connections finish, since a connection already reading is not cut off
+([engine.md](engine.md)). A server that never offered ranges stays on one whatever is typed.
 
 **Only a download gets a window; everything else is a sheet.** Settings and Add Task open as a
 card over the dimmed list inside the main window. The distinction is whether the thing is worth

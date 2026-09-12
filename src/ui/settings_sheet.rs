@@ -383,11 +383,7 @@ impl Rdm {
 					self.engine.set_speed_limit(limit);
 				}
 				"settings.label.connections" => {
-					self.preferences.connections = if text.is_empty() || text.eq_ignore_ascii_case("auto") {
-						None
-					} else {
-						Some(crate::ui::add_dialog::parse_count(text)?)
-					};
+					self.preferences.connections = crate::ui::add_dialog::parse_connections(text)?;
 				}
 				"settings.label.smallest_segment" => self.preferences.min_segment = parse_size(text)?,
 				"settings.label.connect_timeout" => self.preferences.connect_timeout = parse_number(text)?,

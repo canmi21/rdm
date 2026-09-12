@@ -1,7 +1,7 @@
 //! One download in a window of its own, opened by double-clicking its row.
 
 use gpui::{
-	Context, Entity, IntoElement, Render, Subscription, Window, div, prelude::*, px, relative,
+	Context, Entity, IntoElement, Render, Subscription, Window, div, prelude::*, px, relative, text,
 };
 
 use crate::app::Rdm;
@@ -13,9 +13,11 @@ use crate::ui::theme;
 pub struct DownloadWindow {
 	rdm: Entity<Rdm>,
 	id: u64,
-	/// The one thing about a running download that can be changed here: its own limit,
-	/// applied on Enter to the engine and kept on the row.
+	/// What about a download can be changed here, each applied on Enter to the engine and kept on
+	/// the row: its own limit, and its connections, Auto or a count. How a download runs is
+	/// settled here, while it runs, rather than asked at Add Task. See spec/ui.md.
 	limit: Entity<crate::ui::text_input::TextInput>,
+	connections: Entity<crate::ui::text_input::TextInput>,
 	_follow: Subscription,
 }
 
@@ -37,7 +39,21 @@ impl DownloadWindow {
 			}
 			field
 		});
-		Self { rdm, id, limit, _follow: follow }
+		let asked = rdm.read(cx).download(id).and_then(|d| d.connections);
+		let owner = rdm.clone();
+		let connections = cx.new(|cx| {
+			let mut field =
+				crate::ui::text_input::TextInput::new("Auto", cx).on_confirm(move |text, _, cx| {
+					// A count out of range is left unapplied, and the field keeps what was typed.
+					let Ok(count) = crate::ui::add_dialog::parse_connections(text) else { return };
+					owner.update(cx, |rdm, cx| rdm.set_task_connections(id, count, cx));
+				});
+			if let Some(count) = asked {
+				field.set_content(&count.to_string(), cx);
+			}
+			field
+		});
+		Self { rdm, id, limit, connections, _follow: follow }
 	}
 }
 
@@ -70,6 +86,13 @@ impl Render for DownloadWindow {
 			state.push_str(&format!(", {} left", format_duration(left)));
 		}
 		let can_pause = download.status == Status::Downloading;
+		let most = crate::engine::Connections::MAX;
+		let connections_hint = match self.rdm.read(cx).open_connections(id) {
+			Some(open) if download.status == Status::Downloading => {
+				format!("Auto, or 1 to {most}; {open} open; Enter applies")
+			}
+			_ => format!("Auto, or 1 to {most}; Enter applies"),
+		};
 		let can_resume = matches!(download.status, Status::Paused | Status::Failed | Status::Queued);
 		let resume = rdm.clone();
 		let remove = rdm.clone();
@@ -94,27 +117,19 @@ impl Render for DownloadWindow {
 				"Folder",
 				download.directory.clone().unwrap_or_else(|| "Download folder".to_owned()),
 			))
-			.child(field(
-				p.muted,
-				"Connections",
-				download.connections.map(|n| n.to_string()).unwrap_or_else(|| "Auto".to_owned()),
-			))
 			.when(!download.mirrors.is_empty(), |s| {
 				s.child(field(p.muted, "Mirrors", download.mirrors.join(" ")))
 			})
 			.when_some(download.checksum.clone(), |s, sum| s.child(field(p.muted, "Checksum", sum)))
 			.when_some(download.range.clone(), |s, range| s.child(field(p.muted, "Range", range)))
 			.when_some(download.error.clone(), |s, error| s.child(field(p.failure, "Error", error)))
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.text_xs()
-					.child(div().w(px(36.0)).flex_none().text_color(p.muted).child("Limit"))
-					.child(div().w(px(112.0)).child(self.limit.clone()))
-					.child(div().text_color(p.muted).child("KB/s, or with m or g; Enter applies")),
-			)
+			.child(control(
+				p.muted,
+				"Limit",
+				self.limit.clone(),
+				"KB/s, or with m or g; Enter applies".to_owned(),
+			))
+			.child(control(p.muted, "Connections", self.connections.clone(), connections_hint))
 			.child(field(p.muted, "Contents", {
 				let contents = self.rdm.read(cx).contents_of(&download);
 				match contents.len() {
@@ -187,4 +202,21 @@ fn field(label: gpui::Hsla, name: &'static str, value: String) -> impl IntoEleme
 		.text_xs()
 		.child(div().w(px(36.0)).flex_none().text_color(label).child(name))
 		.child(div().flex_1().min_w_0().truncate().child(value))
+}
+
+/// A setting of this download's own: its name, a field applied on Enter, and what the field takes.
+fn control(
+	muted: gpui::Hsla,
+	name: &'static str,
+	input: Entity<crate::ui::text_input::TextInput>,
+	hint: String,
+) -> impl IntoElement {
+	div()
+		.flex()
+		.items_center()
+		.gap_2()
+		.text_xs()
+		.child(div().w(px(72.0)).flex_none().text_color(muted).child(text!(id = (name, 0usize), name)))
+		.child(div().w(px(112.0)).flex_none().child(input))
+		.child(div().min_w_0().truncate().text_color(muted).child(text!(id = (name, 1usize), hint)))
 }

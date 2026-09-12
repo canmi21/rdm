@@ -10,7 +10,6 @@ use reqwest::Url;
 
 use crate::app::Rdm;
 use crate::engine::{Inspection, Link};
-use crate::ui::LeavesFocus;
 use crate::ui::backdrop;
 use crate::ui::button;
 use crate::ui::icon::{Icon, icon};
@@ -27,11 +26,9 @@ pub struct AddSheet {
 	pub checking: Option<(Url, Receiver<Result<Inspection, String>>)>,
 	/// The address turned out to be a page; what it links to, and which of those were added.
 	pub page: Option<Page>,
-	/// The address is a file, looked at: what the server said of it, and how many connections
-	/// to open, the engine's judgement or the number in the field.
+	/// The address is a file, looked at: what the server said of it. How it downloads is not
+	/// asked here; the download's window changes that while it runs. See spec/ui.md.
 	pub found: Option<Found>,
-	pub auto: bool,
-	pub count: Entity<TextInput>,
 	/// The rest of what can be asked for, behind More: the name to save under, the folder,
 	/// other addresses of the same file, a checksum, a range and a limit of its own.
 	pub more: bool,
@@ -62,6 +59,13 @@ pub fn parse_count(text: &str) -> Result<u16, String> {
 		Ok(n) if (1..=max as u32).contains(&n) => Ok(n as u16),
 		_ => Err(format!("Connections must be a number from 1 to {max}.")),
 	}
+}
+
+/// A connections field as Settings and a download's window read it: empty or `auto` is the
+/// engine's own judgement, anything else a count.
+pub fn parse_connections(text: &str) -> Result<Option<u16>, String> {
+	let text = text.trim();
+	if text.is_empty() || text.eq_ignore_ascii_case("auto") { Ok(None) } else { parse_count(text).map(Some) }
 }
 
 /// Whatever was typed or pasted, as an address if it can be one. With a scheme, it must be
@@ -108,16 +112,6 @@ impl Rdm {
 					input
 				});
 				cx.observe(&input, |_, _, cx| cx.notify()).detach();
-				let confirm = cx.entity();
-				let count = cx.new(|cx| {
-					let mut count = TextInput::new("16", cx)
-						.on_confirm(move |_, _, cx| confirm.update(cx, |this, cx| this.submit_add(cx)));
-					if let Some(n) = self.preferences.connections {
-						count.set_content(&n.to_string(), cx);
-					}
-					count
-				});
-				cx.observe(&count, |_, _, cx| cx.notify()).detach();
 				let mut field = |placeholder: &'static str| {
 					let confirm = cx.entity();
 					let field = cx.new(|cx| {
@@ -139,8 +133,6 @@ impl Rdm {
 					checking: None,
 					page: None,
 					found: None,
-					auto: self.preferences.connections.is_none(),
-					count,
 					more: false,
 					name,
 					folder: None,
@@ -188,18 +180,8 @@ impl Rdm {
 			&& found.url.as_str()
 				== parse_address(&sheet.input.read(cx).content).map(|u| u.to_string()).unwrap_or_default()
 		{
-			let connections = if sheet.auto {
-				None
-			} else {
-				match parse_count(&sheet.count.read(cx).content) {
-					Ok(count) => Some(count),
-					Err(message) => {
-						sheet.error = Some(message);
-						cx.notify();
-						return;
-					}
-				}
-			};
+			// The settings' default; the download's window changes it while it runs.
+			let connections = self.preferences.connections;
 			let asked = match self.asked(connections, cx) {
 				Ok(asked) => asked,
 				Err(message) => {
@@ -313,15 +295,6 @@ impl Rdm {
 	pub(crate) fn clear_add_folder(&mut self, cx: &mut Context<Self>) {
 		if let Some(sheet) = &mut self.adding {
 			sheet.folder = None;
-			cx.notify();
-		}
-	}
-
-	/// The engine's judgement, or the number in the field.
-	pub(crate) fn set_add_auto(&mut self, auto: bool, cx: &mut Context<Self>) {
-		if let Some(sheet) = &mut self.adding {
-			sheet.auto = auto;
-			sheet.error = None;
 			cx.notify();
 		}
 	}
@@ -460,9 +433,12 @@ impl Rdm {
 		.priority(2)
 	}
 
-	/// The address is a file: its name and size, whether the server lets it be split and
-	/// resumed, and how many connections to open, the engine's judgement or a number. Without
-	/// ranges there is nothing to choose, and the notice says so.
+	/// The address is a file: what the look turned up beyond its name, which the address and Save as
+	/// already say -- the category it will be filed under, where the bytes really come from, its
+	/// size with a grey mark for whether the server lets it be split and resumed, and a line of
+	/// what the server said of the file and of itself -- then the name it will be saved under. How
+	/// many connections to open is not asked: the settings' default starts the download and its
+	/// window changes the count while it runs. See spec/ui.md.
 	fn found_notice(
 		&self,
 		found: &Found,
@@ -473,29 +449,42 @@ impl Rdm {
 		let probe = &found.probe;
 		let size =
 			probe.size.map(crate::download::format_bytes).unwrap_or_else(|| "size unknown".to_owned());
-		let capability = if probe.ranges {
-			"Resumable, can be split across connections"
+		// A mark rather than a sentence: what it says matters once the download runs, and there it
+		// is a setting of the download's window rather than a question here.
+		let (mark, meaning) = if probe.ranges {
+			(Icon::Split, "Resumable, can be split across connections")
 		} else {
-			"Single connection: the server does not serve ranges"
+			(Icon::MoveRight, "One connection, cannot resume")
 		};
-		let chip = |label: &'static str, on: bool, auto: bool| {
-			div()
-				.id(("add-connections", auto as usize))
-				.role(gpui::Role::RadioButton)
-				.aria_label(label)
-				.aria_selected(on)
-				.debug_selector(move || format!("connections:{label}"))
-				.px_2()
-				.py_0p5()
-				.rounded_sm()
-				.cursor_pointer()
-				.leaves_focus()
-				.text_color(if on { p.text } else { p.muted })
-				.when(on, |s| s.bg(p.selection))
-				.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
-				.on_click(cx.listener(move |this, _, _, cx| this.set_add_auto(auto, cx)))
-				.child(label)
+		// Filed by the name it will be saved under, so renaming it in the field refiles it here.
+		let typed = sheet.name.read(cx).content.trim().to_owned();
+		let name = if typed.is_empty() { probe.file_name.clone() } else { typed };
+		let filed = self
+			.categories
+			.iter()
+			.find(|c| c.matches_name(&name))
+			.or_else(|| self.categories.iter().find(|c| c.is_catch_all()))
+			.map(|c| {
+				let tint = if self.preferences.colorful_categories { p.hue(c.color) } else { p.muted };
+				(c.icon, tint, c.name.clone())
+			});
+		// The host after redirects, which is not always the one typed.
+		let host = probe.url.host_str().unwrap_or_default();
+		let source = match (&filed, host.is_empty()) {
+			(_, true) => String::new(),
+			(Some(_), false) => format!("\u{b7} {host}"),
+			(None, false) => host.to_owned(),
 		};
+		let updated = probe
+			.last_modified
+			.as_deref()
+			.and_then(|date| chrono::DateTime::parse_from_rfc2822(date).ok())
+			.map(|date| format!("Updated {}", date.with_timezone(&chrono::Local).format("%b %-d, %Y")));
+		let details = [updated, Some(probe.version.to_owned()), probe.server.clone()]
+			.into_iter()
+			.flatten()
+			.collect::<Vec<_>>()
+			.join(" \u{b7} ");
 		div()
 			.debug_selector(|| "add-found".to_owned())
 			.flex()
@@ -507,12 +496,48 @@ impl Rdm {
 			.child(
 				div()
 					.flex()
-					.justify_between()
-					.gap_3()
-					.child(div().min_w_0().truncate().child(text!(probe.file_name.clone())))
-					.child(div().flex_none().text_color(p.muted).child(text!(size))),
+					.flex_col()
+					.gap_0p5()
+					.child(
+						div()
+							.flex()
+							.items_center()
+							.justify_between()
+							.gap_3()
+							.child(
+								div()
+									.flex()
+									.min_w_0()
+									.items_center()
+									.gap_1p5()
+									.when_some(filed, |s, (glyph, tint, filed)| {
+										s.child(icon(glyph, tint).size_3p5())
+											.child(div().flex_none().child(text!(filed)))
+									})
+									.when(!source.is_empty(), |s| {
+										s.child(div().min_w_0().truncate().text_color(p.muted).child(text!(source)))
+									}),
+							)
+							.child(
+								div()
+									.flex()
+									.flex_none()
+									.items_center()
+									.gap_1p5()
+									.text_color(p.muted)
+									.child(
+										div()
+											.id("add-ranges")
+											.role(gpui::Role::Image)
+											.aria_label(meaning)
+											.debug_selector(|| "add-ranges".to_owned())
+											.child(icon(mark, p.muted).size_3p5()),
+									)
+									.child(text!(size)),
+							),
+					)
+					.child(div().text_xs().text_color(p.muted).truncate().child(text!(details))),
 			)
-			.child(div().text_xs().text_color(p.muted).child(text!(capability)))
 			// The name it will be saved under, on the face rather than behind More: it is filled
 			// in from what the look turned up, and a name somebody may want to change is not a
 			// thing to hide behind a word. Everything else behind More is a thing most people
@@ -526,26 +551,6 @@ impl Rdm {
 					.child(div().flex_none().text_color(p.muted).child(text!("Save as")))
 					.child(div().flex_1().min_w_0().child(sheet.name.clone())),
 			)
-			.when(probe.ranges, |s| {
-				s.child(
-					div()
-						.flex()
-						.items_center()
-						.gap_2()
-						.text_xs()
-						.child(div().text_color(p.muted).child(text!("Connections")))
-						.child(chip("Auto", sheet.auto, true))
-						.child(chip("Fixed", !sheet.auto, false))
-						.when(!sheet.auto, |s| s.child(div().w(px(64.0)).child(sheet.count.clone())))
-						.when(!sheet.auto, |s| {
-							s.child(
-								div()
-									.text_color(p.muted)
-									.child(text!(format!("1 to {}", crate::engine::Connections::MAX))),
-							)
-						}),
-				)
-			})
 			.child(
 				div()
 					.id("add-more")
@@ -718,5 +723,15 @@ mod tests {
 		assert_eq!(ok("nodot"), None);
 		assert_eq!(ok(""), None);
 		assert_eq!(ok(&"x".repeat(1001)), None, "over the limit is not looked at");
+	}
+
+	#[test]
+	fn a_connections_field_is_auto_when_empty_or_said_and_a_count_otherwise() {
+		assert_eq!(parse_connections(""), Ok(None));
+		assert_eq!(parse_connections(" Auto "), Ok(None));
+		assert_eq!(parse_connections("8"), Ok(Some(8)));
+		assert!(parse_connections("0").is_err());
+		assert!(parse_connections("257").is_err());
+		assert!(parse_connections("lots").is_err());
 	}
 }

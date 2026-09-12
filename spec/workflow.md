@@ -93,9 +93,10 @@ screenshot gives that answer slowest and least exactly. The user asked for exact
 channel like the DevTools a web page has, with screenshots kept for when nothing else will do.
 
 Two limits come with the source. **GPUI builds the tree only once something has asked the window
-for it**, and on macOS the adapter then stays on for the rest of the process. So a window nobody
-has asked answers that it is asleep, the client wakes it with `ax windows` and asks again, and a
-fresh `dev` restart costs one extra round. **Only an element with both an id and a role is a
+for it**, and on macOS the adapter then stays on for the rest of the process. So the reply names
+the windows nobody has asked -- a download's window opened after the rest were woken is one --
+and while any is asleep the client wakes them with `ax windows` and asks again; a fresh `dev`
+restart or a new window costs one extra round. **Only an element with both an id and a role is a
 node.** A plain string child has neither, so text a tool or VoiceOver should read is written
 `text!(...)`: a `Label` whose id is its source location, or `text!(id = ..., ...)` where one
 call site draws several. A container that should gather what is inside it takes an id, a role

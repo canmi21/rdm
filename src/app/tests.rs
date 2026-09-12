@@ -1660,7 +1660,7 @@ fn the_name_rows_follow_the_switches_and_choosing_a_server_fills_the_field(
 }
 
 #[gpui::test]
-fn a_file_is_shown_before_it_is_added_and_the_connections_are_chosen_there(
+fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards(
 	cx: &mut TestAppContext,
 ) {
 	use crate::engine::testing::{Options, TestServer, body};
@@ -1683,16 +1683,10 @@ fn a_file_is_shown_before_it_is_added_and_the_connections_are_chosen_there(
 	}
 	assert!(seen, "the address was looked at and found to be a file");
 	assert!(cx.debug_bounds("add-found").is_some(), "the file is shown before it is added");
-	assert!(cx.debug_bounds("connections:Auto").is_some(), "ranges, so connections are a choice");
+	assert!(cx.debug_bounds("add-ranges").is_some(), "the server's ranges are a mark beside the size");
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(rdm.downloads.iter().all(|d| d.url != address), "not added yet")
 	});
-	click(&mut cx, "connections:Fixed");
-	let count = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().count.clone());
-	cx.update(|_, cx| count.update(cx, |i, cx| i.set_content("999", cx)));
-	click(&mut cx, "button:Add");
-	assert!(cx.debug_bounds("add-error").is_some(), "999 is more than the most");
-	cx.update(|_, cx| count.update(cx, |i, cx| i.set_content("8", cx)));
 	// More: the rest of what can be asked, each checked before anything is added.
 	click(&mut cx, "button:More");
 	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
@@ -1716,13 +1710,17 @@ fn a_file_is_shown_before_it_is_added_and_the_connections_are_chosen_there(
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(rdm.adding.is_none(), "added and closed");
 		let row = rdm.downloads.iter().find(|d| d.url == address).expect("the download");
-		assert_eq!(row.connections, Some(8));
+		assert_eq!(row.connections, None, "not asked at Add Task: the settings' default, auto");
 		assert_eq!(row.name, "renamed.bin");
 		assert_eq!(row.mirrors, vec![mirror.clone()]);
 		assert_eq!(row.checksum.as_deref(), Some("d41d8cd98f00b204e9800998ecf8427e"));
 		assert_eq!(row.range.as_deref(), Some("0-1000"));
 		assert_eq!(row.speed_limit, Some(500 * 1024));
 	});
+	// How it downloads is changed afterwards, as the download's window does, and kept on the row.
+	let id = rdm.read_with(&cx, |rdm, _| rdm.downloads.iter().find(|d| d.url == address).unwrap().id);
+	rdm.update(&mut cx, |rdm, cx| rdm.set_task_connections(id, Some(4), cx));
+	rdm.read_with(&cx, |rdm, _| assert_eq!(rdm.download(id).and_then(|d| d.connections), Some(4)));
 }
 
 #[gpui::test]

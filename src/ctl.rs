@@ -23,7 +23,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 const USAGE: &str = "state | tree | view <detailed|thumbnails|grid> | select <id> | open <id> | settings [section] | menu <label> | fullscreen | update | \
 	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
-	sort <added|name|size|progress|speed|status> [desc] | add <url> | look <address> | \
+	sort <added|name|size|progress|speed|status> [desc] | add <url> | look <address> | connections <id> <auto|n> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
 	move <id> <onto id>";
 
@@ -81,8 +81,6 @@ struct AddState {
 	error: Option<String>,
 	found: Option<FoundState>,
 	page: Option<PageState>,
-	auto: bool,
-	count: String,
 	more: bool,
 	name: String,
 	folder: Option<String>,
@@ -98,6 +96,9 @@ struct FoundState {
 	name: String,
 	size: Option<u64>,
 	ranges: bool,
+	last_modified: Option<String>,
+	version: &'static str,
+	server: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -260,14 +261,15 @@ impl Rdm {
 				name: found.probe.file_name.clone(),
 				size: found.probe.size,
 				ranges: found.probe.ranges,
+				last_modified: found.probe.last_modified.clone(),
+				version: found.probe.version,
+				server: found.probe.server.clone(),
 			}),
 			page: sheet.page.as_ref().map(|page| PageState {
 				url: page.url.to_string(),
 				links: page.links.iter().map(|link| link.url.to_string()).collect(),
 				added: page.added.clone(),
 			}),
-			auto: sheet.auto,
-			count: read(&sheet.count),
 			more: sheet.more,
 			name: read(&sheet.name),
 			folder: sheet.folder.as_ref().map(|path| path.display().to_string()),
@@ -280,25 +282,28 @@ impl Rdm {
 
 	/// Every window's component tree as GPUI last built it for accessibility, nested, with the
 	/// view and source line each node came from. GPUI builds that tree only once something has
-	/// asked the window for it, so while none has, the answer is that the windows are asleep and
-	/// the client wakes them. See spec/workflow.md.
+	/// asked the window for it, so the reply names the windows still asleep -- a window opened
+	/// after the others were woken is one -- and the client wakes them. See spec/workflow.md.
 	fn tree(&self, cx: &mut Context<Self>) -> String {
 		let mut windows = Vec::new();
+		let mut asleep = Vec::new();
 		for handle in cx.windows() {
 			let _ = handle.update(cx, |_, window, _| {
 				let dump = window
 					.debug_a11y_tree_json()
 					.filter(|_| window.is_a11y_active())
 					.and_then(|json| serde_json::from_str::<Value>(&json).ok());
-				if let Some(dump) = dump {
-					windows.push(nest_window(&dump));
+				match dump {
+					Some(dump) => windows.push(nest_window(&dump)),
+					None => asleep.push(window.window_title()),
 				}
 			});
 		}
 		if windows.is_empty() {
 			return failure("asleep: no window has built its accessibility tree yet");
 		}
-		serde_json::to_string_pretty(&windows).unwrap_or_else(|error| failure(&error.to_string()))
+		serde_json::to_string_pretty(&serde_json::json!({ "asleep": asleep, "windows": windows }))
+			.unwrap_or_else(|error| failure(&error.to_string()))
 	}
 
 	/// One line of the protocol above; every command answers with the state it left behind.
@@ -526,6 +531,18 @@ impl Rdm {
 					crate::notify::Occasion::Update => crate::notify::Notice::new(text, ""),
 				};
 				self.tell_of(occasion, notice, cx);
+			}
+			// A download's connections, as its window's field sets them: auto, or a count.
+			"connections" => {
+				let usage = "connections takes a download id and auto or a count";
+				let Some(id) = id.filter(|id| self.downloads.iter().any(|d| d.id == *id)) else {
+					return failure(usage);
+				};
+				let Some(text) = rest.get(1) else { return failure(usage) };
+				match crate::ui::add_dialog::parse_connections(text) {
+					Ok(count) => self.set_task_connections(id, count, cx),
+					Err(message) => return failure(&message),
+				}
 			}
 			// Types an address into the open Add Task sheet and looks at it, as Enter would, so the
 			// sheet's found and page faces are reachable without the keyboard. What was found before

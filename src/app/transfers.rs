@@ -335,6 +335,28 @@ impl Rdm {
 		cx.notify();
 	}
 
+	/// A download's connections, changed live and kept: None for the engine's judgement, or a
+	/// count. A higher count opens connections at once and a lower one is reached as connections
+	/// finish. See spec/engine.md.
+	pub(crate) fn set_task_connections(
+		&mut self,
+		id: u64,
+		connections: Option<u16>,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(download) = self.downloads.iter_mut().find(|d| d.id == id) {
+			download.connections = connections;
+		}
+		self.engine.set_task_connections(TaskId(id), connections_for(connections));
+		self.persist(id);
+		cx.notify();
+	}
+
+	/// How many connections a download holds open right now, while the engine has it.
+	pub(crate) fn open_connections(&self, id: u64) -> Option<u64> {
+		self.engine.snapshot(TaskId(id)).map(|snapshot| snapshot.connections)
+	}
+
 	/// A new download, handed to the engine and shown at once under `name` or the address's
 	/// last path segment; the probe's name replaces it as soon as it is known. `source` is the
 	/// page it was found on, if any. The id is the store's next, so it is never reused while a

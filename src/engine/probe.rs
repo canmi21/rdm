@@ -7,9 +7,9 @@
 use percent_encoding::percent_decode_str;
 use reqwest::header::{
 	ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, ETAG,
-	LAST_MODIFIED, RANGE,
+	LAST_MODIFIED, RANGE, SERVER,
 };
-use reqwest::{Client, StatusCode, Url};
+use reqwest::{Client, StatusCode, Url, Version};
 
 use crate::engine::error::{Error, Result};
 
@@ -27,6 +27,10 @@ pub struct Probe {
 	/// segment, else `download`. Never contains a path separator.
 	pub file_name: String,
 	pub content_type: Option<String>,
+	/// What the server said of itself, for Add Task to show and for nothing after the probe: the
+	/// protocol the answer came over, and its Server header. See spec/engine.md.
+	pub version: &'static str,
+	pub server: Option<String>,
 }
 
 impl Probe {
@@ -46,6 +50,7 @@ pub async fn probe(client: &Client, url: Url) -> Result<Probe> {
 	}
 	let response = client.get(url.clone()).header(RANGE, "bytes=0-0").send().await?;
 	let status = response.status();
+	let version = version_name(response.version());
 	if !status.is_success() {
 		return Err(Error::Refused { status: status.as_u16() });
 	}
@@ -78,7 +83,24 @@ pub async fn probe(client: &Client, url: Url) -> Result<Probe> {
 		last_modified: text(LAST_MODIFIED),
 		file_name,
 		content_type: text(CONTENT_TYPE),
+		version,
+		server: text(SERVER),
 	})
+}
+
+/// How a protocol version is written where people read it.
+fn version_name(version: Version) -> &'static str {
+	if version == Version::HTTP_3 {
+		"HTTP/3"
+	} else if version == Version::HTTP_2 {
+		"HTTP/2"
+	} else if version == Version::HTTP_11 {
+		"HTTP/1.1"
+	} else if version == Version::HTTP_10 {
+		"HTTP/1.0"
+	} else {
+		"HTTP/0.9"
+	}
 }
 
 /// `attachment; filename="a.zip"` or `filename*=UTF-8''a%20b.zip`; the starred form wins, as
@@ -139,6 +161,7 @@ mod tests {
 		assert_eq!(probe.etag.as_deref(), Some("\"v1\""));
 		assert_eq!(probe.validator(), Some("\"v1\""));
 		assert_eq!(probe.file_name, "data.bin");
+		assert_eq!((probe.version, probe.server.as_deref()), ("HTTP/1.1", None), "no Server header sent");
 		assert_eq!(server.requests().len(), 1, "one request, and its body was one byte");
 		assert_eq!(server.requests()[0].range, Some((0, Some(0))));
 	}

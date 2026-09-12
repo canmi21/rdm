@@ -9,8 +9,8 @@ protocol.
 `tree [match] [--json]` is the component tree: every window's accessibility tree as GPUI built
 it, printed as an outline, one node a line with its role, label, value, id and the source line
 that made it. A match keeps the windows whose title holds it, or else the subtrees whose id or
-label is it. A window nobody has asked for its tree has not built one, so an asleep answer is
-met by waking the windows through `ax` and asking again.
+label is it. A window nobody has asked for its tree has not built one, so a reply that names
+any window asleep is met by waking the windows through `ax` and asking again.
 """
 
 import json
@@ -91,12 +91,20 @@ def find(node: dict, wanted: str) -> list:
 	return [found for child in node.get("children", []) for found in find(child, wanted)]
 
 
+def asleep(reply: bytes) -> bool:
+	if reply.startswith(b'{"error":"asleep'):
+		return True
+	if reply.startswith(b'{"error"'):
+		return False
+	return bool(json.loads(reply).get("asleep"))
+
+
 def tree(argv: list) -> int:
 	as_json = "--json" in argv
 	wanted = " ".join(word for word in argv if word != "--json")
 	reply = ask("tree")
 	for _ in range(3):
-		if not reply.startswith(b'{"error":"asleep'):
+		if not asleep(reply):
 			break
 		wake()
 		time.sleep(0.5)
@@ -104,7 +112,11 @@ def tree(argv: list) -> int:
 	if reply.startswith(b'{"error"'):
 		sys.stdout.write(reply.decode())
 		return 1
-	windows = json.loads(reply)
+	result = json.loads(reply)
+	windows = result["windows"]
+	if result.get("asleep"):
+		names = ", ".join(f'"{title}"' for title in result["asleep"])
+		print(f"not built yet, so not shown: {names}", file=sys.stderr)
 	if wanted:
 		titled = [w for w in windows if wanted in (w.get("title") or "")]
 		if titled:
