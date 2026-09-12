@@ -130,7 +130,14 @@ case "size":
 	print("asked \(Int(wanted.width))x\(Int(wanted.height)), got \(Int(got.width))x\(Int(got.height))")
 case "press":
 	let label = arguments.dropFirst().joined(separator: " ")
-	guard let target = windows.lazy.compactMap({ find($0, labelled: label) }).first else {
+	// A window just woken has its frame buttons before GPUI's own elements, which arrive a frame
+	// later, so the wait above can end with the label not there yet. Look again for a moment.
+	var found = windows.lazy.compactMap({ find($0, labelled: label) }).first
+	for _ in 0..<10 where found == nil {
+		usleep(200_000)
+		found = topLevelWindows().lazy.compactMap({ find($0, labelled: label) }).first
+	}
+	guard let target = found else {
 		FileHandle.standardError.write("nothing labelled \"\(label)\"; `ax tree` lists what there is\n".data(using: .utf8)!)
 		exit(1)
 	}
