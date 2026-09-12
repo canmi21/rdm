@@ -9,19 +9,21 @@ use futures::StreamExt;
 use futures::channel::{mpsc, oneshot};
 use gpui::{App, Context, Entity};
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::app::{Column, Rdm, SortKey, View};
 use crate::download::{Download, Filter, Status};
 use crate::ui::category_sheet::CategorySheet;
 use crate::ui::icon::Icon;
+use crate::ui::text_input::TextInput;
 
 /// Under the build directory, so it is per checkout and gone with `cargo clean`.
 pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock");
 
-const USAGE: &str = "state | view <detailed|thumbnails|grid> | select <id> | open <id> | settings [section] | menu <label> | fullscreen | update | \
+const USAGE: &str = "state | tree | view <detailed|thumbnails|grid> | select <id> | open <id> | settings [section] | menu <label> | fullscreen | update | \
 	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
-	sort <added|name|size|progress|speed|status> [desc] | add <url> | \
+	sort <added|name|size|progress|speed|status> [desc] | add <url> | look <address> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
 	move <id> <onto id>";
 
@@ -72,6 +74,40 @@ struct CategoryState {
 }
 
 #[derive(Serialize)]
+struct AddState {
+	address: String,
+	/// The address the engine is looking at, until it answers.
+	checking: Option<String>,
+	error: Option<String>,
+	found: Option<FoundState>,
+	page: Option<PageState>,
+	auto: bool,
+	count: String,
+	more: bool,
+	name: String,
+	folder: Option<String>,
+	mirrors: String,
+	checksum: String,
+	range: String,
+	limit: String,
+}
+
+#[derive(Serialize)]
+struct FoundState {
+	url: String,
+	name: String,
+	size: Option<u64>,
+	ranges: bool,
+}
+
+#[derive(Serialize)]
+struct PageState {
+	url: String,
+	links: Vec<String>,
+	added: Vec<usize>,
+}
+
+#[derive(Serialize)]
 struct State<'a> {
 	/// The build as identity.rs knows it: the version, and the run number and commit when made
 	/// by the release workflow.
@@ -90,6 +126,9 @@ struct State<'a> {
 	windows: Vec<u64>,
 	settings: bool,
 	category_sheet: Option<&'static str>,
+	/// The Add Task sheet while it is up: what each field holds and what looking at the address
+	/// found. See spec/ui.md.
+	add: Option<AddState>,
 	/// The table, as the header has it: the widths asked for, the widths there is room to draw,
 	/// what the name column is left, and how wide the window is. The two rows of widths differ
 	/// only when the window is too narrow to hold what was asked for. See spec/ui.md.
@@ -110,6 +149,54 @@ fn failure(message: &str) -> String {
 	serde_json::json!({ "error": message }).to_string()
 }
 
+/// One window's dump, reshaped from GPUI's flat map of nodes into the tree it describes, with the
+/// frame's counts beside it.
+fn nest_window(dump: &Value) -> Value {
+	let frame = &dump["frame"];
+	let focus = dump["gpui_focus"].as_str();
+	let tree = match (dump["root"].as_str(), dump["nodes"].as_object()) {
+		(Some(root), Some(nodes)) => nest_node(root, nodes, focus),
+		_ => Value::Null,
+	};
+	serde_json::json!({
+		"title": frame["window_title"],
+		"nodes": frame["node_count"],
+		"tab_stops": frame["tab_stop_count"],
+		"viewport": frame["viewport_size"],
+		"frame": frame["frame_number"],
+		"tree": tree,
+	})
+}
+
+/// A node's accessibility properties flattened into it, its provenance renamed short, and its
+/// children in place of their keys.
+fn nest_node(key: &str, nodes: &serde_json::Map<String, Value>, focus: Option<&str>) -> Value {
+	let Some(node) = nodes.get(key) else { return Value::Null };
+	let mut out = serde_json::Map::new();
+	if let Some(aria) = node["aria"].as_object() {
+		out.extend(aria.iter().map(|(name, value)| (name.clone(), value.clone())));
+	}
+	for (from, to) in [("element_id", "id"), ("view", "view"), ("source_location", "at")] {
+		if let Some(value) = node.get(from) {
+			out.insert(to.to_owned(), value.clone());
+		}
+	}
+	if focus == Some(key) {
+		out.insert("focused".to_owned(), Value::Bool(true));
+	}
+	let children: Vec<Value> = node["children"]
+		.as_array()
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.map(|child| nest_node(child, nodes, focus))
+		.collect();
+	if !children.is_empty() {
+		out.insert("children".to_owned(), Value::Array(children));
+	}
+	Value::Object(out)
+}
+
 impl Rdm {
 	fn state(&self, cx: &mut Context<Self>) -> String {
 		let windows = self
@@ -119,6 +206,7 @@ impl Rdm {
 			.map(|(id, _)| *id)
 			.collect();
 		let settings = self.settings_open();
+		let add = self.add_state(cx);
 		let state = State {
 			version: crate::identity::VERSION,
 			build: crate::identity::BUILD,
@@ -141,6 +229,7 @@ impl Rdm {
 			selected: self.selected,
 			windows,
 			settings,
+			add,
 			widths: self.widths,
 			drawn: self.drawn(),
 			name_width: self.name_width(&self.drawn()),
@@ -158,6 +247,60 @@ impl Rdm {
 		serde_json::to_string_pretty(&state).unwrap_or_else(|error| failure(&error.to_string()))
 	}
 
+	/// The Add Task sheet as its fields hold it, or nothing while it is closed.
+	fn add_state(&self, cx: &App) -> Option<AddState> {
+		let sheet = self.adding.as_ref()?;
+		let read = |field: &Entity<TextInput>| field.read(cx).content.to_string();
+		Some(AddState {
+			address: read(&sheet.input),
+			checking: sheet.checking.as_ref().map(|(url, _)| url.to_string()),
+			error: sheet.error.clone(),
+			found: sheet.found.as_ref().map(|found| FoundState {
+				url: found.url.to_string(),
+				name: found.probe.file_name.clone(),
+				size: found.probe.size,
+				ranges: found.probe.ranges,
+			}),
+			page: sheet.page.as_ref().map(|page| PageState {
+				url: page.url.to_string(),
+				links: page.links.iter().map(|link| link.url.to_string()).collect(),
+				added: page.added.clone(),
+			}),
+			auto: sheet.auto,
+			count: read(&sheet.count),
+			more: sheet.more,
+			name: read(&sheet.name),
+			folder: sheet.folder.as_ref().map(|path| path.display().to_string()),
+			mirrors: read(&sheet.mirrors),
+			checksum: read(&sheet.checksum),
+			range: read(&sheet.range),
+			limit: read(&sheet.limit),
+		})
+	}
+
+	/// Every window's component tree as GPUI last built it for accessibility, nested, with the
+	/// view and source line each node came from. GPUI builds that tree only once something has
+	/// asked the window for it, so while none has, the answer is that the windows are asleep and
+	/// the client wakes them. See spec/workflow.md.
+	fn tree(&self, cx: &mut Context<Self>) -> String {
+		let mut windows = Vec::new();
+		for handle in cx.windows() {
+			let _ = handle.update(cx, |_, window, _| {
+				let dump = window
+					.debug_a11y_tree_json()
+					.filter(|_| window.is_a11y_active())
+					.and_then(|json| serde_json::from_str::<Value>(&json).ok());
+				if let Some(dump) = dump {
+					windows.push(nest_window(&dump));
+				}
+			});
+		}
+		if windows.is_empty() {
+			return failure("asleep: no window has built its accessibility tree yet");
+		}
+		serde_json::to_string_pretty(&windows).unwrap_or_else(|error| failure(&error.to_string()))
+	}
+
 	/// One line of the protocol above; every command answers with the state it left behind.
 	pub(crate) fn command(&mut self, line: &str, cx: &mut Context<Self>) -> String {
 		let mut words = line.split_whitespace();
@@ -167,6 +310,7 @@ impl Rdm {
 		let label = rest.join(" ");
 		match verb {
 			"state" => {}
+			"tree" => return self.tree(cx),
 			"view" => match label.as_str() {
 				"detailed" => self.set_view(View::Detailed, cx),
 				"thumbnails" => self.set_view(View::Thumbnails, cx),
@@ -382,6 +526,19 @@ impl Rdm {
 					crate::notify::Occasion::Update => crate::notify::Notice::new(text, ""),
 				};
 				self.tell_of(occasion, notice, cx);
+			}
+			// Types an address into the open Add Task sheet and looks at it, as Enter would, so the
+			// sheet's found and page faces are reachable without the keyboard. What was found before
+			// is dropped first: with it in place, Enter is the second step and adds the download.
+			"look" if !label.is_empty() => {
+				let Some(sheet) = &mut self.adding else {
+					return failure("look needs the Add Task sheet open: ax press \"Add Task\"");
+				};
+				sheet.found = None;
+				sheet.page = None;
+				let input = sheet.input.clone();
+				input.update(cx, |input, cx| input.set_content(&label, cx));
+				self.submit_add(cx);
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
 			"add" => return failure("add takes a url"),

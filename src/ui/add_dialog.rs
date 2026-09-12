@@ -5,7 +5,7 @@
 
 use std::sync::mpsc::Receiver;
 
-use gpui::{Context, Entity, IntoElement, Window, deferred, div, prelude::*, px};
+use gpui::{Context, Entity, IntoElement, Window, deferred, div, prelude::*, px, text};
 use reqwest::Url;
 
 use crate::app::Rdm;
@@ -394,6 +394,9 @@ impl Rdm {
 			backdrop(p).child(
 				div()
 					.id("add-dialog")
+					// A node that holds the sheet's own, so `ctl tree "Add Task"` finds it whole.
+					.role(gpui::Role::Dialog)
+					.aria_label("Add Task")
 					.flex()
 					.flex_col()
 					.gap_3()
@@ -410,7 +413,7 @@ impl Rdm {
 							.flex()
 							.items_center()
 							.justify_between()
-							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Add Task"))
+							.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(text!("Add Task")))
 							.child(crate::ui::icon_button(
 								p,
 								"add-close",
@@ -427,7 +430,7 @@ impl Rdm {
 								.text_xs()
 								.text_color(p.failure)
 								.debug_selector(|| "add-error".to_owned())
-								.child(error),
+								.child(text!(error)),
 						)
 					})
 					.when_some(sheet.page.as_ref(), |s, page| s.child(self.page_notice(page, cx)))
@@ -441,7 +444,7 @@ impl Rdm {
 								div()
 									.text_xs()
 									.text_color(p.muted)
-									.when(checking, |s| s.child("Looking at the address")),
+									.when(checking, |s| s.child(text!("Looking at the address"))),
 							)
 							.child(button(
 								p,
@@ -506,10 +509,10 @@ impl Rdm {
 					.flex()
 					.justify_between()
 					.gap_3()
-					.child(div().min_w_0().truncate().child(probe.file_name.clone()))
-					.child(div().flex_none().text_color(p.muted).child(size)),
+					.child(div().min_w_0().truncate().child(text!(probe.file_name.clone())))
+					.child(div().flex_none().text_color(p.muted).child(text!(size))),
 			)
-			.child(div().text_xs().text_color(p.muted).child(capability))
+			.child(div().text_xs().text_color(p.muted).child(text!(capability)))
 			// The name it will be saved under, on the face rather than behind More: it is filled
 			// in from what the look turned up, and a name somebody may want to change is not a
 			// thing to hide behind a word. Everything else behind More is a thing most people
@@ -520,7 +523,7 @@ impl Rdm {
 					.items_center()
 					.gap_2()
 					.text_xs()
-					.child(div().flex_none().text_color(p.muted).child("Save as"))
+					.child(div().flex_none().text_color(p.muted).child(text!("Save as")))
 					.child(div().flex_1().min_w_0().child(sheet.name.clone())),
 			)
 			.when(probe.ranges, |s| {
@@ -530,7 +533,7 @@ impl Rdm {
 						.items_center()
 						.gap_2()
 						.text_xs()
-						.child(div().text_color(p.muted).child("Connections"))
+						.child(div().text_color(p.muted).child(text!("Connections")))
 						.child(chip("Auto", sheet.auto, true))
 						.child(chip("Fixed", !sheet.auto, false))
 						.when(!sheet.auto, |s| s.child(div().w(px(64.0)).child(sheet.count.clone())))
@@ -538,7 +541,7 @@ impl Rdm {
 							s.child(
 								div()
 									.text_color(p.muted)
-									.child(format!("1 to {}", crate::engine::Connections::MAX)),
+									.child(text!(format!("1 to {}", crate::engine::Connections::MAX))),
 							)
 						}),
 				)
@@ -569,7 +572,7 @@ impl Rdm {
 				.items_center()
 				.gap_2()
 				.text_xs()
-				.child(div().w(px(72.0)).flex_none().text_color(p.muted).child(label))
+				.child(div().w(px(72.0)).flex_none().text_color(p.muted).child(text!(id = label, label)))
 				.child(div().flex_1().min_w_0().child(field))
 		};
 		let folder = sheet
@@ -589,7 +592,7 @@ impl Rdm {
 					.flex()
 					.items_center()
 					.gap_2()
-					.child(div().min_w_0().truncate().text_color(p.muted).child(folder))
+					.child(div().min_w_0().truncate().text_color(p.muted).child(text!(folder)))
 					.child(
 						div()
 							.id("add-folder")
@@ -654,8 +657,8 @@ impl Rdm {
 						)
 						.size_3p5(),
 					)
-					.child(div().flex_none().child(link.name.clone()))
-					.child(div().flex_1().min_w_0().truncate().text_color(p.muted).child(address))
+					.child(div().flex_none().child(text!(link.name.clone())))
+					.child(div().flex_1().min_w_0().truncate().text_color(p.muted).child(text!(address)))
 			})
 			.collect();
 		div()
@@ -670,7 +673,7 @@ impl Rdm {
 					.justify_between()
 					.gap_3()
 					.child(
-						div().text_xs().text_color(p.warning).child("This address is a web page, not a file."),
+						div().text_xs().text_color(p.warning).child(text!("This address is a web page, not a file.")),
 					)
 					.child(button(
 						p,
@@ -683,7 +686,7 @@ impl Rdm {
 			)
 			.when(!rows.is_empty(), |s| {
 				s.child(
-					div().text_xs().text_color(p.muted).child("Files the page links to; press one to add it"),
+					div().text_xs().text_color(p.muted).child(text!("Files the page links to; press one to add it")),
 				)
 				.child(
 					div()

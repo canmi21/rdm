@@ -58,15 +58,16 @@ build is up, and why `shot` and `ax` want `RDM_PID` when it is.
 
 ## Driving the window without the mouse
 
-A GPUI window is not a web view, so nothing made for a browser reaches it, and there is no
-inspector to open. Four tools stand in, each answering one question, and none of them moves the
+A GPUI window is not a web view, so nothing made for a browser reaches it. The tools below
+stand in for a browser's, each answering one question, and none of them moves the
 pointer or takes the keyboard -- the one afternoon that simulated clicks did, the user lost
 their mouse to it, and that is the rule this section exists to keep.
 
 | Question                                    | Tool                          | Touches the screen |
 | ------------------------------------------- | ----------------------------- | ------------------ |
 | What is the state, and change it            | `mise run ctl <command>`      | no                 |
-| What does the window contain, and press it  | `mise run ax tree` / `press`  | no                 |
+| What is drawn, and which code drew it       | `mise run ctl tree [match]`   | no                 |
+| Where is each element, and press it         | `mise run ax tree` / `press`  | no                 |
 | How wide is the window, and resize it       | `mise run ax size <w> <h>`    | no                 |
 | Does a click do the right thing             | `cargo test`, headless        | no window at all   |
 | What does it look like                      | `mise run shot [path] [title]` | reads pixels only |
@@ -79,6 +80,34 @@ sort, view, selection, open windows, how many rows the list holds and shows, eve
 sidebar, chips, headers and rows do. It is the analogue of the Tauri MCP bridge the workspace
 uses for its webview app, kept to a socket and a Python client because that is all the job
 needs. The socket lives in `target/` so it is per checkout and gone with `cargo clean`.
+
+**`ctl tree` is the inspector, and the first thing to reach for.** It is GPUI's own dump of the
+accessibility tree it last built for each window -- `Window::debug_a11y_tree_json`, richer in a
+debug build -- reshaped into the tree it describes and printed as an outline: a node a line, with
+its role, label, value, id and the source line that constructed it, under a header giving the
+node count, the tab stops and the viewport. A match narrows it to the windows whose title holds
+it, or else to the subtrees whose id or label it is; `--json` gives the nested form. It answers
+in a fraction of a second, and that is why it comes first. What a sheet holds, whether a field
+has what was typed, which component drew a row: each is a question with a text answer, and a
+screenshot gives that answer slowest and least exactly. The user asked for exactly this -- a
+channel like the DevTools a web page has, with screenshots kept for when nothing else will do.
+
+Two limits come with the source. **GPUI builds the tree only once something has asked the window
+for it**, and on macOS the adapter then stays on for the rest of the process. So a window nobody
+has asked answers that it is asleep, the client wakes it with `ax windows` and asks again, and a
+fresh `dev` restart costs one extra round. **Only an element with both an id and a role is a
+node.** A plain string child has neither, so text a tool or VoiceOver should read is written
+`text!(...)`: a `Label` whose id is its source location, or `text!(id = ..., ...)` where one
+call site draws several. A container that should gather what is inside it takes an id, a role
+and a label, as the Add Task card does with `Dialog`. `TextInput` is a `TextInput` node with its
+content as the value, so a field's text is read rather than inferred from a screenshot. The dump
+carries no bounds, so layout is read from `ax tree`, which ends each line with the element's
+frame in points from the window's top-left.
+
+`ctl state` covers the sheets as well as the list: `add` is the Add Task sheet's fields and what
+looking at the address found. `ctl look <address>` types an address into the open sheet and looks
+at it as Enter would, which reaches the found and page faces without the keyboard and adds
+nothing. The sheet itself is opened with `ax press "Add Task"`.
 
 `ctl say <finished|failed|queue|update> [text]` makes a notice happen on demand, which is
 otherwise a matter of waiting for a download to end; it says the words the real call sites say,
@@ -123,8 +152,9 @@ other three need the application up. What they cannot see is pixels, fonts or bl
 process and hands its id to `screencapture -l`, which captures that one window and nothing
 else; a title picks one of several windows, the frontmost otherwise. It exists because two
 defects -- a build that drew no text and one that drew no icons -- were invisible any other way,
-and it is used under the workspace's rule for checking one's own work: when the source cannot
-answer a question about what is on screen, not to confirm that a change typed is a change made.
+and it is the last of these to reach for: when neither the source nor `ctl tree` and `ax tree`
+can answer a question about what is on screen -- colour, blur, whether glyphs drew at all -- and
+never to confirm that a change typed is a change made.
 
 ## Every build task fetches the icons first
 

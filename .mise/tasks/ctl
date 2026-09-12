@@ -1,21 +1,31 @@
 #!/usr/bin/env python3
-#MISE description="Drive the running debug build from the shell: `ctl state | view grid | open 3 | ...`"
+#MISE description="Drive the running debug build from the shell: `ctl state | tree [match] | view grid | open 3 | ...`"
 """Talks to the control socket a debug build opens under target/. See spec/workflow.md.
 
 The command is the arguments joined by spaces; the reply is the application's state as JSON, or
 an error naming what the command should have been. `mise run ctl` with no arguments prints the
 protocol.
+
+`tree [match] [--json]` is the component tree: every window's accessibility tree as GPUI built
+it, printed as an outline, one node a line with its role, label, value, id and the source line
+that made it. A match keeps the windows whose title holds it, or else the subtrees whose id or
+label is it. A window nobody has asked for its tree has not built one, so an asleep answer is
+met by waking the windows through `ax` and asking again.
 """
 
+import json
 import pathlib
+import re
 import socket
+import subprocess
 import sys
+import time
 
-SOCKET = pathlib.Path(__file__).resolve().parents[2] / "target" / "rdm.sock"
+TASKS = pathlib.Path(__file__).resolve().parent
+SOCKET = TASKS.parents[1] / "target" / "rdm.sock"
 
 
-def main(argv: list[str]) -> int:
-	line = " ".join(argv) if argv else "help"
+def ask(line: str) -> bytes:
 	try:
 		with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
 			connection.settimeout(5)
@@ -26,6 +36,109 @@ def main(argv: list[str]) -> int:
 				reply += chunk
 	except (FileNotFoundError, ConnectionRefusedError):
 		raise SystemExit(f"error: no debug build listening at {SOCKET}; `mise run dev` first")
+	return reply
+
+
+def wake() -> None:
+	# One accessibility query switches a window's tree on for the rest of the process.
+	subprocess.run(
+		[str(TASKS / "ax"), "windows"],
+		stdout=subprocess.DEVNULL,
+		stderr=subprocess.DEVNULL,
+		timeout=15,
+		check=False,
+	)
+
+
+def short_id(raw: str) -> str:
+	named = re.fullmatch(r'Name\("(.*)"\)', raw)
+	if named:
+		return named.group(1)
+	numbered = re.fullmatch(r'NamedInteger\("(.*)", (\d+)\)', raw)
+	return f"{numbered.group(1)}:{numbered.group(2)}" if numbered else raw
+
+
+def describe(node: dict) -> str:
+	line = node.get("role", "?")
+	if "label" in node:
+		line += f' "{node["label"]}"'
+	if "value" in node:
+		value = node["value"]
+		line += f' = "{value[:80]}{"..." if len(value) > 80 else ""}"'
+	if "placeholder" in node and not node.get("value"):
+		line += f' (placeholder "{node["placeholder"]}")'
+	for state in ("selected", "expanded", "focused"):
+		if node.get(state) is True:
+			line += f" ({state})"
+	if "toggled" in node:
+		line += f' (toggled {node["toggled"]})'
+	if "id" in node and not node["id"].startswith("Integer("):
+		line += f" #{short_id(node['id'])}"
+	if "at" in node:
+		line += f"  {node['at']}"
+	return line
+
+
+def outline(node: dict, depth: int) -> None:
+	print("  " * depth + describe(node))
+	for child in node.get("children", []):
+		outline(child, depth + 1)
+
+
+def find(node: dict, wanted: str) -> list:
+	if short_id(node.get("id", "")) == wanted or node.get("label") == wanted:
+		return [node]
+	return [found for child in node.get("children", []) for found in find(child, wanted)]
+
+
+def tree(argv: list) -> int:
+	as_json = "--json" in argv
+	wanted = " ".join(word for word in argv if word != "--json")
+	reply = ask("tree")
+	for _ in range(3):
+		if not reply.startswith(b'{"error":"asleep'):
+			break
+		wake()
+		time.sleep(0.5)
+		reply = ask("tree")
+	if reply.startswith(b'{"error"'):
+		sys.stdout.write(reply.decode())
+		return 1
+	windows = json.loads(reply)
+	if wanted:
+		titled = [w for w in windows if wanted in (w.get("title") or "")]
+		if titled:
+			windows = titled
+		else:
+			found = [n for w in windows if w.get("tree") for n in find(w["tree"], wanted)]
+			if not found:
+				print(f"nothing with the id or label {wanted!r}", file=sys.stderr)
+				return 1
+			if as_json:
+				print(json.dumps(found, indent=1))
+			else:
+				for node in found:
+					outline(node, 0)
+			return 0
+	if as_json:
+		print(json.dumps(windows, indent=1))
+		return 0
+	for window in windows:
+		viewport = window.get("viewport") or {}
+		print(
+			f'Window "{window.get("title")}" -- {window.get("nodes")} nodes, '
+			f'{window.get("tab_stops")} tab stops, '
+			f'{viewport.get("width", 0):g}x{viewport.get("height", 0):g}, frame {window.get("frame")}'
+		)
+		for child in (window.get("tree") or {}).get("children", []):
+			outline(child, 1)
+	return 0
+
+
+def main(argv: list) -> int:
+	if argv and argv[0] == "tree":
+		return tree(argv[1:])
+	reply = ask(" ".join(argv) if argv else "help")
 	sys.stdout.write(reply.decode())
 	return 1 if reply.startswith(b'{"error"') else 0
 

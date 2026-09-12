@@ -3,7 +3,8 @@
 // The accessibility tree is what a screen reader sees, and what an agent reads instead of a
 // screenshot: every element GPUI gave a role and a label. `press` performs the element's own
 // action through the same channel, so nothing moves the pointer or takes the keyboard. See
-// spec/workflow.md.
+// spec/workflow.md. `tree` ends each line with the element's frame in points from the window's
+// top-left, the layout the accessibility tree carries and GPUI's own dump leaves out.
 import AppKit
 import ApplicationServices
 
@@ -20,7 +21,18 @@ func text(_ element: AXUIElement, _ name: String) -> String {
 	(attribute(element, name) as? String) ?? ""
 }
 
-func describe(_ element: AXUIElement) -> String {
+func frame(_ element: AXUIElement) -> CGRect? {
+	guard let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute) else {
+		return nil
+	}
+	var origin = CGPoint.zero
+	var extent = CGSize.zero
+	AXValueGetValue(position as! AXValue, .cgPoint, &origin)
+	AXValueGetValue(size as! AXValue, .cgSize, &extent)
+	return CGRect(origin: origin, size: extent)
+}
+
+func describe(_ element: AXUIElement, from window: CGPoint? = nil) -> String {
 	let role = text(element, kAXRoleAttribute).replacingOccurrences(of: "AX", with: "")
 	let label = [text(element, kAXTitleAttribute), text(element, kAXDescriptionAttribute)].first { !$0.isEmpty } ?? ""
 	var line = label.isEmpty ? role : "\(role) \"\(label)\""
@@ -30,13 +42,16 @@ func describe(_ element: AXUIElement) -> String {
 	if let selected = attribute(element, kAXSelectedAttribute) as? Bool, selected {
 		line += " (selected)"
 	}
+	if let window, let rect = frame(element) {
+		line += "  @\(Int(rect.minX - window.x)),\(Int(rect.minY - window.y)) \(Int(rect.width))x\(Int(rect.height))"
+	}
 	return line
 }
 
-func dump(_ element: AXUIElement, _ depth: Int) {
-	print(String(repeating: "  ", count: depth) + describe(element))
+func dump(_ element: AXUIElement, _ depth: Int, _ window: CGPoint) {
+	print(String(repeating: "  ", count: depth) + describe(element, from: window))
 	for child in children(element) {
-		dump(child, depth + 1)
+		dump(child, depth + 1, window)
 	}
 }
 
@@ -84,7 +99,7 @@ case "windows":
 case "tree":
 	let wanted = arguments.dropFirst().first
 	for window in windows where wanted.map({ text(window, kAXTitleAttribute).contains($0) }) ?? true {
-		dump(window, 0)
+		dump(window, 0, frame(window)?.origin ?? .zero)
 	}
 // A resize through the same attribute a user's drag on the window's edge ends at, which is how
 // the system's own minimum size gets a say: ask for narrower than the window allows and what

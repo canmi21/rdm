@@ -657,6 +657,14 @@ impl Render for TextInput {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let p = theme::palette(window.is_window_active());
 		div()
+			// A node of its own in the accessibility tree, its text as the value, so VoiceOver and
+			// `ctl tree` read what is typed rather than an unnamed group. One id serves every field
+			// because each field is its own view, which GPUI puts in the id path. See
+			// spec/workflow.md.
+			.id("text-input")
+			.role(gpui::Role::TextInput)
+			.aria_value(self.content.clone())
+			.aria_placeholder(self.placeholder.clone())
 			.flex()
 			.key_context("TextInput")
 			.track_focus(&self.focus_handle(cx))
