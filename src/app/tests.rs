@@ -1092,13 +1092,13 @@ fn add_task_reads_the_clipboard_names_junk_and_offers_a_pages_files(cx: &mut Tes
 		input.update(cx, |i, cx| i.set_content("not an address at all", cx));
 		let _ = window;
 	});
-	click(&mut cx, "button:Check");
+	click(&mut cx, "button:Query");
 	assert!(cx.debug_bounds("add-error").is_some(), "junk is named as such");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_some(), "the sheet stays"));
 
 	let address = page.url("/downloads/").to_string();
 	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
-	click(&mut cx, "button:Check");
+	click(&mut cx, "button:Query");
 	// The engine looks at the address on its own threads; the pump collects the answer.
 	let mut seen = false;
 	for _ in 0..200 {
@@ -1670,7 +1670,7 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	let input = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().input.clone());
 	let address = server.url("/tool.bin").to_string();
 	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
-	click(&mut cx, "button:Check");
+	click(&mut cx, "button:Query");
 	let mut seen = false;
 	for _ in 0..200 {
 		std::thread::sleep(Duration::from_millis(10));
@@ -1698,10 +1698,15 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	// More options: the folder, a limit of its own and a part of the file.
 	click(&mut cx, "button:More options");
 	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
+	assert!(cx.debug_bounds("add-address").is_some(), "the address is fixed once it was looked at");
 	let (start, end, limit) = rdm.read_with(&cx, |rdm, _| {
 		let s = rdm.adding.as_ref().unwrap();
 		(s.range_start.clone(), s.range_end.clone(), s.limit.clone())
 	});
+	// A common limit is a press, and it lands in the field that takes any other.
+	click(&mut cx, "limit:5 MB/s");
+	let picked = limit.read_with(&cx, |i, _| crate::download::parse_rate(&i.content));
+	assert_eq!(picked, Ok(Some(5 * 1024 * 1024)));
 	cx.update(|_, cx| {
 		name.update(cx, |i, cx| i.set_content("renamed.bin", cx));
 		checksum.update(cx, |i, cx| i.set_content("d41d8cd98f00b204e9800998ecf8427e", cx));

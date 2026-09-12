@@ -640,23 +640,39 @@ was resumable. The user took that out: the address and the name are the two thin
 be changed once bytes arrive, and the count is exactly the kind of thing that can, so asking it
 here put a decision in front of the one step that did not need it.
 
-**What the look found is a card of labels and values.** The file's name is not in it, since the
-address and the Save as field already say it. Its header is the category the file will be filed
-under, with that category's icon, judged by the name in the field so a rename refiles it. Under
-the header each fact sits beside a grey label, two to a line: `From`, the host the bytes really
-come from once redirects are followed; `Size`; `Resume`, supported when the server serves ranges
-and so the download can be resumed and split; `Updated`, the file's Last-Modified; and `Server`,
-its Server header with the protocol in brackets. A fact the server did not give is left out.
-Labels, because the first version joined the values with dots and left the reader to work out
-which was which, and marked resuming with an icon -- a forked arrow -- that said nothing to anyone
-who had not been told what it meant.
+**Once the address is looked at, it is no longer a field.** Before Query it is typed, pasted or
+read from the clipboard; after, it is a line of text beside a globe with a pencil at its end, and
+the pencil puts the field back, forgetting what was found and the name and range filled in from
+it. A field left open after the look invited an edit that could only mean starting over, and
+said nothing it did not already say as text.
+
+**What the look found is two columns of labelled facts.** `File` holds what the file is -- `Type`,
+the category it will be filed under with that category's icon, judged by the name in the Save as
+field so a rename refiles it; `Size`; and `Resume`, supported when the server serves ranges and so
+the download can be resumed and split. `Source` holds where it comes from -- `From`, the host the
+bytes really come from once redirects are followed; `Server`, its Server header with the protocol
+in brackets; and `Updated`, the file's Last-Modified. A fact the server did not give is left out.
+The file's name is not in the card, since the address and Save as already say it. The facts are
+grouped by what they are about because a flat run of them, first joined with dots and then laid
+out as a grid of pairs in whatever order fit, left the reader to sort them; a category's own
+header line above the facts read as a title the card did not have, and was moved into `Type`.
+
+**An icon where it carries meaning faster than its word, and nowhere else.** On the sheet that is
+the category's icon in `Type`, the globe on the fixed address and the pencil that frees it, the
+magnifier on Query and the arrow on Download, and a chevron on More options that turns when the
+options open. A fact -- a size, a host, a date -- has no icon: the label says what it is, and a
+column of glyphs beside labels is decoration the eye has to read past. The first card had too few
+and marked resuming with a forked arrow nobody could read; the balance is the rule above, not a
+count.
 
 **The name and a checksum are on the face; the rest is More options.** Save as has a line of its
 own under its label, since a name can be long and a field sharing its line with a label shows
 less of it. Under it is `Checksum (optional)`, whose placeholder names the kinds it takes --
 sha256, sha512 or md5 -- and nothing more; the length of what is pasted says which. More options
 holds what most downloads never touch: the folder, a limit of the download's own, and the part
-of the file wanted. The part is two fields, the first byte and the byte it stops before,
+of the file wanted. The limit is the common rates as a row of choices -- Unlimited, where it
+starts, then 1, 5 and 10 MB/s -- and a field beside them for any other; the field is the value,
+so a choice writes its rate into it and a typed rate that matches one lights that choice. The part is two fields, the first byte and the byte it stops before,
 prefilled with the whole file when the server serves ranges and not offered when it does not;
 left at the whole file it is no range at all. **A part of a file is not checked**, since a
 checksum is of the whole file: the sheet refuses a checksum and a part together rather than keep
@@ -670,17 +686,18 @@ section of their own, are the engine's defaults for every new download and are l
 [engine.md](engine.md); the two the engine takes live, concurrent downloads and the speed limit,
 reach it as they are typed.
 
-**The button says what it does next, and shares the sheet's last line.** Before the address in
-the field has been looked at it reads `Check`; once a file has been found there it reads
-`Download`, and changing the address turns it back. It sits at the right of the last line, with
-More options at the left of the same line once there are options, or the words for a look in
-progress while there is one. A line holding one button and nothing else read as an afterthought.
+**The button says what it does next, and shares the sheet's last line.** Before the address has
+been looked at it reads `Query`; once a file has been found there it reads `Download`; while the
+address turns out to be a page there is none, since the page's own rows are the actions. It sits
+at the right of the last line, with More options at the left of the same line once there are
+options, or the words for a look in progress while there is one. A line holding one button and
+nothing else read as an afterthought.
 
 **New Task reads the clipboard once and looks before it leaps.** Opening the sheet reads the
 clipboard, and if what is there is under a thousand characters and reads as an address --
 with a scheme, or without one and tried as https -- the field starts with it; anything else
 leaves the field empty rather than guessing. A thousand is a hard ceiling: an address is never
-longer, and a document that happens to be on the clipboard is not worth parsing. Enter or Check
+longer, and a document that happens to be on the clipboard is not worth parsing. Enter or Query
 does not queue the address; it has the engine look at it first. What is not an address is said
 to be one, under the field. A file is queued and the sheet closes. A web page is said to be a
 page, with a button to save it anyway and, under that, the files the page links to, each a row

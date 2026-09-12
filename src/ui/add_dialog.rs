@@ -1,5 +1,5 @@
 //! Adding a download is a sheet inside the main window, titled New Task: one field over a dimmed
-//! list, filled from the clipboard when what is there reads as an address. Enter or Check has the
+//! list, filled from the clipboard when what is there reads as an address. Enter or Query has the
 //! engine look at the address first; a file is shown and Enter or Download queues it, a web page
 //! is said to be one, with the files it links to offered instead. See spec/ui.md.
 
@@ -10,14 +10,20 @@ use reqwest::Url;
 
 use crate::app::Rdm;
 use crate::engine::{Inspection, Link};
+use crate::ui::LeavesFocus;
 use crate::ui::backdrop;
 use crate::ui::button;
-use crate::ui::icon::{Icon, icon};
+use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::text_input::TextInput;
 
 /// The clipboard is read only up to this length: an address is never longer, and a document
 /// that happens to be on the clipboard is not worth parsing.
 const CLIPBOARD_LIMIT: usize = 1000;
+
+/// The common rates More options offers for a download's own limit, the first no limit at all.
+/// Each is written into the limit field as it reads here, which `parse_rate` takes exactly; the
+/// size a rate is displayed with counts in thousands and would not read back as the same rate.
+const LIMITS: [&str; 4] = ["Unlimited", "1 MB/s", "5 MB/s", "10 MB/s"];
 
 /// The sheet while it is up.
 pub struct AddSheet {
@@ -160,7 +166,7 @@ impl Rdm {
 				let (name, checksum, limit, range_start, range_end) = (
 					field("As the server names it"),
 					field("sha256, sha512 or md5"),
-					field("Off"),
+					field("Custom"),
 					field("0"),
 					field("End of file"),
 				);
@@ -207,7 +213,7 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Enter, or Check: the address is handed to the engine to look at; what happens next depends
+	/// Enter, or Query: the address is handed to the engine to look at; what happens next depends
 	/// on its answer, which the pump collects. Once the address in the field has been looked at
 	/// and found to be a file, Enter or Download is the second step: the download itself.
 	pub(crate) fn submit_add(&mut self, cx: &mut Context<Self>) {
@@ -323,6 +329,33 @@ impl Rdm {
 		}
 	}
 
+	/// The pencil on a looked-at address: the field back, and what the look filled in forgotten,
+	/// since another address is another file. What was typed by hand -- the checksum, the limit,
+	/// the folder -- stays.
+	pub(crate) fn edit_add_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		let Some(sheet) = &mut self.adding else { return };
+		sheet.checking = None;
+		sheet.found = None;
+		sheet.page = None;
+		sheet.error = None;
+		sheet.more = false;
+		let input = sheet.input.clone();
+		let filled = [sheet.name.clone(), sheet.range_start.clone(), sheet.range_end.clone()];
+		for field in filled {
+			field.update(cx, |field, cx| field.set_content("", cx));
+		}
+		window.focus(&input.read(cx).focus(), cx);
+		cx.notify();
+	}
+
+	/// One of the common limits, written into the field that takes any other; no limit is the
+	/// field left empty.
+	pub(crate) fn set_add_limit(&mut self, choice: &'static str, cx: &mut Context<Self>) {
+		let Some(sheet) = &self.adding else { return };
+		let text = if choice == LIMITS[0] { "" } else { choice };
+		sheet.limit.clone().update(cx, |input, cx| input.set_content(text, cx));
+	}
+
 	/// The engine's answer about the address, if it has arrived. Called by the event pump.
 	pub(crate) fn poll_add(&mut self, cx: &mut Context<Self>) {
 		let Some(sheet) = &mut self.adding else { return };
@@ -397,8 +430,10 @@ impl Rdm {
 		let checking = sheet.checking.is_some();
 		let ready = typed && !checking;
 		let current = found_is_current(sheet, cx);
+		let locked = checking || sheet.found.is_some() || sheet.page.is_some();
+		let address = input.read(cx).content.to_string();
 		// The button says what it does next: look at the address, or download what was found there.
-		let (glyph, action) = if current { (Icon::Download, "Download") } else { (Icon::Search, "Check") };
+		let (glyph, action) = if current { (Icon::Download, "Download") } else { (Icon::Search, "Query") };
 		let options = if sheet.more { "Fewer options" } else { "More options" };
 		deferred(
 			// The backdrop takes every mouse event, so nothing behind the sheet can be pressed through it.
@@ -434,7 +469,36 @@ impl Rdm {
 								cx.listener(|this, _, _, cx| this.close_add(cx)),
 							)),
 					)
-					.child(input)
+					// Once looked at, the address is a line of text with a pencil that frees it again: a
+					// field left open after the look invited an edit that could only start over.
+					.map(|s| {
+						if locked {
+							s.child(
+								div()
+									.id("add-address")
+									.debug_selector(|| "add-address".to_owned())
+									.flex()
+									.items_center()
+									.gap_2()
+									.h(px(30.0))
+									.pl_2()
+									.rounded_md()
+									.bg(p.hover)
+									.child(icon(Icon::Globe, p.muted).size_3p5())
+									.child(div().flex_1().min_w_0().truncate().child(text!(address)))
+									.child(crate::ui::icon_button(
+										p,
+										"add-edit",
+										Icon::Pencil,
+										"Edit address",
+										true,
+										cx.listener(|this, _, window, cx| this.edit_add_address(window, cx)),
+									)),
+							)
+						} else {
+							s.child(input)
+						}
+					})
 					.when_some(sheet.error.clone(), |s, error| {
 						s.child(
 							div()
@@ -469,22 +533,39 @@ impl Rdm {
 												.id("add-more")
 												.role(gpui::Role::Button)
 												.aria_label(options)
+												.aria_expanded(sheet.more)
 												.debug_selector(move || format!("button:{options}"))
+												.group("add-more")
+												.flex()
+												.items_center()
+												.gap_1()
 												.cursor_pointer()
 												.hover(move |s| s.text_color(p.text))
 												.on_click(cx.listener(|this, _, _, cx| this.toggle_add_more(cx)))
-												.child(options),
+												.child(options)
+												.child(
+													hover_icon(
+														if sheet.more { Icon::ChevronUp } else { Icon::ChevronDown },
+														"add-more",
+														p.muted,
+														Some(p.text),
+													)
+													.size_3p5(),
+												),
 										)
 									}),
 							)
-							.child(button(
-								p,
-								"add-confirm",
-								glyph,
-								action,
-								ready,
-								cx.listener(|this, _, _, cx| this.submit_add(cx)),
-							)),
+							// A page's own rows are its actions, so there is no button while one is shown.
+							.when(sheet.page.is_none(), |s| {
+								s.child(button(
+									p,
+									"add-confirm",
+									glyph,
+									action,
+									ready,
+									cx.listener(|this, _, _, cx| this.submit_add(cx)),
+								))
+							}),
 					),
 			),
 		)
@@ -530,16 +611,29 @@ impl Rdm {
 			Some(server) => format!("{server} ({})", probe.version),
 			None => probe.version.to_owned(),
 		};
-		// A fact beside its grey label, in half the card's width; the labels share one width so
-		// the values line up down the card.
-		let cell = |label: &'static str, value: String| {
+		// A fact beside its grey label; the labels share one width so the values line up down a
+		// column.
+		let fact = |label: &'static str, value: gpui::AnyElement| {
 			div()
 				.flex()
-				.flex_1()
-				.min_w_0()
+				.items_center()
 				.gap_2()
-				.child(div().w(px(56.0)).flex_none().text_color(p.muted).child(text!(id = label, label)))
-				.child(div().min_w_0().truncate().child(text!(id = (label, 1usize), value)))
+				.min_w_0()
+				.child(div().w(px(52.0)).flex_none().text_color(p.muted).child(text!(id = label, label)))
+				.child(div().flex().items_center().min_w_0().child(value))
+		};
+		let plain = |label: &'static str, value: String| {
+			div().min_w_0().truncate().child(text!(id = (label, 1usize), value)).into_any_element()
+		};
+		// What the file is, and where it comes from, each under a heading of its own.
+		let column = |heading: &'static str| {
+			div().flex().flex_col().flex_1().min_w_0().gap_1().child(
+				div()
+					.text_size(px(10.0))
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.text_color(p.muted)
+					.child(text!(id = heading, heading)),
+			)
 		};
 		let field = |label: &'static str, input: Entity<TextInput>| {
 			div()
@@ -557,36 +651,34 @@ impl Rdm {
 				div()
 					.debug_selector(|| "add-found".to_owned())
 					.flex()
-					.flex_col()
-					.gap_1p5()
+					.gap_4()
 					.p_3()
 					.rounded_md()
 					.bg(p.hover)
-					.when_some(filed, |s, (glyph, tint, filed)| {
-						s.child(
-							div()
-								.flex()
-								.items_center()
-								.gap_1p5()
-								.child(icon(glyph, tint).size_3p5())
-								.child(text!(filed)),
-						)
-					})
+					.text_xs()
 					.child(
-						div()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.text_xs()
-							.child(div().flex().child(cell("From", from)))
-							.child(div().flex().gap_3().child(cell("Size", size)).child(cell("Resume", resume.to_owned())))
-							.child(
-								div()
-									.flex()
-									.gap_3()
-									.when_some(updated, |s, updated| s.child(cell("Updated", updated)))
-									.child(cell("Server", server)),
-							),
+						column("FILE")
+							.when_some(filed, |s, (glyph, tint, filed)| {
+								s.child(fact(
+									"Type",
+									div()
+										.flex()
+										.items_center()
+										.gap_1()
+										.min_w_0()
+										.child(icon(glyph, tint).size_3p5())
+										.child(div().min_w_0().truncate().child(text!(filed)))
+										.into_any_element(),
+								))
+							})
+							.child(fact("Size", plain("Size", size)))
+							.child(fact("Resume", plain("Resume", resume.to_owned()))),
+					)
+					.child(
+						column("SOURCE")
+							.child(fact("From", plain("From", from)))
+							.child(fact("Server", plain("Server", server)))
+							.when_some(updated, |s, updated| s.child(fact("Updated", plain("Updated", updated)))),
 					),
 			)
 			// The name on a line of its own under its label: a name can be long, and a field that
@@ -619,6 +711,7 @@ impl Rdm {
 			.as_ref()
 			.map(|f| f.display().to_string())
 			.unwrap_or_else(|| "Download folder".to_owned());
+		let limit = crate::download::parse_rate(&sheet.limit.read(cx).content);
 		// How much the two ends take in, so a part is read as a size rather than as two numbers.
 		let parts = found.probe.size.filter(|_| found.probe.ranges).map(|size| {
 			let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
@@ -665,7 +758,37 @@ impl Rdm {
 					})
 					.into_any_element(),
 			))
-			.child(row("Speed limit", sheet.limit.clone().into_any_element()))
+			// The common rates as choices and a field for any other; the field is the value, so a
+			// choice writes into it and a typed rate that matches one lights it.
+			.child(row(
+				"Speed limit",
+				div()
+					.flex()
+					.items_center()
+					.gap_1()
+					.children(LIMITS.iter().enumerate().map(|(index, &label)| {
+						let on = limit == crate::download::parse_rate(label);
+						div()
+							.id(("limit", index))
+							.role(gpui::Role::RadioButton)
+							.aria_label(label)
+							.aria_selected(on)
+							.debug_selector(move || format!("limit:{label}"))
+							.flex_none()
+							.px_1p5()
+							.py_0p5()
+							.rounded_sm()
+							.cursor_pointer()
+							.leaves_focus()
+							.text_color(if on { p.text } else { p.muted })
+							.when(on, |s| s.bg(p.selection))
+							.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
+							.on_click(cx.listener(move |this, _, _, cx| this.set_add_limit(label, cx)))
+							.child(label)
+					}))
+					.child(div().w(px(84.0)).flex_none().ml_1().child(sheet.limit.clone()))
+					.into_any_element(),
+			))
 			.when_some(parts, |s, part| {
 				s.child(row(
 					"Range",
