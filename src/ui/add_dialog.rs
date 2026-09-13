@@ -38,12 +38,12 @@ pub struct AddSheet {
 	/// The file the second screen is about. How it downloads is not asked; the download's window
 	/// changes that while it runs. See spec/ui.md.
 	pub found: Option<Found>,
-	/// The name to save under and a checksum, on the face of the second screen.
+	/// The name to save under, on the face of the second screen.
 	pub name: Entity<TextInput>,
-	pub checksum: Entity<TextInput>,
-	/// More options: the folder, a limit of its own, and the part of the file wanted, as the
-	/// first byte and the byte it stops before, each with a slider beside its field.
+	/// More options: the folder, a limit of its own, the part of the file wanted, as the first byte
+	/// and the byte it stops before, each with a slider beside its field, and a checksum.
 	pub more: bool,
+	pub checksum: Entity<TextInput>,
 	pub folder: Option<std::path::PathBuf>,
 	pub limit: Entity<TextInput>,
 	pub limit_slider: Entity<Slider>,
@@ -814,8 +814,8 @@ impl Rdm {
 	}
 
 	/// The second screen: a card of what the look turned up, each fact beside its label in a column
-	/// for the file and one for its source, then the name it will be saved under and a checksum,
-	/// then More options when they are open. How many connections to open is not asked: the
+	/// for the file and one for its source, then the name it will be saved under, then More options
+	/// when they are open. How many connections to open is not asked: the
 	/// settings' default starts the download and its window changes the count while it runs.
 	fn found_notice(
 		&self,
@@ -906,14 +906,13 @@ impl Rdm {
 			// The name on a line of its own under its label: a name can be long, and a field that
 			// shares its line with the label shows less of it.
 			.child(field("Save as", sheet.name.clone()))
-			.child(field("Checksum (optional)", sheet.checksum.clone()))
 			.when(sheet.more, |s| s.child(self.more_fields(found, sheet, cx)))
 	}
 
 	/// What most downloads never touch: the folder as a word that opens the system's picker, a limit
-	/// of the download's own, and the part of the file wanted when the server serves parts. The
-	/// limit and the part each have a slider for setting them roughly and fields for setting them
-	/// exactly.
+	/// of the download's own, the part of the file wanted when the server serves parts, and a
+	/// checksum the finished file must match. The limit and the part each have a slider for setting
+	/// them roughly and fields for setting them exactly.
 	fn more_fields(
 		&self,
 		found: &Found,
@@ -1013,6 +1012,8 @@ impl Rdm {
 						.into_any_element(),
 				))
 			})
+			// Last, under the range it cannot be used with: a checksum is of the whole file.
+			.child(row("Checksum", sheet.checksum.clone().into_any_element()))
 	}
 }
 

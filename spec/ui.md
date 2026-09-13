@@ -681,17 +681,18 @@ that turn as they open. A fact -- a type, a size, a host, a date -- has no icon,
 says what it is. The category's own icon beside `Type` was tried and dropped for that reason, and
 a forked arrow for resuming was tried and read as nothing.
 
-**The name and a checksum are on the face; the rest is More options.** Save as has a line of its
-own under its label, since a name can be long and a field sharing its line with a label shows
-less of it. Under it is `Checksum (optional)`, whose placeholder names the kinds it takes --
-sha256, sha512 or md5 -- and nothing more; the length of what is pasted says which. More options
-holds what most downloads never touch: the folder, a limit of the download's own, and the part
-of the file wanted. **The limit is a slider and a field in MB/s.** The slider runs from 1 to 100
-MB/s on a log scale, since a megabyte more matters at five and not at ninety, with a step past its
-high end for no limit, where it starts; Settings sets its two ends under Transfers. The field
-takes the exact number and is the value: a drag writes the rate the slider stands for into it,
-and typing moves the slider to follow. A row of common rates came first, and the rates somebody
-wants are not four. The part is two fields, the first byte and the byte it stops before,
+**The name is on the face; the rest is More options.** Save as has a line of its own under its
+label, since a name can be long and a field sharing its line with a label shows less of it. More
+options holds what most downloads never touch: the folder, a limit of the download's own, the part
+of the file wanted, and last a `Checksum`, whose placeholder names the kinds it takes -- sha256,
+sha512 or md5 -- and nothing more; the length of what is pasted says which. The checksum sat on the
+face under Save as at first and was moved in with the rest: most files are never checked, and it
+is the one field that cannot be used with the range beside it. **The limit is a slider and a
+field in MB/s.** The slider runs from 1 to 100 MB/s on a log scale, since a megabyte more matters
+at five and not at ninety, with a step past its high end for no limit, where it starts; Settings
+sets its two ends under Transfers. The field takes the exact number and is the value: a drag
+writes the rate the slider stands for into it, and typing moves the slider to follow. A row of
+common rates came first, and the rates somebody wants are not four. The part is two fields, the first byte and the byte it stops before,
 prefilled with the whole file when the server serves ranges and not offered when it does not;
 left at the whole file it is no range at all. A slider with a handle for each end sits above the
 two fields, for setting the part roughly; the fields set it exactly, and each follows the other,
