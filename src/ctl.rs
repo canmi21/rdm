@@ -23,7 +23,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 const USAGE: &str = "state | tree | view <detailed|thumbnails|grid> | select <id> | open <id> | settings [section] | menu <label> | fullscreen | update | \
 	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
 	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
-	sort <added|name|size|progress|speed|status> [desc] | add <url> | look <address> | connections <id> <auto|n> | \
+	sort <added|name|size|progress|speed|status> [desc] | add <url> | look <address> | slide <limit|range> ... | connections <id> <auto|n> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
 	move <id> <onto id>";
 
@@ -75,19 +75,24 @@ struct CategoryState {
 
 #[derive(Serialize)]
 struct AddState {
+	/// `address` until a file is found, `details` after.
+	screen: &'static str,
 	address: String,
 	/// The address the engine is looking at, until it answers.
 	checking: Option<String>,
-	error: Option<String>,
+	problem: Option<String>,
+	detail: Option<String>,
+	confirm: Option<ConfirmState>,
 	found: Option<FoundState>,
-	page: Option<PageState>,
 	more: bool,
 	name: String,
-	folder: Option<String>,
 	checksum: String,
+	folder: Option<String>,
 	limit: String,
+	limit_slider: f32,
 	range_start: String,
 	range_end: String,
+	range_slider: Vec<f32>,
 }
 
 #[derive(Serialize)]
@@ -102,8 +107,9 @@ struct FoundState {
 }
 
 #[derive(Serialize)]
-struct PageState {
+struct ConfirmState {
 	url: String,
+	kind: &'static str,
 	links: Vec<String>,
 	added: Vec<usize>,
 }
@@ -248,14 +254,22 @@ impl Rdm {
 		serde_json::to_string_pretty(&state).unwrap_or_else(|error| failure(&error.to_string()))
 	}
 
-	/// The Add Task sheet as its fields hold it, or nothing while it is closed.
+	/// The New Task sheet as its fields hold it, or nothing while it is closed.
 	fn add_state(&self, cx: &App) -> Option<AddState> {
 		let sheet = self.adding.as_ref()?;
 		let read = |field: &Entity<TextInput>| field.read(cx).content.to_string();
 		Some(AddState {
+			screen: if sheet.found.is_some() { "details" } else { "address" },
 			address: read(&sheet.input),
 			checking: sheet.checking.as_ref().map(|(url, _)| url.to_string()),
-			error: sheet.error.clone(),
+			problem: sheet.problem.as_ref().map(|problem| problem.summary.clone()),
+			detail: sheet.problem.as_ref().and_then(|problem| problem.detail.clone()),
+			confirm: sheet.confirm.as_ref().map(|confirm| ConfirmState {
+				url: confirm.found.url.to_string(),
+				kind: confirm.kind,
+				links: confirm.links.iter().map(|link| link.url.to_string()).collect(),
+				added: confirm.added.clone(),
+			}),
 			found: sheet.found.as_ref().map(|found| FoundState {
 				url: found.url.to_string(),
 				name: found.probe.file_name.clone(),
@@ -265,18 +279,15 @@ impl Rdm {
 				version: found.probe.version,
 				server: found.probe.server.clone(),
 			}),
-			page: sheet.page.as_ref().map(|page| PageState {
-				url: page.url.to_string(),
-				links: page.links.iter().map(|link| link.url.to_string()).collect(),
-				added: page.added.clone(),
-			}),
 			more: sheet.more,
 			name: read(&sheet.name),
-			folder: sheet.folder.as_ref().map(|path| path.display().to_string()),
 			checksum: read(&sheet.checksum),
+			folder: sheet.folder.as_ref().map(|path| path.display().to_string()),
 			limit: read(&sheet.limit),
+			limit_slider: sheet.limit_slider.read(cx).handles().first().copied().unwrap_or(1.0),
 			range_start: read(&sheet.range_start),
 			range_end: read(&sheet.range_end),
+			range_slider: sheet.range_slider.read(cx).handles().to_vec(),
 		})
 	}
 
@@ -544,18 +555,32 @@ impl Rdm {
 					Err(message) => return failure(&message),
 				}
 			}
-			// Types an address into the open Add Task sheet and looks at it, as Enter would, so the
-			// sheet's found and page faces are reachable without the keyboard. What was found before
-			// is dropped first: with it in place, Enter is the second step and adds the download.
+			// Types an address into the open New Task sheet and looks at it, as Enter on the first
+			// screen would, so the second screen and the first screen's question are reachable
+			// without the keyboard. Whatever was found before is dropped first, back to the first
+			// screen: on the second, Enter downloads.
 			"look" if !label.is_empty() => {
 				let Some(sheet) = &mut self.adding else {
 					return failure("look needs the New Task sheet open: ax press \"Add Task\"");
 				};
 				sheet.found = None;
-				sheet.page = None;
+				sheet.confirm = None;
+				sheet.problem = None;
 				let input = sheet.input.clone();
 				input.update(cx, |input, cx| input.set_content(&label, cx));
 				self.submit_add(cx);
+			}
+			// A slider moved as a drag would move it, through the same call the drag makes: the
+			// pointer is not ours to move. `slide limit <0-1>`, `slide range <0|1> <0-1>`.
+			"slide" => {
+				let number = |index: usize| rest.get(index).and_then(|word| word.parse::<f32>().ok());
+				match (rest.first().copied(), number(1), number(2)) {
+					(Some("limit"), Some(at), _) => self.slide_limit(at, cx),
+					(Some("range"), Some(handle), Some(at)) if handle == 0.0 || handle == 1.0 => {
+						self.slide_range(handle as usize, at, cx)
+					}
+					_ => return failure("slide takes limit <0-1>, or range <0|1> <0-1>"),
+				}
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
 			"add" => return failure("add takes a url"),

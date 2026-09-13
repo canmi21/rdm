@@ -28,7 +28,7 @@ pub mod worker;
 pub mod writer;
 
 pub use control::{Control, Found};
-pub use error::{Error, Result};
+pub use error::{Error, Failure, Result};
 pub use inspect::{Inspection, Link};
 pub use limiter::Limiter;
 pub use probe::{Probe, probe};

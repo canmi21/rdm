@@ -13,6 +13,7 @@ pub mod notice_window;
 pub mod settings_sheet;
 pub mod sidebar;
 pub mod status_bar;
+pub mod slider;
 pub mod text_input;
 pub mod theme;
 pub mod toolbar;

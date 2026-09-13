@@ -185,6 +185,13 @@ file and plan -- once the download has actually stopped, since it writes its pla
 out and a plan written after the discard would be a ghost. A completed file is never deleted
 by the engine; it is the user's.
 
+**A failed look comes back as a sentence and the whole story.** `Error::summary` says what went
+wrong in terms a person can act on -- a status with its reason, a server that could not be reached,
+a wait that ran out -- and `Error::detail` is the error's text with every cause under it, each said
+once, which is what the transport actually said. `Engine::inspect` sends both; New Task shows the
+first and keeps the second behind Details, and neither is parsed back. `inspect::confirmation` names
+the answers New Task asks about before going on: a page, a script, a stylesheet.
+
 ## After the last byte
 
 **A checksum is checked only against a whole file.** A download of a part of one has nothing it

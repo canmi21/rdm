@@ -99,6 +99,12 @@ pub struct Preferences {
 	/// What Add Task offers first: None is the engine's own judgement, Some a fixed count.
 	#[serde(default)]
 	pub connections: Option<u16>,
+	/// The two ends of the speed limit slider New Task offers, in MB/s: None is 1 and 100. Past the
+	/// high end the slider is no limit. See spec/ui.md.
+	#[serde(default)]
+	pub limit_slider_from: Option<u32>,
+	#[serde(default)]
+	pub limit_slider_to: Option<u32>,
 	/// How many downloads run at once; the rest wait their turn.
 	#[serde(default = "three")]
 	pub max_active: usize,
@@ -215,6 +221,11 @@ impl Preferences {
 	/// The engine's settings for a new download: its own defaults, with what the user set
 	/// written over them. `found` is the proxy the last look turned up, which only matters when
 	/// the source is what is running on this machine.
+	/// The limit slider's low and high ends, in MB/s.
+	pub fn limit_slider(&self) -> (f64, f64) {
+		(f64::from(self.limit_slider_from.unwrap_or(1)), f64::from(self.limit_slider_to.unwrap_or(100)))
+	}
+
 	pub fn engine_settings(&self, found: Option<&str>) -> crate::engine::Settings {
 		let mut settings = crate::engine::Settings::default();
 		if let Some(n) = self.min_segment {
@@ -285,6 +296,8 @@ impl Default for Preferences {
 			update_policy: Policy::default(),
 			speed_limit: None,
 			connections: None,
+			limit_slider_from: None,
+			limit_slider_to: None,
 			max_active: 3,
 			min_segment: None,
 			connect_timeout: None,

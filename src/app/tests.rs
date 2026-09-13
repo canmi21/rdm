@@ -1092,20 +1092,47 @@ fn add_task_reads_the_clipboard_names_junk_and_offers_a_pages_files(cx: &mut Tes
 		input.update(cx, |i, cx| i.set_content("not an address at all", cx));
 		let _ = window;
 	});
-	click(&mut cx, "button:Query");
+	click(&mut cx, "button:Continue");
 	assert!(cx.debug_bounds("add-error").is_some(), "junk is named as such");
 	rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_some(), "the sheet stays"));
 
+	// A server that refuses is said in a line, and what it said waits behind Details.
+	let refusing = TestServer::start(vec![], Options { status: Some(403), ..Options::default() });
+	let secret = refusing.url("/secret.bin").to_string();
+	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&secret, cx)));
+	click(&mut cx, "button:Continue");
+	let mut refused = false;
+	for _ in 0..200 {
+		std::thread::sleep(Duration::from_millis(10));
+		rdm.update(&mut cx, |rdm, cx| rdm.poll_add(cx));
+		cx.run_until_parked();
+		if rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().is_some_and(|s| s.problem.is_some())) {
+			refused = true;
+			break;
+		}
+	}
+	assert!(refused, "the refusal came back");
+	rdm.read_with(&cx, |rdm, _| {
+		let sheet = rdm.adding.as_ref().unwrap();
+		let problem = sheet.problem.as_ref().unwrap();
+		assert_eq!(problem.summary, "The server answered 403 Forbidden.");
+		assert!(problem.detail.is_some(), "the whole text is kept");
+		assert!(sheet.found.is_none(), "and the first screen stays");
+	});
+	assert!(cx.debug_bounds("add-detail").is_none(), "the details start closed");
+	click(&mut cx, "button:Details");
+	assert!(cx.debug_bounds("add-detail").is_some(), "and open when asked");
+
 	let address = page.url("/downloads/").to_string();
 	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
-	click(&mut cx, "button:Query");
+	click(&mut cx, "button:Continue");
 	// The engine looks at the address on its own threads; the pump collects the answer.
 	let mut seen = false;
 	for _ in 0..200 {
 		std::thread::sleep(Duration::from_millis(10));
 		rdm.update(&mut cx, |rdm, cx| rdm.poll_add(cx));
 		cx.run_until_parked();
-		if rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().is_some_and(|s| s.page.is_some())) {
+		if rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().is_some_and(|s| s.confirm.is_some())) {
 			seen = true;
 			break;
 		}
@@ -1670,7 +1697,7 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	let input = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().input.clone());
 	let address = server.url("/tool.bin").to_string();
 	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
-	click(&mut cx, "button:Query");
+	click(&mut cx, "button:Continue");
 	let mut seen = false;
 	for _ in 0..200 {
 		std::thread::sleep(Duration::from_millis(10));
@@ -1698,15 +1725,19 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	// More options: the folder, a limit of its own and a part of the file.
 	click(&mut cx, "button:More options");
 	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
-	assert!(cx.debug_bounds("add-address").is_some(), "the address is fixed once it was looked at");
+	assert!(cx.debug_bounds("button:Back").is_some(), "the second screen goes back rather than show the address");
 	let (start, end, limit) = rdm.read_with(&cx, |rdm, _| {
 		let s = rdm.adding.as_ref().unwrap();
 		(s.range_start.clone(), s.range_end.clone(), s.limit.clone())
 	});
-	// A common limit is a press, and it lands in the field that takes any other.
-	click(&mut cx, "limit:5 MB/s");
-	let picked = limit.read_with(&cx, |i, _| crate::download::parse_rate(&i.content));
-	assert_eq!(picked, Ok(Some(5 * 1024 * 1024)));
+	// The limit is a slider and a field in MB/s, each following the other.
+	cx.update(|_, cx| limit.update(cx, |i, cx| i.set_content("10", cx)));
+	cx.run_until_parked();
+	let at = rdm.read_with(&cx, |rdm, cx| rdm.adding.as_ref().unwrap().limit_slider.read(cx).handles()[0]);
+	assert!((at - 0.45).abs() < 1e-3, "ten MB/s is halfway along the scale: {at}");
+	rdm.update(&mut cx, |rdm, cx| rdm.slide_limit(1.0, cx));
+	cx.run_until_parked();
+	assert!(limit.read_with(&cx, |i, _| i.content.is_empty()), "the far end is no limit");
 	cx.update(|_, cx| {
 		name.update(cx, |i, cx| i.set_content("renamed.bin", cx));
 		checksum.update(cx, |i, cx| i.set_content("d41d8cd98f00b204e9800998ecf8427e", cx));
@@ -1729,7 +1760,7 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 		assert!(row.mirrors.is_empty(), "mirrors are not asked");
 		assert_eq!(row.checksum, None);
 		assert_eq!(row.range.as_deref(), Some("0-1000"));
-		assert_eq!(row.speed_limit, Some(500 * 1024));
+		assert_eq!(row.speed_limit, Some(500 * 1024 * 1024), "the field is MB/s");
 	});
 	// How it downloads is changed afterwards, as the download's window does, and kept on the row.
 	let id = rdm.read_with(&cx, |rdm, _| rdm.downloads.iter().find(|d| d.url == address).unwrap().id);

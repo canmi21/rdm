@@ -106,9 +106,11 @@ carries no bounds, so layout is read from `ax tree`, which ends each line with t
 frame in points from the window's top-left.
 
 `ctl state` covers the sheets as well as the list: `add` is the New Task sheet's fields and what
-looking at the address found. `ctl look <address>` types an address into the open sheet and looks
-at it as Enter would, which reaches the found and page faces without the keyboard and adds
-nothing. The sheet itself is opened with `ax press "Add Task"`.
+looking at the address found, and which of its two screens is up. `ctl look <address>` types an
+address into the open sheet and looks at it as Enter on the first screen would, which reaches the
+second screen, or the first screen's question about a page, without the keyboard and adds nothing.
+`ctl slide limit <0-1>` and `ctl slide range <0|1> <0-1>` move a slider as a drag would, through the
+call the drag makes. The sheet itself is opened with `ax press "Add Task"`.
 
 `ctl say <finished|failed|queue|update> [text]` makes a notice happen on demand, which is
 otherwise a matter of waiting for a download to end; it says the words the real call sites say,

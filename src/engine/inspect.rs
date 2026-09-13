@@ -40,6 +40,20 @@ pub async fn inspect(client: &Client, url: Url) -> Result<Inspection> {
 	Ok(Inspection { probe: probed, is_page, links })
 }
 
+/// What an address is when it answers as a file the web is made of rather than one somebody
+/// downloads -- a page, a script or a stylesheet -- which New Task asks about before going on.
+/// None for anything else. See spec/ui.md.
+pub fn confirmation(content_type: Option<&str>) -> Option<&'static str> {
+	let kind = content_type?.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+	match kind.as_str() {
+		"text/html" | "application/xhtml+xml" => Some("web page"),
+		"text/javascript" | "application/javascript" | "application/x-javascript"
+		| "application/ecmascript" | "text/ecmascript" => Some("script"),
+		"text/css" => Some("stylesheet"),
+		_ => None,
+	}
+}
+
 pub fn is_html(content_type: &str) -> bool {
 	let kind = content_type.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
 	matches!(kind.as_str(), "text/html" | "application/xhtml+xml")
@@ -177,5 +191,14 @@ mod tests {
 		assert!(is_html("TEXT/HTML"));
 		assert!(!is_html("text/plain"));
 		assert!(!is_html("application/octet-stream"));
+	}
+
+	#[test]
+	fn pages_scripts_and_stylesheets_are_asked_about_and_files_are_not() {
+		assert_eq!(confirmation(Some("text/html; charset=utf-8")), Some("web page"));
+		assert_eq!(confirmation(Some("application/javascript")), Some("script"));
+		assert_eq!(confirmation(Some("text/css")), Some("stylesheet"));
+		assert_eq!(confirmation(Some("application/x-iso9660-image")), None);
+		assert_eq!(confirmation(None), None);
 	}
 }

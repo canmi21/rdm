@@ -69,10 +69,12 @@ pub struct SettingsSheet {
 /// reaches the pointer by the same path as a switch's. It used to be a second note living inside
 /// `Control::Field`, drawn between the label and the input where there was never room for it --
 /// every row of Transfers showed a sentence cut off at four words. One note, one home.
-const FIELDS: [(&str, &str, &str); 15] = [
+const FIELDS: [(&str, &str, &str); 17] = [
 	("settings.label.concurrent_downloads", "3", "settings.note.concurrent"),
 	("settings.label.speed_limit", "Off", "settings.note.speed_limit"),
 	("settings.label.connections", "Auto", "settings.note.connections"),
+	("settings.label.limit_slider_from", "1", "settings.note.limit_slider_from"),
+	("settings.label.limit_slider_to", "100", "settings.note.limit_slider_to"),
 	("settings.label.smallest_segment", "1m", "settings.note.smallest_segment"),
 	("settings.label.connect_timeout", "30", "settings.note.connect_timeout"),
 	("settings.label.idle_timeout", "60", "settings.note.idle_timeout"),
@@ -335,6 +337,8 @@ impl Rdm {
 				p.speed_limit.map(|l| format_rate(Some(l))).unwrap_or_default()
 			}
 			"settings.label.connections" => number(p.connections.map(u64::from)),
+			"settings.label.limit_slider_from" => number(p.limit_slider_from.map(u64::from)),
+			"settings.label.limit_slider_to" => number(p.limit_slider_to.map(u64::from)),
 			"settings.label.smallest_segment" => size(p.min_segment),
 			"settings.label.connect_timeout" => number(p.connect_timeout),
 			"settings.label.idle_timeout" => number(p.idle_timeout),
@@ -384,6 +388,25 @@ impl Rdm {
 				}
 				"settings.label.connections" => {
 					self.preferences.connections = crate::ui::add_dialog::parse_connections(text)?;
+				}
+				"settings.label.limit_slider_from" | "settings.label.limit_slider_to" => {
+					let value = match parse_number(text)? {
+						None => None,
+						Some(n) if (1..=100_000).contains(&n) => Some(n as u32),
+						Some(_) => return Err("The slider is counted in whole MB/s, from 1.".to_owned()),
+					};
+					let (mut from, mut to) =
+						(self.preferences.limit_slider_from, self.preferences.limit_slider_to);
+					if key.ends_with("from") {
+						from = value;
+					} else {
+						to = value;
+					}
+					if from.unwrap_or(1) >= to.unwrap_or(100) {
+						return Err("The slider has to start below where it ends.".to_owned());
+					}
+					self.preferences.limit_slider_from = from;
+					self.preferences.limit_slider_to = to;
 				}
 				"settings.label.smallest_segment" => self.preferences.min_segment = parse_size(text)?,
 				"settings.label.connect_timeout" => self.preferences.connect_timeout = parse_number(text)?,
@@ -687,6 +710,12 @@ impl Rdm {
 				.under("settings.group.at_once"),
 			self
 				.field_row(Section::Transfers, "settings.label.connections")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.limit_slider_from")
+				.under("settings.group.per_download"),
+			self
+				.field_row(Section::Transfers, "settings.label.limit_slider_to")
 				.under("settings.group.per_download"),
 			self
 				.field_row(Section::Transfers, "settings.label.smallest_segment")

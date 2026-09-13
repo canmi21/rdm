@@ -231,17 +231,17 @@ impl Engine {
 	/// Looks at an address without downloading it: what the server says it is, and, when it is
 	/// a web page, the files that page links to. The answer arrives on the returned channel,
 	/// which the caller polls the way it polls events; an address that could not be reached
-	/// arrives as the error's message.
+	/// arrives as the error's summary and its whole text.
 	pub fn inspect(
 		&self,
 		url: reqwest::Url,
-	) -> mpsc::Receiver<std::result::Result<Inspection, String>> {
+	) -> mpsc::Receiver<std::result::Result<Inspection, crate::engine::Failure>> {
 		let (sender, receiver) = mpsc::channel();
 		let settings = crate::engine::Settings::default();
 		self.runtime.spawn(async move {
 			let result = match crate::engine::client::build(&settings, false) {
-				Ok(client) => inspect::inspect(&client, url).await.map_err(|e| e.to_string()),
-				Err(e) => Err(e.to_string()),
+				Ok(client) => inspect::inspect(&client, url).await.map_err(|e| e.failure()),
+				Err(e) => Err(e.failure()),
 			};
 			let _ = sender.send(result);
 		});
