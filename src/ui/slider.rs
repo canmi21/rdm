@@ -41,11 +41,13 @@ const LINGER: Duration = Duration::from_millis(1000);
 const SWING_HOLD: Duration = Duration::from_millis(150);
 /// How far from a place, as a share of its gap, a hand is hanging between two rather than on one.
 const AWAY: f32 = 0.25;
-/// While zoomed, the gap fills the track but for this share at each end, where the value stops at
-/// the gap's edge and a hand that stays goes back out a level.
+/// While zoomed, the gap fills the track but for this share at each end, where the value stops and
+/// going in goes back out a level -- one level for each time the hand goes in, however long it
+/// stays; the next level out is back to the middle and in again.
 const MARGIN: f32 = 0.05;
-/// How long a hand has to stay in an end to go back out.
-const EDGE_HOLD: Duration = Duration::from_millis(400);
+/// How long a hand has to be in an end to go back out: short, since going in is the ask, and long
+/// enough that fine work brushing an end does not go out by accident.
+const EDGE_HOLD: Duration = Duration::from_millis(200);
 /// The handle: a white pill lying along the track, flatter than the round dot it replaced and
 /// wider, so it reads as something to slide and gives the hand more to take hold of. A press within
 /// half its width takes it where it is.
@@ -137,6 +139,12 @@ pub struct Slider {
 	edge: Option<Instant>,
 	/// Which end that is: the right one, or the left.
 	edge_right: bool,
+	/// Whether going into an end goes out a level: not again after it has, until the hand has been
+	/// back in the middle, so one visit to an end is one level however long it lasts.
+	armed: bool,
+	/// Where the pointer was when the drag last went a level finer: until it has moved from there,
+	/// nothing goes finer again, so a hand that stays after going in stays at that level.
+	settled: Option<Pixels>,
 	/// Where the hand came to rest and since when; a move within `DEADZONE` of it is not a move.
 	rest: Option<(Pixels, Instant)>,
 	/// Where the pointer was last, along the track, for a zoom that changes while it is still.
@@ -168,6 +176,8 @@ impl Slider {
 			swung: None,
 			edge: None,
 			edge_right: false,
+			armed: true,
+			settled: None,
 			rest: None,
 			pointer: 0.0,
 			pickup: None,
@@ -175,7 +185,10 @@ impl Slider {
 		}
 	}
 
-	pub fn on_change(mut self, f: impl Fn(usize, f32, usize, &mut Window, &mut App) + 'static) -> Self {
+	pub fn on_change(
+		mut self,
+		f: impl Fn(usize, f32, usize, &mut Window, &mut App) + 'static,
+	) -> Self {
 		self.on_change = Some(Box::new(f));
 		self
 	}
@@ -257,6 +270,7 @@ impl Slider {
 			None => self.pickup = Some((at - value).signum()),
 		}
 		self.forget();
+		self.armed = false;
 		self.rest = self.rest.map(|(x, _)| (x, Instant::now()));
 	}
 
@@ -286,7 +300,10 @@ impl Slider {
 			&& (hi.max(lo) - a.max(b)).abs() <= SAME
 		{
 			self.swung = Some(((lo, hi), None));
-		} else if self.swung.is_some_and(|((lo, hi), _)| (place - lo).abs() > SAME && (place - hi).abs() > SAME) {
+		} else if self
+			.swung
+			.is_some_and(|((lo, hi), _)| (place - lo).abs() > SAME && (place - hi).abs() > SAME)
+		{
 			self.swung = None;
 		}
 	}
@@ -299,6 +316,7 @@ impl Slider {
 			let _ = this.update(cx, |this, cx| {
 				if let (Some(index), Some(edge)) = (this.dragging, this.edge)
 					&& edge == since
+					&& this.armed
 				{
 					this.zoom_out(index);
 					cx.notify();
@@ -334,7 +352,13 @@ impl Slider {
 
 	/// A handle moved to `position`, held between its neighbours so a pair never crosses, and the
 	/// owner told.
-	fn move_handle(&mut self, index: usize, position: f32, window: &mut Window, cx: &mut Context<Self>) {
+	fn move_handle(
+		&mut self,
+		index: usize,
+		position: f32,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
 		let low = if index > 0 { self.handles[index - 1] } else { 0.0 };
 		let high = self.handles.get(index + 1).copied().unwrap_or(1.0);
 		let position = position.clamp(low, high);
@@ -364,6 +388,8 @@ impl Slider {
 		self.dragging = Some(index);
 		self.rest = Some((event.position.x, Instant::now()));
 		self.forget();
+		self.armed = true;
+		self.settled = None;
 		self.pickup = None;
 		self.pointer = position;
 		self.places = (0..EXACT).map(|level| self.find_places(level, cx)).collect();
@@ -396,22 +422,25 @@ impl Slider {
 		self.pointer = along;
 		let at = along + self.offset;
 
-		// An end of a zoomed track stops the value, and held goes back out a level.
+		// An end of a zoomed track stops the value, and going in goes back out a level, once.
 		if self.level() > 0 && !(MARGIN..=1.0 - MARGIN).contains(&at) {
 			self.edge_right = at > 1.0 - MARGIN;
-			match self.edge {
-				None => {
-					self.edge = Some(now);
-					self.hold_edge(now, cx);
+			if self.armed {
+				match self.edge {
+					None => {
+						self.edge = Some(now);
+						self.hold_edge(now, cx);
+					}
+					Some(since) if now.duration_since(since) >= EDGE_HOLD => self.zoom_out(index),
+					Some(_) => {}
 				}
-				Some(since) if now.duration_since(since) >= EDGE_HOLD => self.zoom_out(index),
-				Some(_) => {}
 			}
 			self.rest = Some((x, now));
 			cx.notify();
 			return;
 		}
 		self.edge = None;
+		self.armed = true;
 
 		// Back on the whole track, the handle waits for the pointer to reach it.
 		if let Some(side) = self.pickup {
@@ -428,7 +457,11 @@ impl Slider {
 		let wanted = unview(self.zoom(), at);
 		let level = self.level();
 		let mut finer = false;
-		if level < EXACT && self.edge.is_none() {
+		// Gone in and not moved since: nothing goes in again until the hand does.
+		if self.settled.is_some_and(|from| ((x - from) / px(1.0)).abs() > DEADZONE) {
+			self.settled = None;
+		}
+		if level < EXACT && self.edge.is_none() && self.settled.is_none() {
 			// Swung between two neighbouring places: a short hold inside their gap goes into it.
 			if let Some(((lo, hi), since)) = self.swung {
 				let inside = wanted > lo.min(hi) + SAME && wanted < lo.max(hi) - SAME;
@@ -437,6 +470,7 @@ impl Slider {
 					(true, None) => self.swung = Some(((lo, hi), Some(now))),
 					(true, Some(since)) if now.duration_since(since) >= SWING_HOLD => {
 						self.zoom_in(wanted, at);
+						self.settled = Some(x);
 						finer = true;
 					}
 					(true, Some(_)) => {}
@@ -444,14 +478,17 @@ impl Slider {
 			}
 			// Hung between two places, away from both, for long enough.
 			if !finer {
-				let away = self.places.get(level).and_then(|p| gap(p, wanted, 0.0)).is_some_and(|(lo, hi)| {
-					(wanted - lo).min(hi - wanted) > (hi - lo) * AWAY
-				});
+				let away = self
+					.places
+					.get(level)
+					.and_then(|p| gap(p, wanted, 0.0))
+					.is_some_and(|(lo, hi)| (wanted - lo).min(hi - wanted) > (hi - lo) * AWAY);
 				match (away, self.hanging) {
 					(false, _) => self.hanging = None,
 					(true, None) => self.hanging = Some(now),
 					(true, Some(since)) if now.duration_since(since) >= LINGER => {
 						self.zoom_in(wanted, at);
+						self.settled = Some(x);
 						finer = true;
 					}
 					(true, Some(_)) => {}
@@ -480,6 +517,7 @@ impl Slider {
 		self.offset = 0.0;
 		self.forget();
 		self.pickup = None;
+		self.settled = None;
 		cx.notify();
 	}
 }
@@ -494,10 +532,16 @@ impl Render for Slider {
 		let zoom = self.zoom();
 		let shown = |value: f32| view(zoom, value).clamp(0.0, 1.0);
 		// The filled part: between the handles of a pair, or from the left end to a lone handle.
+		// On a zoomed track it stays within the band: the ends stand for no value, and a fill running
+		// into them covered the way out they are marked with.
 		let (from, to) = match self.handles.as_slice() {
 			[] => (0.0, 0.0),
 			[one] => (0.0, shown(*one)),
 			[first, .., last] => (shown(*first), shown(*last)),
+		};
+		let (from, to) = match zoom {
+			Some(_) => (from.clamp(MARGIN, 1.0 - MARGIN), to.clamp(MARGIN, 1.0 - MARGIN)),
+			None => (from, to),
 		};
 		let label = self.label.clone();
 		let pair = self.handles.len() > 1;
@@ -523,7 +567,9 @@ impl Render for Slider {
 		// it would act. See spec/ui.md, "A slider reads the hand's intent from its pauses".
 		let now = Instant::now();
 		let level = self.level();
-		let share = |since: Instant, of: Duration| (now.duration_since(since).as_secs_f32() / of.as_secs_f32()).min(1.0);
+		let share = |since: Instant, of: Duration| {
+			(now.duration_since(since).as_secs_f32() / of.as_secs_f32()).min(1.0)
+		};
 		// Deeper: a halo round the held handle that grows as a hang goes on, or as the short hold after a
 		// swing does. A hang shows from a fifth of the way, so passing between two places does not
 		// flicker it.
@@ -542,7 +588,8 @@ impl Render for Slider {
 		}
 		let held = self.dragging;
 		let end = |right: bool| {
-			let fill = if self.edge.is_some() && self.edge_right == right { leaving } else { 0.0 };
+			let fill =
+				if self.armed && self.edge.is_some() && self.edge_right == right { leaving } else { 0.0 };
 			div()
 				.absolute()
 				.top(px(4.0))
@@ -554,7 +601,9 @@ impl Render for Slider {
 				.bg(p.accent.opacity(0.08 + 0.5 * fill))
 				.flex()
 				.items_center()
-				.justify_center()
+				// The chevron on the outer side, clear of a handle stopped at the band's edge.
+				.when(right, |s| s.justify_end().pr(px(2.0)))
+				.when(!right, |s| s.justify_start().pl(px(2.0)))
 				.text_size(px(11.0))
 				.line_height(px(12.0))
 				.text_color(if fill > 0.0 { p.text } else { p.muted })
@@ -573,106 +622,127 @@ impl Render for Slider {
 			.h(px(20.0))
 			.leaves_focus()
 			.child(
-				// Where the track is, for a pointer to be measured against, and while a handle is held,
-				// the window's listeners: an element hears the pointer only while it is over the
-				// element, and a drag leaves the track as often as it stays on it.
-				canvas(
-					move |bounds, _, _| track.set(Some(bounds)),
-					move |_, _, window, _| {
-						if !dragging {
-							return;
-						}
-						let moved = slider.clone();
-						window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-							if phase == DispatchPhase::Bubble {
-								let _ = moved.update(cx, |slider, cx| slider.drag(event, window, cx));
-							}
-						});
-						let released = slider.clone();
-						window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-							if phase == DispatchPhase::Bubble {
-								let _ = released.update(cx, |slider, cx| slider.release(cx));
-							}
-						});
-					},
-				)
-				.absolute()
-				.left_0()
-				.top_0()
-				.size_full(),
+				// The track, half a handle in from each side, so a handle at either end sits inside the
+				// slider's width with its outer edge on the column's, rather than half past it.
+				div()
+					.absolute()
+					.top_0()
+					.bottom_0()
+					.left(px(KNOB_W / 2.0))
+					.right(px(KNOB_W / 2.0))
+					.child(
+						// Where the track is, for a pointer to be measured against, and while a handle is held,
+						// the window's listeners: an element hears the pointer only while it is over the
+						// element, and a drag leaves the track as often as it stays on it.
+						canvas(
+							move |bounds, _, _| track.set(Some(bounds)),
+							move |_, _, window, _| {
+								if !dragging {
+									return;
+								}
+								let moved = slider.clone();
+								window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
+									if phase == DispatchPhase::Bubble {
+										let _ = moved.update(cx, |slider, cx| slider.drag(event, window, cx));
+									}
+								});
+								let released = slider.clone();
+								window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+									if phase == DispatchPhase::Bubble {
+										let _ = released.update(cx, |slider, cx| slider.release(cx));
+									}
+								});
+							},
+						)
+						.absolute()
+						.left_0()
+						.top_0()
+						.size_full(),
+					)
+					.child(
+						div().absolute().left_0().right_0().top(px(8.0)).h(px(4.0)).rounded_full().bg(p.track),
+					)
+					.children(zoom.map(|_| {
+						div()
+							.absolute()
+							.top(px(5.0))
+							.h(px(10.0))
+							.left(relative(MARGIN))
+							.w(relative(1.0 - 2.0 * MARGIN))
+							.rounded_sm()
+							.bg(p.accent.opacity(0.22))
+					}))
+					.child(
+						div()
+							.absolute()
+							.top(px(8.0))
+							.h(px(4.0))
+							.left(relative(from))
+							.w(relative((to - from).max(0.0)))
+							.rounded_full()
+							.bg(p.accent),
+					)
+					.children(ticks.map(|at| {
+						div()
+							.absolute()
+							.top(px(7.0))
+							.h(px(6.0))
+							.w(px(1.0))
+							.left(relative(at))
+							.bg(p.muted.opacity(0.6))
+					}))
+					// The ways out, over the fill and the places so nothing covers them.
+					.when(zoom.is_some(), |s| s.child(end(false)).child(end(true)))
+					.children(held.filter(|_| deeper > 0.0).and_then(|index| self.handles.get(index)).map(
+						|&at| {
+							let (w, h) = (KNOB_W + 10.0 * deeper, KNOB_H + 10.0 * deeper);
+							div()
+								.absolute()
+								.top(px(10.0 - h / 2.0))
+								.left(relative(shown(at)))
+								.ml(px(-w / 2.0))
+								.w(px(w))
+								.h(px(h))
+								.rounded_full()
+								.bg(p.accent.opacity(0.15 + 0.25 * deeper))
+								.when(deeper >= 1.0, |s| s.border_1().border_color(p.accent))
+						},
+					))
+					.children(self.handles.iter().enumerate().map(|(index, &at)| {
+						let name = match (pair, index) {
+							(false, _) => label.to_string(),
+							(true, 0) => format!("{label} start"),
+							(true, _) => format!("{label} end"),
+						};
+						div()
+							.id(("handle", index))
+							.role(gpui::Role::Slider)
+							.aria_label(name)
+							.aria_numeric_value(f64::from((at * 100.0).round()))
+							.absolute()
+							.top(px(10.0 - KNOB_H / 2.0))
+							.left(relative(shown(at)))
+							.ml(px(-KNOB_W / 2.0))
+							.w(px(KNOB_W))
+							.h(px(KNOB_H))
+							.rounded_full()
+							.border_1()
+							.border_color(p.border)
+							.bg(p.text)
+							.shadow_sm()
+					})),
 			)
-			.child(div().absolute().left_0().right_0().top(px(8.0)).h(px(4.0)).rounded_full().bg(p.track))
-			.when(zoom.is_some(), |s| s.child(end(false)).child(end(true)))
-			.children(zoom.map(|_| {
-				div()
-					.absolute()
-					.top(px(5.0))
-					.h(px(10.0))
-					.left(relative(MARGIN))
-					.w(relative(1.0 - 2.0 * MARGIN))
-					.rounded_sm()
-					.bg(p.accent.opacity(0.22))
-			}))
 			.child(
-				div()
-					.absolute()
-					.top(px(8.0))
-					.h(px(4.0))
-					.left(relative(from))
-					.w(relative((to - from).max(0.0)))
-					.rounded_full()
-					.bg(p.accent),
-			)
-			.children(ticks.map(|at| {
-				div().absolute().top(px(7.0)).h(px(6.0)).w(px(1.0)).left(relative(at)).bg(p.muted.opacity(0.6))
-			}))
-			.children(held.filter(|_| deeper > 0.0).and_then(|index| self.handles.get(index)).map(|&at| {
-				let (w, h) = (KNOB_W + 10.0 * deeper, KNOB_H + 10.0 * deeper);
-				div()
-					.absolute()
-					.top(px(10.0 - h / 2.0))
-					.left(relative(shown(at)))
-					.ml(px(-w / 2.0))
-					.w(px(w))
-					.h(px(h))
-					.rounded_full()
-					.bg(p.accent.opacity(0.15 + 0.25 * deeper))
-					.when(deeper >= 1.0, |s| s.border_1().border_color(p.accent))
-			}))
-			.children(self.handles.iter().enumerate().map(|(index, &at)| {
-				let name = match (pair, index) {
-					(false, _) => label.to_string(),
-					(true, 0) => format!("{label} start"),
-					(true, _) => format!("{label} end"),
-				};
-				div()
-					.id(("handle", index))
-					.role(gpui::Role::Slider)
-					.aria_label(name)
-					.aria_numeric_value(f64::from((at * 100.0).round()))
-					.absolute()
-					.top(px(10.0 - KNOB_H / 2.0))
-					.left(relative(shown(at)))
-					.ml(px(-KNOB_W / 2.0))
-					.w(px(KNOB_W))
-					.h(px(KNOB_H))
-					.rounded_full()
-					.border_1()
-					.border_color(p.border)
-					.bg(p.text)
-					.shadow_sm()
-			}))
-			.child(
-				// What takes a press: the track and half a handle past each end, since a handle at an end
-				// is centred on it and half of it lies outside the track. Pressed at its centre, a handle
-				// at the far right used to take nothing at all.
+				// What takes a press: the whole slider, which is the track and half a handle past each
+				// end, since a handle at an end is centred on it. Pressed at its centre, a handle at the
+				// far right used to take nothing at all.
 				div()
 					.id("press")
 					.absolute()
 					.top_0()
 					.bottom_0()
-					.left(px(-KNOB_W / 2.0))
-					.right(px(-KNOB_W / 2.0))
+					.left_0()
+					.right_0()
 					.cursor_pointer()
 					.on_mouse_down(MouseButton::Left, cx.listener(Self::press)),
 			)
@@ -686,9 +756,17 @@ mod tests {
 	use super::*;
 
 	/// One zoom, a gap this wide, drawing `value` where the pointer is.
-	fn zoomed(slider: &Entity<Slider>, cx: &mut VisualTestContext, width: f32, value: f32, at: f32) -> bool {
+	fn zoomed(
+		slider: &Entity<Slider>,
+		cx: &mut VisualTestContext,
+		width: f32,
+		value: f32,
+		at: f32,
+	) -> bool {
 		let gaps = slider.read_with(cx, |slider, _| slider.gaps.clone());
-		gaps.len() == 1 && ((gaps[0].1 - gaps[0].0) - width).abs() < 1e-5 && (view(gaps.first().copied(), value) - at).abs() < 1e-4
+		gaps.len() == 1
+			&& ((gaps[0].1 - gaps[0].0) - width).abs() < 1e-5
+			&& (view(gaps.first().copied(), value) - at).abs() < 1e-4
 	}
 
 	#[test]
@@ -697,12 +775,19 @@ mod tests {
 		assert_eq!(gap(&places, 0.15, 0.0), Some((0.1, 0.2)));
 		assert_eq!(gap(&places, 0.2, 1.0), Some((0.2, 0.3)));
 		assert_eq!(gap(&places, 0.2, -1.0), Some((0.1, 0.2)));
-		assert_eq!(gap(&places, 0.3, 1.0), Some((0.2, 0.3)), "the last place has only the gap before it");
+		assert_eq!(
+			gap(&places, 0.3, 1.0),
+			Some((0.2, 0.3)),
+			"the last place has only the gap before it"
+		);
 		assert_eq!(gap(&places, 0.0, -1.0), Some((0.0, 0.1)), "and the first only the one after");
 		let zoom = Some((0.4, 0.5));
 		assert!((view(zoom, 0.4) - MARGIN).abs() < 1e-6, "the gap's start is at the left margin");
 		assert!((view(zoom, 0.5) - (1.0 - MARGIN)).abs() < 1e-6, "its end at the right one");
-		assert!((unview(zoom, 0.5) - 0.45).abs() < 1e-6, "the middle of the track is the middle of the gap");
+		assert!(
+			(unview(zoom, 0.5) - 0.45).abs() < 1e-6,
+			"the middle of the track is the middle of the gap"
+		);
 		assert_eq!(unview(zoom, 0.01), 0.4, "an end holds the value at the gap's edge");
 		assert_eq!(unview(None, 0.3), 0.3, "an unzoomed track is itself");
 		assert!((even(0, 0.437) - 0.4).abs() < 1e-6, "ten steps across the track");
@@ -720,7 +805,10 @@ mod tests {
 		}
 	}
 
-	fn opened(handles: Vec<f32>, cx: &mut TestAppContext) -> (Entity<Slider>, VisualTestContext, Bounds<Pixels>) {
+	fn opened(
+		handles: Vec<f32>,
+		cx: &mut TestAppContext,
+	) -> (Entity<Slider>, VisualTestContext, Bounds<Pixels>) {
 		let window = cx.update(|cx| {
 			cx.open_window(Default::default(), |_, cx| {
 				let slider = cx.new(|_| Slider::new("Limit", handles));
@@ -749,7 +837,11 @@ mod tests {
 		cx.simulate_mouse_move(at(0.61), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "on the coarsest places");
-		cx.simulate_mouse_move(point(at(0.61).x + px(DEADZONE - 1.0), y), MouseButton::Left, Modifiers::default());
+		cx.simulate_mouse_move(
+			point(at(0.61).x + px(DEADZONE - 1.0), y),
+			MouseButton::Left,
+			Modifiers::default(),
+		);
 		cx.run_until_parked();
 		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "a hand this still holds the value");
 		// A rest and a move is reading the number, not asking for a finer one.
@@ -765,13 +857,19 @@ mod tests {
 		cx.simulate_mouse_move(at(entered), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 1, "the hang bought one level");
-		assert!(zoomed(&slider, &mut cx, 0.1, entered, entered), "a gap wide, with the value under the pointer");
+		assert!(
+			zoomed(&slider, &mut cx, 0.1, entered, entered),
+			"a gap wide, with the value under the pointer"
+		);
 		let entered_value = handle(&mut cx);
 		// On the zoomed track the handle follows the pointer, a tenth across the band's width.
 		cx.simulate_mouse_move(at(entered + 36.0 / width), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		let expected = even(1, entered + 36.0 / width / (1.0 - 2.0 * MARGIN) * 0.1);
-		assert!((entered_value - even(1, entered)).abs() < 1e-6, "on the finer places where the hand was");
+		assert!(
+			(entered_value - even(1, entered)).abs() < 1e-6,
+			"on the finer places where the hand was"
+		);
 		assert!((handle(&mut cx) - expected).abs() < 1e-6, "zoomed: {}", handle(&mut cx));
 		// Into the left end: the value stops, and held there, still, the track goes back out.
 		let before = handle(&mut cx);
@@ -793,7 +891,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn hanging_between_two_places_zooms_in_and_a_value_between_them_starts_there(cx: &mut TestAppContext) {
+	fn hanging_between_two_places_zooms_in_and_a_value_between_them_starts_there(
+		cx: &mut TestAppContext,
+	) {
 		let (slider, mut cx, track) = opened(vec![0.5], cx);
 		let y = track.center().y;
 		let at = |along: f32| point(track.left() + track.size.width * along, y);
@@ -854,14 +954,97 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn a_hand_that_stays_after_going_in_stays_at_that_level(cx: &mut TestAppContext) {
+		let (slider, mut cx, track) = opened(vec![0.5], cx);
+		let y = track.center().y;
+		let at = |along: f32| point(track.left() + track.size.width * along, y);
+		let level = |cx: &mut VisualTestContext| slider.read_with(cx, |slider, _| slider.level());
+		cx.simulate_mouse_down(at(0.5), MouseButton::Left, Modifiers::default());
+		cx.simulate_mouse_move(at(0.642), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		std::thread::sleep(LINGER + Duration::from_millis(30));
+		cx.simulate_mouse_move(at(0.645), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert_eq!(level(&mut cx), 1);
+		// Still, but for the jitter of a still hand, for longer than a hang: not another level.
+		for _ in 0..2 {
+			std::thread::sleep(LINGER + Duration::from_millis(30));
+			cx.simulate_mouse_move(
+				point(at(0.645).x + px(DEADZONE - 1.0), y),
+				MouseButton::Left,
+				Modifiers::default(),
+			);
+			cx.run_until_parked();
+		}
+		assert_eq!(level(&mut cx), 1, "a hand that stays after going in stays at that level");
+		// Moved, and hung again: the next level.
+		cx.simulate_mouse_move(at(0.66), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		std::thread::sleep(LINGER + Duration::from_millis(30));
+		cx.simulate_mouse_move(at(0.6602), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert_eq!(level(&mut cx), 2, "once it has moved, a hang goes in again");
+		cx.simulate_mouse_up(at(0.6602), MouseButton::Left, Modifiers::default());
+	}
+
+	#[gpui::test]
+	fn one_visit_to_an_end_is_one_level_out_however_long_it_lasts(cx: &mut TestAppContext) {
+		let (slider, mut cx, track) = opened(vec![0.5], cx);
+		let y = track.center().y;
+		let at = |along: f32| point(track.left() + track.size.width * along, y);
+		let level = |cx: &mut VisualTestContext| slider.read_with(cx, |slider, _| slider.level());
+		let hang = |cx: &mut VisualTestContext, from: f32, to: f32| {
+			cx.simulate_mouse_move(at(from), MouseButton::Left, Modifiers::default());
+			cx.run_until_parked();
+			std::thread::sleep(LINGER + Duration::from_millis(30));
+			cx.simulate_mouse_move(at(to), MouseButton::Left, Modifiers::default());
+			cx.run_until_parked();
+		};
+		cx.simulate_mouse_down(at(0.5), MouseButton::Left, Modifiers::default());
+		hang(&mut cx, 0.642, 0.645);
+		hang(&mut cx, 0.66, 0.6602);
+		assert_eq!(level(&mut cx), 2, "two hangs, two levels in");
+		// Into the left end: one level out.
+		cx.simulate_mouse_move(at(0.02), MouseButton::Left, Modifiers::default());
+		cx.executor().advance_clock(EDGE_HOLD + Duration::from_millis(10));
+		cx.run_until_parked();
+		assert_eq!(level(&mut cx), 1, "one level out");
+		// Staying, still or moving, is not another.
+		cx.executor().advance_clock(Duration::from_secs(2));
+		cx.simulate_mouse_move(at(0.021), MouseButton::Left, Modifiers::default());
+		cx.executor().advance_clock(EDGE_HOLD * 3);
+		cx.run_until_parked();
+		assert_eq!(level(&mut cx), 1, "however long the hand stays in the end");
+		// Back to the middle, and into an end again: the next level out.
+		cx.simulate_mouse_move(at(0.5), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		cx.simulate_mouse_move(at(0.98), MouseButton::Left, Modifiers::default());
+		cx.executor().advance_clock(EDGE_HOLD + Duration::from_millis(10));
+		cx.run_until_parked();
+		assert_eq!(level(&mut cx), 0, "a second visit is a second level");
+		cx.simulate_mouse_up(at(0.98), MouseButton::Left, Modifiers::default());
+	}
+
+	#[gpui::test]
 	fn a_handle_at_the_end_is_taken_by_a_press_on_its_dot(cx: &mut TestAppContext) {
 		let (slider, mut cx, track) = opened(vec![1.0], cx);
 		let y = track.center().y;
 		// The dot is centred on the track's end, so half of it lies past the track.
-		cx.simulate_mouse_down(point(track.right() + px(3.0), y), MouseButton::Left, Modifiers::default());
+		cx.simulate_mouse_down(
+			point(track.right() + px(3.0), y),
+			MouseButton::Left,
+			Modifiers::default(),
+		);
 		cx.run_until_parked();
-		assert!(slider.read_with(&cx, |slider, _| slider.dragging.is_some()), "the dot's outer half takes the press");
-		cx.simulate_mouse_up(point(track.right() + px(3.0), y), MouseButton::Left, Modifiers::default());
+		assert!(
+			slider.read_with(&cx, |slider, _| slider.dragging.is_some()),
+			"the dot's outer half takes the press"
+		);
+		cx.simulate_mouse_up(
+			point(track.right() + px(3.0), y),
+			MouseButton::Left,
+			Modifiers::default(),
+		);
 		cx.run_until_parked();
 		cx.simulate_mouse_down(point(track.right(), y), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
@@ -885,13 +1068,28 @@ mod tests {
 		cx.simulate_mouse_down(at(0.7), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		let handles = slider.read_with(&cx, |slider, _| slider.handles.clone());
-		assert!((handles[1] - 0.7).abs() < 0.01 && handles[0] == 0.2, "the end handle took it: {handles:?}");
-		cx.simulate_mouse_move(point(track.right() + px(40.0), y), MouseButton::Left, Modifiers::default());
+		assert!(
+			(handles[1] - 0.7).abs() < 0.01 && handles[0] == 0.2,
+			"the end handle took it: {handles:?}"
+		);
+		cx.simulate_mouse_move(
+			point(track.right() + px(40.0), y),
+			MouseButton::Left,
+			Modifiers::default(),
+		);
 		cx.run_until_parked();
-		assert_eq!(slider.read_with(&cx, |slider, _| slider.handles[1]), 1.0, "past the end is the end");
+		assert_eq!(
+			slider.read_with(&cx, |slider, _| slider.handles[1]),
+			1.0,
+			"past the end is the end"
+		);
 		cx.simulate_mouse_move(at(0.05), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
-		assert_eq!(slider.read_with(&cx, |slider, _| slider.handles[1]), 0.2, "and never past the other");
+		assert_eq!(
+			slider.read_with(&cx, |slider, _| slider.handles[1]),
+			0.2,
+			"and never past the other"
+		);
 		cx.simulate_mouse_up(at(0.05), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert!(slider.read_with(&cx, |slider, _| slider.dragging.is_none()), "a release lets go");

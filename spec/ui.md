@@ -915,9 +915,10 @@ to work in, and the precision a level promised was not there to be had.
 
 - **The handle is a white pill lying along the track**, 18 points by 10, flatter and wider than the
   round dot of 14 it replaced; 22 by 12 was tried first and read as heavy beside a 4-point track: it reads as something to slide, and gives the hand more to take hold
-  of. A press anywhere on it takes it where it is. A handle at an end is centred on it and half of
-  it lies past the track, so what takes a press reaches half a handle past each end; a handle at
-  the far right used to take nothing when pressed at its centre.
+  of. A press anywhere on it takes it where it is. **The track is inset by half a handle at each
+  end**, so a handle at an end has its outer edge on the column's edge -- the Range start on the
+  field under it -- rather than half past it, and what takes a press is the whole slider. A handle
+  at the far right used to take nothing when pressed at its centre, which was half past the track.
 - **A press on the handle starts at the value's own level.** A value on one of the coarsest places
   starts coarse; one on the middle level's places starts there, zoomed into the coarse gap that
   holds it; one on none starts exact, since the last drag ended there. A drag picks up where the
@@ -933,19 +934,23 @@ to work in, and the precision a level promised was not there to be had.
   places, away from both by a quarter of the gap, for a second: long, because a hand between two
   places may only be unsure, and the length of the hang is what says it wants what is between. Both
   work at every level, the finest stepped one into exact included, and a zoom goes in around the
-  value where the hand is. A rest followed by a move went a level finer before, and it was the
+  value where the hand is. **Gone in, a hand that stays stays at that level**: nothing goes finer
+  again until it has moved more than a still hand's 3 points from where it went in. It went on at
+  first, since a hand still between two places after going in is still between two places of the
+  next level, and a hand that only stopped to look went a level deeper every second. A rest followed by a move went a level finer before, and it was the
   wrong signal: a hand rests to read the number, and a hand doing fine work rests often, so each
   rest took it a level deeper than it meant to go.
-- **Coarser, at an end.** In the 5% at either end of a zoomed track the value stops where it was,
-  and a hand that stays there 400 ms -- moving or still -- goes back out one level, with the value
-  where it was and the zoom it goes back to placed around it at the pointer. Out on the whole track,
-  which has no zoom to place, the handle waits where it is until the pointer comes to it, then
-  follows again: the pointer is in an end and the value is not, and following at once would have
-  thrown the value to the end. Each level out is one more stay in an end. Leaving by crossing the gap's edge
-  on an unzoomed track came before, and fine work near an edge crossed it and came back, taking the
-  band away in the middle of the work; an end that has to be gone into and stayed in is not
-  reached by accident. A throw that went straight out to the coarsest went with it: on a zoomed
-  track a fast move is a fast move within the gap.
+- **Coarser, at an end: one visit, one level.** In the 5% at either end of a zoomed track the value
+  stops where it was, and going in goes back out one level after 200 ms, with the value where it was
+  and the zoom it goes back to placed around it at the pointer. However long the hand then stays,
+  that is the one level: the end goes quiet until the hand has been back in the middle, and the next
+  level out is going into an end again. The end went on counting at first, and a hand that stayed
+  went out a level every 400 ms, down to the whole track -- the ends promise a level back, and gave
+  as many as the hand had patience for. Out on the whole track, which has no zoom to place, the
+  handle waits where it is until the pointer comes to it, then follows again: the pointer is in an
+  end and the value is not, and following at once would have thrown the value to the end. Leaving by
+  crossing the gap's edge on an unzoomed track came before, and fine work near an edge crossed it and
+  came back, taking the band away in the middle of the work.
 
 Two versions came before this and each was wrong in a way worth keeping. The first let the pace
 choose the step, so slowing down to read the number dropped the slider to exact, and the number
@@ -959,7 +964,10 @@ growing as a hang goes on or as the short hold after a swing does, ringed in the
 moment it goes in; a hang's shows from a fifth of the way, so passing between two places does not
 flicker it.
 Back out is the two ends of a zoomed track, each a pale block with a chevron pointing out of the
-track, and the one the hand is in darkening as it stays. Both are drawn frame by frame while a
+track, and the one the hand is in darkening as it stays. Nothing covers them: they are drawn over
+the fill and the places, the fill stays within the band since the ends stand for no value, and each
+chevron sits on its end's outer side, clear of a handle stopped at the band's edge. The fill ran
+from the track's left end at first and covered the left one whenever it was needed. Both are drawn frame by frame while a
 drag is on and nothing is drawn once it ends.
 
 **Whatever the track shows is ten steps.** The whole track is ten, a zoom into one of them is ten
