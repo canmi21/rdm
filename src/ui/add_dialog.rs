@@ -126,6 +126,51 @@ pub fn limit_at(position: f32, (low, high): (f64, f64)) -> Option<f64> {
 	Some(if megabytes < 10.0 { (megabytes * 10.0).round() / 10.0 } else { megabytes.round() })
 }
 
+/// Where a limit slider's position lands at a drag's level: at the coarsest on the round rates of
+/// the scale -- 1, 2, 5, 10, 20, 50, 100 -- or none; then on whole MB/s; then on tenths. See
+/// spec/ui.md, "A slider reads the hand's intent from its pauses".
+pub fn limit_snap(level: usize, position: f32, scale: (f64, f64)) -> f32 {
+	let Some(megabytes) = limit_at(position, scale) else { return 1.0 };
+	let round = match level {
+		0 => {
+			let (low, high) = scale;
+			let mut stops = vec![low, high];
+			let mut decade = 1.0;
+			while decade <= high {
+				stops.extend([1.0, 2.0, 5.0].map(|m| m * decade).into_iter().filter(|v| *v > low && *v < high));
+				decade *= 10.0;
+			}
+			let mut places: Vec<f32> = stops.into_iter().map(|v| limit_position(Some(v), scale)).collect();
+			places.push(1.0);
+			return places
+				.into_iter()
+				.min_by(|a, b| (a - position).abs().total_cmp(&(b - position).abs()))
+				.unwrap_or(position);
+		}
+		1 => megabytes.round().max(1.0),
+		2 => (megabytes * 10.0).round() / 10.0,
+		_ => return position,
+	};
+	limit_position(Some(round), scale)
+}
+
+/// The step a part of a file is rounded to at a drag's level: a tenth, a hundredth and a thousandth
+/// of the file, each put on the nearest 1, 2 or 5 times a power of ten below it, so the bytes in
+/// the field are a round number at every level. None at exact.
+pub fn range_step(size: u64, level: usize) -> Option<u64> {
+	let share = [10, 100, 1000].get(level)?;
+	let rough = (size / share).max(1);
+	let decade = 10u64.pow(rough.ilog10());
+	Some([5, 2, 1].map(|m| m * decade).into_iter().find(|step| *step <= rough).unwrap_or(1))
+}
+
+/// Bytes on the nearest step, with the end of the file a place of its own rather than the step
+/// before it.
+pub fn round_bytes(bytes: u64, size: u64, step: u64) -> u64 {
+	let near = (bytes + step / 2) / step * step;
+	if size.saturating_sub(near) < step / 2 { size } else { near.min(size) }
+}
+
 /// The two range fields as the row keeps them: `start-end` in bytes, the end excluded, or None for
 /// the whole file -- both empty, or a start of zero with the end empty or at the file's size.
 pub fn part_of_file(start: &str, end: &str, size: Option<u64>) -> Result<Option<String>, String> {
@@ -225,19 +270,23 @@ impl Rdm {
 					input
 				});
 				cx.observe(&input, |_, _, cx| cx.notify()).detach();
-				let mut field = |placeholder: &'static str| {
+				let mut field = |placeholder: &'static str, unit: Option<&'static str>| {
 					let confirm = cx.entity();
 					cx.new(|cx| {
-						TextInput::new(placeholder, cx)
-							.on_confirm(move |_, _, cx| confirm.update(cx, |this, cx| this.submit_add(cx)))
+						let input = TextInput::new(placeholder, cx)
+							.on_confirm(move |_, _, cx| confirm.update(cx, |this, cx| this.submit_add(cx)));
+						match unit {
+							Some(unit) => input.with_trailing(unit),
+							None => input,
+						}
 					})
 				};
 				let (name, checksum, limit, range_start, range_end) = (
-					field("As the server names it"),
-					field("sha256, sha512 or md5"),
-					field("Unlimited"),
-					field("0"),
-					field("End of file"),
+					field("As the server names it", None),
+					field("sha256, sha512 or md5", None),
+					field("Unlimited", Some("MB/s")),
+					field("0", None),
+					field("End of file", None),
 				);
 				cx.observe(&name, |_, _, cx| cx.notify()).detach();
 				cx.observe(&checksum, |_, _, cx| cx.notify()).detach();
@@ -248,15 +297,32 @@ impl Rdm {
 				cx.observe(&range_end, |this, _, cx| this.follow_range(cx)).detach();
 				let owner = cx.weak_entity();
 				let limit_slider = cx.new(|_| {
-					Slider::new("Speed limit", vec![1.0]).on_change(move |_, at, _, cx| {
-						let _ = owner.update(cx, |this, cx| this.slide_limit(at, cx));
-					})
+					let scale = owner.clone();
+					Slider::new("Speed limit", vec![1.0])
+						.snap(move |level, at, cx| {
+							let scale = scale.upgrade().map(|this| this.read(cx).limit_scale());
+							scale.map(|scale| limit_snap(level, at, scale)).unwrap_or(at)
+						})
+						.on_change(move |_, at, _, _, cx| {
+							let _ = owner.update(cx, |this, cx| this.slide_limit(at, cx));
+						})
 				});
 				let owner = cx.weak_entity();
 				let range_slider = cx.new(|_| {
-					Slider::new("Range", vec![0.0, 1.0]).on_change(move |handle, at, _, cx| {
-						let _ = owner.update(cx, |this, cx| this.slide_range(handle, at, cx));
-					})
+					let size = owner.clone();
+					Slider::new("Range", vec![0.0, 1.0])
+						.snap(move |level, at, cx| {
+							let size = size.upgrade().and_then(|this| {
+								this.read(cx).adding.as_ref()?.found.as_ref()?.probe.size.filter(|s| *s > 0)
+							});
+							let Some(size) = size else { return at };
+							let Some(step) = range_step(size, level) else { return at };
+							let bytes = (f64::from(at) * size as f64).round() as u64;
+							(round_bytes(bytes, size, step) as f64 / size as f64) as f32
+						})
+						.on_change(move |handle, at, level, _, cx| {
+							let _ = owner.update(cx, |this, cx| this.slide_range(handle, at, level, cx));
+						})
 				});
 				self.adding = Some(AddSheet {
 					input: input.clone(),
@@ -484,12 +550,15 @@ impl Rdm {
 	}
 
 	/// A range handle moved: its field says the byte it stands for, a byte short of the other end.
-	pub(crate) fn slide_range(&mut self, handle: usize, position: f32, cx: &mut Context<Self>) {
+	/// At a drag's level the byte is put back on that level's step, which a position cannot hold
+	/// exactly for a file of gigabytes.
+	pub(crate) fn slide_range(&mut self, handle: usize, position: f32, level: usize, cx: &mut Context<Self>) {
 		let Some(sheet) = &self.adding else { return };
 		let Some(size) = sheet.found.as_ref().and_then(|f| f.probe.size) else { return };
 		let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
 		let (start, end) = (read(&sheet.range_start).unwrap_or(0), read(&sheet.range_end).unwrap_or(size));
 		let at = (f64::from(position.clamp(0.0, 1.0)) * size as f64).round() as u64;
+		let at = range_step(size, level).map_or(at, |step| round_bytes(at, size, step));
 		let (field, bytes) = if handle == 0 {
 			(sheet.range_start.clone(), at.min(end.saturating_sub(1)))
 		} else {
@@ -911,18 +980,50 @@ impl Rdm {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement + use<> {
 		let p = self.palette;
-		let row = |label: &'static str, field: gpui::AnyElement| {
+		// Three columns: the label, the control, and a fixed one on the right for what a slider's
+		// field or reading shows, so both sliders end on one line and every field on another. A
+		// control taller than a line has its label beside its first line, which is `first` high.
+		const LABEL: f32 = 72.0;
+		const END: f32 = 112.0;
+		const LINE: f32 = 30.0;
+		let label = |label: &'static str, first: f32| {
+			div()
+				.w(px(LABEL))
+				.h(px(first))
+				.flex_none()
+				.flex()
+				.items_center()
+				.text_color(p.muted)
+				.child(text!(id = label, label))
+		};
+		let row = |name: &'static str, field: gpui::AnyElement| {
 			div()
 				.flex()
 				.items_center()
 				.gap_2()
 				.text_xs()
-				.child(div().w(px(72.0)).flex_none().text_color(p.muted).child(text!(id = label, label)))
+				.child(label(name, LINE))
 				.child(div().flex_1().min_w_0().child(field))
 		};
+		// The box a field is drawn in, for what shows a value without being typed into.
+		let boxed = || {
+			div()
+				.h(px(LINE))
+				.px_2()
+				.flex()
+				.items_center()
+				.gap_2()
+				.rounded_md()
+				.border_1()
+				.border_color(p.border)
+				.bg(p.window)
+		};
+		// The folder the file goes to, chosen or the download folder, always as its path.
+		let chosen = sheet.folder.is_some();
 		let folder = sheet
 			.folder
-			.as_ref()
+			.clone()
+			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))
 			.map(|f| f.display().to_string())
 			.unwrap_or_else(|| "Download folder".to_owned());
 		// How much the two ends take in, so a part is read as a size rather than as two numbers.
@@ -939,24 +1040,15 @@ impl Rdm {
 			.gap_2()
 			.child(row(
 				"Folder",
-				div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(div().min_w_0().truncate().text_color(p.muted).child(text!(folder)))
+				boxed()
 					.child(
 						div()
-							.id("add-folder")
-							.role(gpui::Role::Button)
-							.aria_label("Choose folder")
-							.debug_selector(|| "button:Choose folder".to_owned())
-							.flex_none()
-							.text_color(p.accent)
-							.cursor_pointer()
-							.on_click(cx.listener(|this, _, _, cx| this.choose_add_folder(cx)))
-							.child("Choose"),
+							.flex_1()
+							.min_w_0()
+							.truncate()
+							.child(text!(folder)),
 					)
-					.when(sheet.folder.is_some(), |s| {
+					.when(chosen, |s| {
 						s.child(
 							div()
 								.id("add-folder-clear")
@@ -969,6 +1061,18 @@ impl Rdm {
 								.child("Reset"),
 						)
 					})
+					.child(
+						div()
+							.id("add-folder")
+							.role(gpui::Role::Button)
+							.aria_label("Choose folder")
+							.debug_selector(|| "button:Choose folder".to_owned())
+							.flex_none()
+							.text_color(p.accent)
+							.cursor_pointer()
+							.on_click(cx.listener(|this, _, _, cx| this.choose_add_folder(cx)))
+							.child("Choose"),
+					)
 					.into_any_element(),
 			))
 			.child(row(
@@ -976,32 +1080,54 @@ impl Rdm {
 				div()
 					.flex()
 					.items_center()
-					.gap_2()
+					.gap_3()
 					.child(div().flex_1().min_w_0().child(sheet.limit_slider.clone()))
-					.child(div().w(px(84.0)).flex_none().child(sheet.limit.clone()))
-					.child(div().flex_none().text_color(p.muted).child(text!("MB/s")))
+					.child(div().w(px(END)).flex_none().child(sheet.limit.clone()))
 					.into_any_element(),
 			))
 			.when_some(parts, |s, part| {
-				s.child(row(
-					"Range",
+				s.child(
 					div()
 						.flex()
-						.flex_col()
-						.gap_1()
-						.child(sheet.range_slider.clone())
+						.items_start()
+						.gap_2()
+						.text_xs()
+						.child(label("Range", LINE))
 						.child(
 							div()
+								.flex_1()
+								.min_w_0()
 								.flex()
-								.items_center()
+								.flex_col()
 								.gap_2()
-								.child(div().w(px(104.0)).flex_none().child(sheet.range_start.clone()))
-								.child(div().flex_none().text_color(p.muted).child(text!("to")))
-								.child(div().w(px(104.0)).flex_none().child(sheet.range_end.clone()))
-								.child(div().min_w_0().truncate().text_color(p.muted).child(text!(part))),
-						)
-						.into_any_element(),
-				))
+								.child(
+									div()
+										.h(px(LINE))
+										.flex()
+										.items_center()
+										.gap_3()
+										.child(div().flex_1().min_w_0().child(sheet.range_slider.clone()))
+										.child(
+											div()
+												.w(px(END))
+												.flex_none()
+												.px_2()
+												.text_color(p.muted)
+												.truncate()
+												.child(text!(part)),
+										),
+								)
+								.child(
+									div()
+										.flex()
+										.items_center()
+										.gap_2()
+										.child(div().flex_1().min_w_0().child(sheet.range_start.clone()))
+										.child(div().flex_none().text_color(p.muted).child(text!("–")))
+										.child(div().flex_1().min_w_0().child(sheet.range_end.clone())),
+								),
+						),
+				)
 			})
 			// Last, under the range it cannot be used with: a checksum is of the whole file.
 			.child(row("Checksum", sheet.checksum.clone().into_any_element()))
@@ -1047,6 +1173,26 @@ mod tests {
 		assert!(part_of_file("0", "6000", Some(5000)).is_err(), "past the end");
 		assert!(part_of_file("300", "200", Some(5000)).is_err(), "backwards");
 		assert!(part_of_file("a", "", Some(5000)).is_err());
+	}
+
+	#[test]
+	fn a_drag_lands_on_round_rates_and_round_bytes_level_by_level() {
+		let scale = (1.0, 100.0);
+		let rate = |level, mb: f64| limit_at(limit_snap(level, limit_position(Some(mb), scale), scale), scale);
+		assert_eq!(rate(0, 4.1), Some(5.0), "the coarsest is 1, 2, 5 a decade");
+		assert_eq!(rate(0, 37.0), Some(50.0));
+		assert_eq!(limit_snap(0, 0.97, scale), 1.0, "and no limit is a place of its own");
+		assert_eq!(rate(1, 37.4), Some(37.0), "then whole MB/s");
+		assert_eq!(rate(2, 3.46), Some(3.5), "then tenths");
+		let size = 3_888_513_024;
+		assert_eq!(range_step(size, 0), Some(200_000_000));
+		assert_eq!(range_step(size, 1), Some(20_000_000));
+		assert_eq!(range_step(size, 2), Some(2_000_000));
+		assert_eq!(range_step(size, 3), None, "exact is the byte");
+		assert_eq!(range_step(1_033_297, 0), Some(100_000));
+		assert_eq!(round_bytes(1_234_567_890, size, 200_000_000), 1_200_000_000);
+		assert_eq!(round_bytes(3_850_000_000, size, 200_000_000), size, "near the end is the end");
+		assert_eq!(round_bytes(0, size, 200_000_000), 0);
 	}
 
 	#[test]

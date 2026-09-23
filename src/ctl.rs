@@ -577,7 +577,7 @@ impl Rdm {
 				match (rest.first().copied(), number(1), number(2)) {
 					(Some("limit"), Some(at), _) => self.slide_limit(at, cx),
 					(Some("range"), Some(handle), Some(at)) if handle == 0.0 || handle == 1.0 => {
-						self.slide_range(handle as usize, at, cx)
+						self.slide_range(handle as usize, at, crate::ui::slider::EXACT, cx)
 					}
 					_ => return failure("slide takes limit <0-1>, or range <0|1> <0-1>"),
 				}

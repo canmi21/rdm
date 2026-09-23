@@ -710,6 +710,17 @@ section of their own, are the engine's defaults for every new download and are l
 [engine.md](engine.md); the two the engine takes live, concurrent downloads and the speed limit,
 reach it as they are typed.
 
+**More options is three columns.** A label column, the controls, and a fixed column on the right
+that holds what a slider's field or reading shows: the limit's field, the part's size. So both
+sliders end on one line and every field ends on the sheet's right edge, and every control is one
+field's height. The folder is a box like a field, showing the path the file goes to -- the one
+chosen, or the download folder's own -- with `Choose` inside it and `Reset` beside once one was
+chosen; a grey word with a link after it read as a note rather than a setting. The limit's unit
+sits inside its field after the number and is not shown while the field is empty, where the
+placeholder says what empty means and a unit after it would read as part of the sentence. A
+control taller than a line has its label beside its first line. The first version had three
+label widths on one sheet and five right edges, and read as parts put side by side.
+
 **The button says what it does next, and shares the sheet's last line.** On the first screen it
 reads `Continue`, with the words for a look in progress at the left while there is one; on the
 second it reads `Download`, with More options at the left. A line holding one button and nothing
@@ -877,6 +888,44 @@ Both rules are held by tests that press a point and read what answered -- one pr
 menu where a row lies under it, the other presses the boundary where a title lies under it. Each
 first presses the same point with nothing over it, so a test that stopped covering the overlap
 would fail rather than quietly pass, which is what the first pair of them did.
+
+## A slider reads the hand's intent from its pauses
+
+A slider is for a value set roughly by hand beside a field that sets it exactly, and within one
+press it moves through levels, coarse to exact. **Speed only ever makes it coarser; a pause is what
+makes it finer.**
+
+- A press lands exactly where it is made. The drag that follows starts at the coarsest level,
+  since a drag begins by going somewhere.
+- A throw -- 500 points a second or more -- goes to the coarsest level at once, and 200 or more
+  brings a finer drag back up to the middle one. The handle goes back under the pointer.
+- Slowing down changes nothing. **A hand that slows is reading the number**, and the number stays
+  on the round places of its level while it is read.
+- A hand held within 3 points of where it came to rest holds the value: the jitter of a still hand
+  is not a move.
+- A move after a rest of 300 ms goes one level finer, and the handle carries on from its round
+  place rather than jumping to the pointer, which may have been half a step from it. Each further
+  pause and move is one level more, down to the pointer itself.
+
+The first version did the opposite, and it was wrong in the way that matters: the pace chose the
+step, so slowing down to read the number dropped the slider to exact, and the number began to
+jitter at the moment it was being read. Its gears were also so fine and so fast to reach that a
+drag looked no different from an ungeared one.
+
+**What is round is the owner's to say, in its own units.** The slider knows positions; the owner
+gives it a snap for each level. The limit lands on 1, 2 and 5 of each decade and on no limit, then
+on whole MB/s, then on tenths -- places on its log scale that a step of the track would never hit.
+A part of a file lands on a tenth, a hundredth and a thousandth of the file, each put on the
+nearest 1, 2 or 5 times a power of ten, so the bytes in the field are a round number at every
+level; the level travels with each move so the owner rounds the bytes themselves, which a
+position cannot hold exactly for a file of gigabytes. A slider whose owner gives no snap lands on
+tenths, fortieths and two-hundredths of its track.
+
+The places a level lands on are drawn on the track while a drag is at it, when they are far enough
+apart to read as marks. The pace is measured no oftener than every 12 ms and smoothed over 60 ms.
+Every number here is a starting point to be tuned by hand, and all of them are at the top of
+`src/ui/slider.rs`. A modifier key held for exact, or a hand moved away from the track for finer
+steps, would say the same thing without inference, and waits until inference is found wanting.
 
 ## A sheet is modal, and a click outside closes it only while it is clean
 

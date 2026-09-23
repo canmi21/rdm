@@ -87,6 +87,8 @@ pub struct TextInput {
 	drag_at: Option<Point<Pixels>>,
 	/// A glyph drawn inside the box before the text, for a field whose purpose is a shape.
 	leading: Option<Icon>,
+	/// A unit drawn inside the box after a value, in a label's grey: the value is read with it.
+	trailing: Option<SharedString>,
 	/// Enter was pressed; the owning window decides what that means.
 	on_confirm: Option<OnConfirm>,
 	on_cancel: Option<OnCancel>,
@@ -107,6 +109,7 @@ impl TextInput {
 			is_selecting: false,
 			drag_at: None,
 			leading: None,
+			trailing: None,
 			on_confirm: None,
 			on_cancel: None,
 		}
@@ -124,6 +127,11 @@ impl TextInput {
 
 	pub fn with_leading(mut self, glyph: Icon) -> Self {
 		self.leading = Some(glyph);
+		self
+	}
+
+	pub fn with_trailing(mut self, unit: impl Into<SharedString>) -> Self {
+		self.trailing = Some(unit.into());
 		self
 	}
 
@@ -749,6 +757,11 @@ impl Render for TextInput {
 			.items_center()
 			.when_some(self.leading, |s, glyph| s.child(icon(glyph, p.muted).size_3p5()))
 			.child(TextElement { input: cx.entity() })
+			// Only beside a value: a placeholder says what an empty field means, and a unit after
+			// it reads as part of the sentence.
+			.when_some(self.trailing.clone().filter(|_| !self.content.is_empty()), |s, unit| {
+				s.child(div().flex_none().text_color(p.muted).child(unit))
+			})
 	}
 }
 
