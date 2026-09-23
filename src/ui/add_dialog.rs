@@ -858,17 +858,8 @@ impl Rdm {
 				.child(div().w(px(52.0)).flex_none().text_color(p.muted).child(text!(id = label, label)))
 				.child(div().min_w_0().truncate().child(text!(id = (label, 1usize), value)))
 		};
-		// What the file is, and where it comes from, each under a heading in a label's grey and a
-		// heavier weight; never in capitals.
-		let column = |heading: &'static str| {
-			div().flex().flex_col().flex_1().min_w_0().gap_1().child(
-				div()
-					.pb_0p5()
-					.font_weight(gpui::FontWeight::MEDIUM)
-					.text_color(p.muted)
-					.child(text!(id = heading, heading)),
-			)
-		};
+		// What the file is, and where it comes from, a column each and no heading over either.
+		let column = || div().flex().flex_col().flex_1().min_w_0().gap_1();
 		let field = |label: &'static str, input: Entity<TextInput>| {
 			div()
 				.flex()
@@ -891,13 +882,13 @@ impl Rdm {
 					.bg(p.hover)
 					.text_xs()
 					.child(
-						column("File")
+						column()
 							.when_some(filed, |s, filed| s.child(fact("Type", filed)))
 							.child(fact("Size", size))
 							.child(fact("Resume", resume.to_owned())),
 					)
 					.child(
-						column("Source")
+						column()
 							.child(fact("From", from))
 							.child(fact("Server", server))
 							.when_some(updated, |s, updated| s.child(fact("Updated", updated))),

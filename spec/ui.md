@@ -661,19 +661,21 @@ what it is and offers Download anyway, which moves on to the second screen with 
 lists the files it links to, each a row that adds its file at once and stays pressed, so several
 can be taken without leaving the sheet.
 
-**What was found is two columns of labelled facts.** `File` holds what the file is -- `Type`, the
-category it will be filed under, judged by the name in the Save as field so a rename refiles it;
-`Size`; and `Resume`, supported when the server serves ranges and so the download can be resumed
-and split. `Source` holds where it comes from -- `From`, the host the bytes really come from once
-redirects are followed; `Server`, its Server header with the protocol in brackets; and `Updated`,
-the file's Last-Modified. A fact the server did not give is left out. The file's name is not in
-the card, since Save as says it. The facts are grouped by what they are about because a flat run
-of them, first joined with dots and then laid out in whatever order fit, left the reader to sort
-them.
+**What was found is two columns of labelled facts, with no heading over either.** The left holds
+what the file is -- `Type`, the category it will be filed under, judged by the name in the Save as
+field so a rename refiles it; `Size`; and `Resume`, supported when the server serves ranges and so
+the download can be resumed and split. The right holds where it comes from -- `From`, the host the
+bytes really come from once redirects are followed; `Server`, its Server header with the protocol
+in brackets; and `Updated`, the file's Last-Modified. A fact the server did not give is left out.
+The file's name is not in the card, since Save as says it. The facts are grouped by what they are
+about because a flat run of them, first joined with dots and then laid out in whatever order fit,
+left the reader to sort them. The columns carried `File` and `Source` as headings once, and they
+were taken out: six labelled facts in a card read as two groups by their place alone, and the
+headings cost the card a line for words its labels already say.
 
 **No word is set in capitals.** A heading is its word in a label's grey at a heavier weight. An
-all-capital `FILE` was tried over the columns and taken out: capitals shout, and read slower than
-the word they spell.
+all-capital `FILE` was tried over the found card's columns and taken out: capitals shout, and read
+slower than the word they spell.
 
 **An icon where it carries meaning faster than its word, and nowhere else.** On the sheet that is
 the arrow back, the arrows on Continue and Download, and the chevrons on More options and Details
