@@ -113,7 +113,7 @@ image = { version = "0.25", default-features = false, features = ["tiff", "png",
 # What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
 # zip is also what the Windows build comes in, and tar with flate2 the Linux one; see
 # src/update/install.rs.
-sevenz-rust2 = { version = "0.22", default-features = false }
+sevenz-rust2 = { version = "0.23", default-features = false }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
@@ -147,7 +147,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # an optional dependency of it, and gtk3 pins glib to an advisory with no patched release in
 # reach. See src/tray.rs and spec/framework.md.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tray-icon = { version = "0.24", default-features = false }
+tray-icon = { version = "0.25", default-features = false }
 
 # The tray on Linux is StatusNotifierItem on the session bus, spoken directly. ksni brings zbus
 # and nothing of gtk; "blocking" is the face that runs the service on a thread of its own, which
