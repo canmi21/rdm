@@ -900,7 +900,11 @@ A slider is for a value set roughly by hand beside a field that sets it exactly,
 press it moves through levels, coarse to exact. **Going finer is zooming into one gap of the level
 above: the track is redrawn as that gap.** Its middle 90% becomes the gap, drawn as a band with its
 level's places across it, and the handle, the fill and the places are all drawn where the zoomed
-track puts them. The 5% at each end is the way back out. The drag keeps what it zoomed into, one a
+track puts them. The 5% at each end is the way back out. **The whole track is its scale
+end to end**, with no ends: a drag comes back out to it at the pointer, so the far end gone out by
+is the scale's end and there is nothing to hold a place for. It had empty ends of the same width
+for a while, kept so the handle had somewhere to be on the way back out; once going back out put
+the value at the pointer, they were a margin with no use. The drag keeps what it zoomed into, one a
 level, and the track shows the last.
 
 **A zoom is placed around the pointer.** It is a gap of the level above wide, and it sits so the
@@ -952,9 +956,11 @@ to work in, and the precision a level promised was not there to be had.
   were off the end at first, which drew the handle a few points short of it and read as the handle
   being pushed back. The end went on counting at first, and a hand that stayed
   went out a level every 400 ms, down to the whole track -- the ends promise a level back, and gave
-  as many as the hand had patience for. Out on the whole track, which has no zoom to place, the
-  handle waits where it is until the pointer comes to it, then follows again: the pointer is in an
-  end and the value is not, and following at once would have thrown the value to the end. Leaving by
+  as many as the hand had patience for. **Out on the whole track a place is its value**, and there
+  is no zoom to place around the pointer, so the value is the pointer's at once: out by the right
+  end is the scale's end, out by the left its start, and the handle is under the hand, from where
+  it adjusts as it likes. The handle waited where its value was at first, until the pointer came to
+  it; that kept the value, and took from the hand the thing it was holding, which is worse. Leaving by
   crossing the gap's edge on an unzoomed track came before, and fine work near an edge crossed it and
   came back, taking the band away in the middle of the work.
 
@@ -965,14 +971,17 @@ coarser, with no way back that meant anything: a level was a mode, not a place.
 
 **Each way the hand can go is drawn as it fills.** Going deeper and going back out both wait on
 the hand, and a wait nobody can see reads as nothing happening, so each has a mark that grows as its
-condition is met and is full at the moment it would act. Deeper is the held handle pressed flat: as
-a hang goes on, or the hold after a swing, it grows lower and wider -- to 55% of its height and 130%
-of its width, flattest at the moment it goes in -- and on going in it springs back past its own
-shape, taller and narrower, and settles within a third of a second; a hang's shows from a fifth of
-the way, so passing between two places does not flicker it. The handle is white throughout. A halo
-round it came first, and outside the handle it read as a selection among the places and the fill;
-an accent filling it from the middle came next, and read as a progress bar, a second thing to look
-at. A spring being pressed is the dive itself, drawn on the one thing the hand is holding.
+condition is met and is full at the moment it would act. Deeper is two chevrons pointing apart fading
+in inside the held handle, as a hang goes on or the hold after a swing does; the handle keeps its
+size, since a handle that grew drew the eye from the number it sets: the gap it is about to go into will be spread across the track. It is
+full at the moment it goes in, and a hang's shows from a fifth of the way, so passing between two
+places does not flicker it. The same handle, held in an end of a zoomed track that will take it
+back out, shows the chevrons pointing together the same way: the track is about to fold back
+to the level above. The glyphs are Lucide's `chevrons-left-right` and `chevrons-right-left`, a
+horizontal pair because both moves are horizontal, and the same chevrons the ends are marked
+with. Three tries came before: a halo round the handle, which read as a selection among the places;
+an accent filling it, which read as a second progress bar; and the handle pressed flat and
+springing back, which said something was coming and not what.
 Back out is the two ends of a zoomed track, each a pale block with a chevron pointing out of the
 track, and the one the hand is in darkening as it stays. Nothing covers them: they are drawn over
 the fill and the places, the fill stays within the band since the ends stand for no value, and each
