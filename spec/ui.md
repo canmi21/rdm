@@ -930,9 +930,11 @@ to work in, and the precision a level promised was not there to be had.
 - **Finer, on a swing or a hang, and on nothing else.** Anywhere else a hand may go where it likes
   without the level changing, since going somewhere is what a drag is. A **swing** is the handle
   landing on a place, then on its neighbour, then back on the first: the number is plainly between
-  the two, and a hold of 150 ms inside their gap goes into it. A **hang** is the hand between two
+  the two, and a second inside their gap goes into it. A **hang** is the hand between two
   places, away from both by a quarter of the gap, for a second: long, because a hand between two
   places may only be unsure, and the length of the hang is what says it wants what is between. Both
+  take the same second; the swing had a hold of 150 ms of its own at first, and went in before the
+  hand had decided anything. Both
   work at every level, the finest stepped one into exact included, and a zoom goes in around the
   value where the hand is. **Gone in, a hand that stays stays at that level**: nothing goes finer
   again until it has moved more than a still hand's 3 points from where it went in. It went on at
@@ -959,10 +961,14 @@ coarser, with no way back that meant anything: a level was a mode, not a place.
 
 **Each way the hand can go is drawn as it fills.** Going deeper and going back out both wait on
 the hand, and a wait nobody can see reads as nothing happening, so each has a mark that grows as its
-condition is met and is full at the moment it would act. Deeper is a halo round the held handle,
-growing as a hang goes on or as the short hold after a swing does, ringed in the accent at the
-moment it goes in; a hang's shows from a fifth of the way, so passing between two places does not
-flicker it.
+condition is met and is full at the moment it would act. Deeper is the held handle pressed flat: as
+a hang goes on, or the hold after a swing, it grows lower and wider -- to 55% of its height and 130%
+of its width, flattest at the moment it goes in -- and on going in it springs back past its own
+shape, taller and narrower, and settles within a third of a second; a hang's shows from a fifth of
+the way, so passing between two places does not flicker it. The handle is white throughout. A halo
+round it came first, and outside the handle it read as a selection among the places and the fill;
+an accent filling it from the middle came next, and read as a progress bar, a second thing to look
+at. A spring being pressed is the dive itself, drawn on the one thing the hand is holding.
 Back out is the two ends of a zoomed track, each a pale block with a chevron pointing out of the
 track, and the one the hand is in darkening as it stays. Nothing covers them: they are drawn over
 the fill and the places, the fill stays within the band since the ends stand for no value, and each

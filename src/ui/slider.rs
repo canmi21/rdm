@@ -33,12 +33,12 @@ const DEADZONE: f32 = 3.0;
 /// A drag goes a level finer on one of two things and nothing else; a rest is not one, since a hand
 /// rests to read the number. See spec/ui.md, "A slider reads the hand's intent from its pauses".
 ///
-/// Hanging between two places, away from both, for this long: long, because a hand between two
-/// places may only be unsure, and it is the length of the hang that says it wants what is between.
+/// How long either of the two has to be held to go in: a hang, the hand between two places and away
+/// from both; or a swing, from a place to its neighbour and back, then the hand inside their gap.
+/// Long, and the same for both, because a hand between two places may only be unsure, and it is
+/// the length of the stay that says it wants what is between. The swing had a short hold of its own
+/// at first, and went in before the hand had decided anything.
 const LINGER: Duration = Duration::from_millis(1000);
-/// Swinging from a place to its neighbour and back: the number is between the two, plainly, and a
-/// hand that is inside their gap this long after the swing goes in.
-const SWING_HOLD: Duration = Duration::from_millis(150);
 /// How far from a place, as a share of its gap, a hand is hanging between two rather than on one.
 const AWAY: f32 = 0.25;
 /// While zoomed, the gap fills the track but for this share at each end, where the value stops and
@@ -53,6 +53,12 @@ const EDGE_HOLD: Duration = Duration::from_millis(200);
 /// half its width takes it where it is.
 const KNOB_W: f32 = 18.0;
 const KNOB_H: f32 = 10.0;
+/// As a dive nears the held handle is pressed flat, to this share of its height and this much wider,
+/// and on going in springs back past its shape and settles, over `SPRING`. See spec/ui.md, "A slider
+/// reads the hand's intent from its pauses".
+const FLAT_H: f32 = 0.55;
+const FLAT_W: f32 = 1.3;
+const SPRING: Duration = Duration::from_millis(320);
 /// How finely each level's places are found, by asking the snap at this many points along the track.
 const PROBES: usize = 2000;
 /// Two positions closer than this are one place.
@@ -145,6 +151,8 @@ pub struct Slider {
 	/// Where the pointer was when the drag last went a level finer: until it has moved from there,
 	/// nothing goes finer again, so a hand that stays after going in stays at that level.
 	settled: Option<Pixels>,
+	/// When the drag last went a level finer, for the handle's spring back.
+	dived: Option<Instant>,
 	/// Where the hand came to rest and since when; a move within `DEADZONE` of it is not a move.
 	rest: Option<(Pixels, Instant)>,
 	/// Where the pointer was last, along the track, for a zoom that changes while it is still.
@@ -178,6 +186,7 @@ impl Slider {
 			edge_right: false,
 			armed: true,
 			settled: None,
+			dived: None,
 			rest: None,
 			pointer: 0.0,
 			pickup: None,
@@ -257,6 +266,7 @@ impl Slider {
 			self.gaps.push(around(width, value, at));
 		}
 		self.forget();
+		self.dived = Some(Instant::now());
 	}
 
 	/// One level coarser, the handle's value where it was, and the zoom that is now shown placed
@@ -462,13 +472,13 @@ impl Slider {
 			self.settled = None;
 		}
 		if level < EXACT && self.edge.is_none() && self.settled.is_none() {
-			// Swung between two neighbouring places: a short hold inside their gap goes into it.
+			// Swung between two neighbouring places: a hold inside their gap goes into it.
 			if let Some(((lo, hi), since)) = self.swung {
 				let inside = wanted > lo.min(hi) + SAME && wanted < lo.max(hi) - SAME;
 				match (inside, since) {
 					(false, _) => self.swung = Some(((lo, hi), None)),
 					(true, None) => self.swung = Some(((lo, hi), Some(now))),
-					(true, Some(since)) if now.duration_since(since) >= SWING_HOLD => {
+					(true, Some(since)) if now.duration_since(since) >= LINGER => {
 						self.zoom_in(wanted, at);
 						self.settled = Some(x);
 						finer = true;
@@ -570,20 +580,32 @@ impl Render for Slider {
 		let share = |since: Instant, of: Duration| {
 			(now.duration_since(since).as_secs_f32() / of.as_secs_f32()).min(1.0)
 		};
-		// Deeper: a halo round the held handle that grows as a hang goes on, or as the short hold after a
-		// swing does. A hang shows from a fifth of the way, so passing between two places does not
-		// flicker it.
+		// Deeper: the held handle pressed flat as a hang goes on, or as the hold after a swing does.
+		// A hang shows from a fifth of the way, so passing between two places does not flicker it.
 		let swinging = self.swung.and_then(|(_, since)| since);
 		let deeper = if dragging && level < EXACT && self.edge.is_none() {
 			let hung = self.hanging.map_or(0.0, |since| ((share(since, LINGER) - 0.2) / 0.8).max(0.0));
-			hung.max(swinging.map_or(0.0, |since| share(since, SWING_HOLD)))
+			hung.max(swinging.map_or(0.0, |since| share(since, LINGER)))
 		} else {
 			0.0
 		};
 		// Back out: the two ends of a zoomed track, each marked as a way out, the one the hand is in
 		// filling as it stays.
 		let leaving = self.edge.map_or(0.0, |since| share(since, EDGE_HOLD));
-		if dragging && (self.hanging.is_some() || swinging.is_some() || self.edge.is_some()) {
+		// The spring after a dive: a decaying swing about the handle's own shape, first taller and
+		// narrower than it, then back through it and still.
+		let spring = self.dived.map_or(0.0, |since| {
+			let t = now.duration_since(since).as_secs_f32();
+			if t < SPRING.as_secs_f32() {
+				0.35 * (-t / 0.07).exp() * (std::f32::consts::TAU * t / 0.16).cos()
+			} else {
+				0.0
+			}
+		});
+		let springing = spring != 0.0;
+		if dragging
+			&& (self.hanging.is_some() || swinging.is_some() || self.edge.is_some() || springing)
+		{
 			window.request_animation_frame();
 		}
 		let held = self.dragging;
@@ -693,38 +715,28 @@ impl Render for Slider {
 					}))
 					// The ways out, over the fill and the places so nothing covers them.
 					.when(zoom.is_some(), |s| s.child(end(false)).child(end(true)))
-					.children(held.filter(|_| deeper > 0.0).and_then(|index| self.handles.get(index)).map(
-						|&at| {
-							let (w, h) = (KNOB_W + 10.0 * deeper, KNOB_H + 10.0 * deeper);
-							div()
-								.absolute()
-								.top(px(10.0 - h / 2.0))
-								.left(relative(shown(at)))
-								.ml(px(-w / 2.0))
-								.w(px(w))
-								.h(px(h))
-								.rounded_full()
-								.bg(p.accent.opacity(0.15 + 0.25 * deeper))
-								.when(deeper >= 1.0, |s| s.border_1().border_color(p.accent))
-						},
-					))
 					.children(self.handles.iter().enumerate().map(|(index, &at)| {
 						let name = match (pair, index) {
 							(false, _) => label.to_string(),
 							(true, 0) => format!("{label} start"),
 							(true, _) => format!("{label} end"),
 						};
+						// The held handle is pressed flat as a dive nears, flattest at the moment it goes in,
+						// then springs back.
+						let (flat, bounce) = if held == Some(index) { (deeper, spring) } else { (0.0, 0.0) };
+						let w = KNOB_W * (1.0 + (FLAT_W - 1.0) * flat - 0.5 * bounce);
+						let h = KNOB_H * (1.0 - (1.0 - FLAT_H) * flat + bounce);
 						div()
 							.id(("handle", index))
 							.role(gpui::Role::Slider)
 							.aria_label(name)
 							.aria_numeric_value(f64::from((at * 100.0).round()))
 							.absolute()
-							.top(px(10.0 - KNOB_H / 2.0))
+							.top(px(10.0 - h / 2.0))
 							.left(relative(shown(at)))
-							.ml(px(-KNOB_W / 2.0))
-							.w(px(KNOB_W))
-							.h(px(KNOB_H))
+							.ml(px(-w / 2.0))
+							.w(px(w))
+							.h(px(h))
 							.rounded_full()
 							.border_1()
 							.border_color(p.border)
@@ -934,10 +946,10 @@ mod tests {
 		assert_eq!(level(&mut cx), 0, "the swing alone marks the gap");
 		// Inside it, briefly: in.
 		cx.simulate_mouse_move(at(0.53), MouseButton::Left, Modifiers::default());
-		std::thread::sleep(SWING_HOLD + Duration::from_millis(20));
+		std::thread::sleep(LINGER + Duration::from_millis(20));
 		cx.simulate_mouse_move(at(0.535), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
-		assert_eq!(level(&mut cx), 1, "a short hold inside the swung gap goes into it");
+		assert_eq!(level(&mut cx), 1, "a hold inside the swung gap goes into it");
 		cx.simulate_mouse_up(at(0.535), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		// A swing to somewhere else is not one: 0.5, 0.6, 0.7 marks nothing.
@@ -946,7 +958,7 @@ mod tests {
 			cx.simulate_mouse_move(at(along), MouseButton::Left, Modifiers::default());
 			cx.run_until_parked();
 		}
-		std::thread::sleep(SWING_HOLD + Duration::from_millis(20));
+		std::thread::sleep(LINGER + Duration::from_millis(20));
 		cx.simulate_mouse_move(at(0.725), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 0, "passing through places is not a swing");
