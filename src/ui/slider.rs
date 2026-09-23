@@ -111,12 +111,19 @@ fn unview(zoom: Option<(f32, f32)>, at: f32) -> f32 {
 }
 
 /// A zoom a gap wide, placed so `value` is drawn at `at`: the handle stays under the pointer as the
-/// track is redrawn, instead of the track moving under a pointer that stays. `at` is kept off the
-/// ends, which would otherwise put the value in one.
+/// track is redrawn, instead of the track moving under a pointer that stays. `at` may be in an end:
+/// going back out leaves the pointer there, and a zoom placed as if it were not drew the handle
+/// short of it, which read as the handle being pushed back.
+/// Going in, `at` is kept off the ends instead, which would put the value in one and have it go back
+/// out as soon as it went in.
 fn around(width: f32, value: f32, at: f32) -> (f32, f32) {
-	let at = at.clamp(MARGIN + 0.02, 1.0 - MARGIN - 0.02);
-	let lo = value - (at - MARGIN) / (1.0 - 2.0 * MARGIN) * width;
+	let lo = value - (at.clamp(0.0, 1.0) - MARGIN) / (1.0 - 2.0 * MARGIN) * width;
 	(lo, lo + width)
+}
+
+/// A place on the track kept a little off both ends.
+fn inside(at: f32) -> f32 {
+	at.clamp(MARGIN + 0.02, 1.0 - MARGIN - 0.02)
 }
 
 pub struct Slider {
@@ -248,7 +255,7 @@ impl Slider {
 				return;
 			}
 			match gap(&self.places[level], value, 1.0) {
-				Some((lo, hi)) => self.gaps.push(around(hi - lo, value, at)),
+				Some((lo, hi)) => self.gaps.push(around(hi - lo, value, inside(at))),
 				None => return,
 			}
 		}
@@ -263,7 +270,7 @@ impl Slider {
 	/// One level finer: the track redrawn as a gap of this level, around `value` at `at`.
 	fn zoom_in(&mut self, value: f32, at: f32) {
 		if let Some(width) = self.gap_width(self.level(), value) {
-			self.gaps.push(around(width, value, at));
+			self.gaps.push(around(width, value, inside(at)));
 		}
 		self.forget();
 		self.dived = Some(Instant::now());
@@ -629,7 +636,9 @@ impl Render for Slider {
 				.text_size(px(11.0))
 				.line_height(px(12.0))
 				.text_color(if fill > 0.0 { p.text } else { p.muted })
-				.child(if right { "\u{203A}" } else { "\u{2039}" })
+				// Pointing out while going in goes out, and back in once it has: the hand is to come back
+				// to the middle, and both ends say so, since the handle may be covering the one it is in.
+				.child(if right == self.armed { "\u{203A}" } else { "\u{2039}" })
 		};
 
 		div()
@@ -1021,6 +1030,14 @@ mod tests {
 		cx.executor().advance_clock(EDGE_HOLD + Duration::from_millis(10));
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 1, "one level out");
+		let (drawn, armed) = slider.read_with(&cx, |slider, _| {
+			(view(slider.gaps.last().copied(), slider.handles[0]), slider.armed)
+		});
+		assert!(
+			(drawn - 0.02).abs() < 1e-4,
+			"the handle stays under the pointer in the end, not pushed back: {drawn}"
+		);
+		assert!(!armed, "and the ends point back to the middle");
 		// Staying, still or moving, is not another.
 		cx.executor().advance_clock(Duration::from_secs(2));
 		cx.simulate_mouse_move(at(0.021), MouseButton::Left, Modifiers::default());
@@ -1030,6 +1047,10 @@ mod tests {
 		// Back to the middle, and into an end again: the next level out.
 		cx.simulate_mouse_move(at(0.5), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
+		assert!(
+			slider.read_with(&cx, |slider, _| slider.armed),
+			"back in the middle, the ends point out again"
+		);
 		cx.simulate_mouse_move(at(0.98), MouseButton::Left, Modifiers::default());
 		cx.executor().advance_clock(EDGE_HOLD + Duration::from_millis(10));
 		cx.run_until_parked();

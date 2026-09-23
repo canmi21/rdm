@@ -946,7 +946,11 @@ to work in, and the precision a level promised was not there to be had.
   stops where it was, and going in goes back out one level after 200 ms, with the value where it was
   and the zoom it goes back to placed around it at the pointer. However long the hand then stays,
   that is the one level: the end goes quiet until the hand has been back in the middle, and the next
-  level out is going into an end again. The end went on counting at first, and a hand that stayed
+  level out is going into an end again. **Gone out, the handle stays in the end under the pointer**,
+  and both ends turn their chevrons to point back in, both since the handle may cover the one it is
+  in; back in the middle they point out again. The zoom gone back to was placed as if the pointer
+  were off the end at first, which drew the handle a few points short of it and read as the handle
+  being pushed back. The end went on counting at first, and a hand that stayed
   went out a level every 400 ms, down to the whole track -- the ends promise a level back, and gave
   as many as the hand had patience for. Out on the whole track, which has no zoom to place, the
   handle waits where it is until the pointer comes to it, then follows again: the pointer is in an
