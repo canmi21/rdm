@@ -126,32 +126,19 @@ pub fn limit_at(position: f32, (low, high): (f64, f64)) -> Option<f64> {
 	Some(if megabytes < 10.0 { (megabytes * 10.0).round() / 10.0 } else { megabytes.round() })
 }
 
-/// Where a limit slider's position lands at a drag's level: at the coarsest on the round rates of
-/// the scale -- 1, 2, 5, 10, 20, 50, 100 -- or none; then on whole MB/s; then on tenths. See
-/// spec/ui.md, "A slider reads the hand's intent from its pauses".
-pub fn limit_snap(level: usize, position: f32, scale: (f64, f64)) -> f32 {
-	let Some(megabytes) = limit_at(position, scale) else { return 1.0 };
-	let round = match level {
-		0 => {
-			let (low, high) = scale;
-			let mut stops = vec![low, high];
-			let mut decade = 1.0;
-			while decade <= high {
-				stops.extend([1.0, 2.0, 5.0].map(|m| m * decade).into_iter().filter(|v| *v > low && *v < high));
-				decade *= 10.0;
-			}
-			let mut places: Vec<f32> = stops.into_iter().map(|v| limit_position(Some(v), scale)).collect();
-			places.push(1.0);
-			return places
-				.into_iter()
-				.min_by(|a, b| (a - position).abs().total_cmp(&(b - position).abs()))
-				.unwrap_or(position);
-		}
-		1 => megabytes.round().max(1.0),
-		2 => (megabytes * 10.0).round() / 10.0,
-		_ => return position,
-	};
-	limit_position(Some(round), scale)
+/// Where a limit slider's position lands at a drag's level: on even steps of its log scale, five
+/// a decade at the coarsest, then twenty, then a hundred, or on no limit. Five a decade is the
+/// preferred numbers -- 1, 1.6, 2.5, 4, 6.3, 10 -- so the coarse places are both evenly spaced on
+/// the track and round as the field writes them. See spec/ui.md, "A slider reads the hand's intent
+/// from its pauses".
+pub fn limit_snap(level: usize, position: f32, (low, high): (f64, f64)) -> f32 {
+	if position > (1.0 + SCALE) / 2.0 {
+		return 1.0;
+	}
+	let Some(per_decade) = [5.0, 20.0, 100.0].get(level) else { return position };
+	let steps = ((high / low).log10() * per_decade).round().max(1.0) as f32;
+	let step = SCALE / steps;
+	((position / step).round() * step).min(SCALE)
 }
 
 /// The step a part of a file is rounded to at a drag's level: a tenth, a hundredth and a thousandth
@@ -523,7 +510,14 @@ impl Rdm {
 		cx.notify();
 		let Some(sheet) = &self.adding else { return };
 		let Ok(limit) = parse_limit(&sheet.limit.read(cx).content) else { return };
-		let at = limit_position(limit, self.limit_scale());
+		// A limit the slider wrote stays where the slider put it: its places are even on the track
+		// and the field writes them rounded, and moving the handle to the rounded one would take it
+		// off the place the next drag starts from.
+		let scale = self.limit_scale();
+		if sheet.limit_slider.read(cx).handles().first().is_some_and(|at| limit_at(*at, scale) == limit) {
+			return;
+		}
+		let at = limit_position(limit, scale);
 		sheet.limit_slider.clone().update(cx, |slider, cx| slider.set(vec![at], cx));
 	}
 
@@ -1179,11 +1173,15 @@ mod tests {
 	fn a_drag_lands_on_round_rates_and_round_bytes_level_by_level() {
 		let scale = (1.0, 100.0);
 		let rate = |level, mb: f64| limit_at(limit_snap(level, limit_position(Some(mb), scale), scale), scale);
-		assert_eq!(rate(0, 4.1), Some(5.0), "the coarsest is 1, 2, 5 a decade");
-		assert_eq!(rate(0, 37.0), Some(50.0));
+		let coarse: Vec<Option<f64>> =
+			(0..=10).map(|k| limit_at(limit_snap(0, k as f32 * SCALE / 10.0, scale), scale)).collect();
+		let preferred = [1.0, 1.6, 2.5, 4.0, 6.3, 10.0, 16.0, 25.0, 40.0, 63.0, 100.0];
+		assert_eq!(coarse, preferred.map(Some).to_vec(), "the coarsest is even and reads as round");
+		assert_eq!(rate(0, 4.1), Some(4.0));
+		assert_eq!(rate(0, 37.0), Some(40.0));
 		assert_eq!(limit_snap(0, 0.97, scale), 1.0, "and no limit is a place of its own");
-		assert_eq!(rate(1, 37.4), Some(37.0), "then whole MB/s");
-		assert_eq!(rate(2, 3.46), Some(3.5), "then tenths");
+		assert_eq!(rate(1, 37.4), Some(35.0), "then twenty a decade");
+		assert_eq!(rate(2, 3.46), Some(3.5), "then a hundred");
 		let size = 3_888_513_024;
 		assert_eq!(range_step(size, 0), Some(200_000_000));
 		assert_eq!(range_step(size, 1), Some(20_000_000));

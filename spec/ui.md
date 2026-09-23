@@ -892,40 +892,53 @@ would fail rather than quietly pass, which is what the first pair of them did.
 ## A slider reads the hand's intent from its pauses
 
 A slider is for a value set roughly by hand beside a field that sets it exactly, and within one
-press it moves through levels, coarse to exact. **Speed only ever makes it coarser; a pause is what
-makes it finer.**
+press it moves through levels, coarse to exact. **Going finer is zooming into one gap of the level
+above, and leaving that gap is zooming back out.** The drag keeps the gaps it went into, one a
+level, and draws the last as a band on the track with its level's places inside it, so where a move
+lands and where leaving it goes back out are both seen before they happen.
 
-- A press lands exactly where it is made. The drag that follows starts at the coarsest level,
-  since a drag begins by going somewhere.
-- A throw -- 500 points a second or more -- goes to the coarsest level at once, and 200 or more
-  brings a finer drag back up to the middle one. The handle goes back under the pointer.
-- Slowing down changes nothing. **A hand that slows is reading the number**, and the number stays
-  on the round places of its level while it is read.
-- A hand held within 3 points of where it came to rest holds the value: the jitter of a still hand
-  is not a move.
-- A move after a rest of 300 ms goes one level finer, and the handle carries on from its round
-  place rather than jumping to the pointer, which may have been half a step from it. Each further
-  pause and move is one level more, down to the pointer itself.
+- **A press starts at the value's own level.** A value on one of the coarsest places starts
+  coarse; one on the middle level's places starts there, inside the coarse gap that holds it; one
+  on none starts exact, since the last drag ended there. A drag picks up where the last one left
+  off. A press on the handle takes hold of it where it is; a press elsewhere on the track brings it
+  there, on a place of its level.
+- **Slowing down changes nothing.** A hand that slows is reading the number, and the number stays
+  on its level's places while it is read. A hand held within 3 points of where it came to rest
+  holds the value.
+- **Finer, on one of two signals.** A move after a rest of 300 ms goes one level finer, into the
+  gap on the side the hand moved to, and the handle carries on from its place rather than jumping
+  to the pointer. Or the hand hangs between two places, away from both by a quarter of the gap, for
+  600 ms: the number it wants is not on this level. Hanging does not work at the finest stepped
+  level; only a pause and a move goes from there to exact, since exact is a different kind of
+  place, not a finer one.
+- **Coarser, by leaving.** A hand past the edge of the gap it went into -- by 30% of the gap and at
+  least 8 points -- and still out there 500 ms later goes back out one level, as many times as it
+  is outside gaps. Fine work near an edge crosses it and comes back, and the first version, which
+  left on the crossing itself, took the band away in the middle of that work. A throw, a fifth of
+  the track within 150 ms, goes straight out to the coarsest.
 
-The first version did the opposite, and it was wrong in the way that matters: the pace chose the
-step, so slowing down to read the number dropped the slider to exact, and the number began to
-jitter at the moment it was being read. Its gears were also so fine and so fast to reach that a
-drag looked no different from an ungeared one.
+Two versions came before this and each was wrong in a way worth keeping. The first let the pace
+choose the step, so slowing down to read the number dropped the slider to exact, and the number
+began to jitter at the moment it was read. The second made only a pause go finer and only speed go
+coarser, with no way back that meant anything: a level was a mode, not a place.
 
 **What is round is the owner's to say, in its own units.** The slider knows positions; the owner
-gives it a snap for each level. The limit lands on 1, 2 and 5 of each decade and on no limit, then
-on whole MB/s, then on tenths -- places on its log scale that a step of the track would never hit.
-A part of a file lands on a tenth, a hundredth and a thousandth of the file, each put on the
-nearest 1, 2 or 5 times a power of ten, so the bytes in the field are a round number at every
-level; the level travels with each move so the owner rounds the bytes themselves, which a
-position cannot hold exactly for a file of gigabytes. A slider whose owner gives no snap lands on
-tenths, fortieths and two-hundredths of its track.
+gives it a snap for each level, and the slider finds each level's places by asking it along the
+track. The limit lands on even steps of its log scale, five a decade, then
+twenty, then a hundred, and on no limit. Five a decade is the preferred numbers, so the coarse
+places are evenly spaced on the track and read as round in the field -- 1, 1.6, 2.5, 4, 6.3, 10. The
+1, 2 and 5 of each decade came first and were rounder, and cut the track unevenly, which read as
+wrong before any number was read. A limit the slider wrote does not move the slider back to its
+rounded value, which would take the handle off the place the next drag starts from. A part of a file lands
+on a tenth, a hundredth and a thousandth of the file, each put on the nearest 1, 2 or 5 times a
+power of ten, so the bytes in the field are a round number at every level; the level travels with
+each move so the owner rounds the bytes themselves, which a position cannot hold exactly for a file
+of gigabytes. A slider whose owner gives no snap lands on tenths, fortieths and two-hundredths of
+its track.
 
-The places a level lands on are drawn on the track while a drag is at it, when they are far enough
-apart to read as marks. The pace is measured no oftener than every 12 ms and smoothed over 60 ms.
 Every number here is a starting point to be tuned by hand, and all of them are at the top of
-`src/ui/slider.rs`. A modifier key held for exact, or a hand moved away from the track for finer
-steps, would say the same thing without inference, and waits until inference is found wanting.
+`src/ui/slider.rs`. A modifier key held for exact would say the same thing without inference, and
+waits until inference is found wanting.
 
 ## A sheet is modal, and a click outside closes it only while it is clean
 
