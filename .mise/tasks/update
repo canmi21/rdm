@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+#MISE description="Move the Zed tag gpui is taken at to Zed's newest stable release of the same major: `update [--dry-run]`"
+"""gpui is a git dependency on Zed at a release tag, and cargo never moves a tag; this does.
+
+`cargo update` reads a tag as one fixed commit, so on its own the framework would stay wherever it
+was first written. What this restores is what `version = "1"` did while the crates came from the
+crates.io mirror: every stable release within the major is taken, and a new major is named and
+left alone, because crossing one is an edit somebody decides on. The reasoning is in
+spec/framework.md, "Where the crates come from".
+
+Every Zed tag in Cargo.toml is rewritten together; gpui and gpui_platform have to be one release.
+The lockfile follows at the next cargo command. Run inside `mise run update`, the workspace's
+verify-and-revert covers the rewrite like any other manifest change.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+MANIFEST = ROOT / "Cargo.toml"
+ZED = "https://github.com/zed-industries/zed"
+PINNED = re.compile(r'(git = "' + re.escape(ZED) + r'", tag = ")v(\d+)\.(\d+)\.(\d+)(")')
+# A stable release is exactly vX.Y.Z; Zed's prereleases carry `-pre`, and other tags other suffixes.
+STABLE = re.compile(r"refs/tags/v(\d+)\.(\d+)\.(\d+)$")
+
+
+def releases() -> list[tuple[int, int, int]]:
+	"""Zed's stable release tags, asked of the remote rather than of GitHub's API: no token, no
+	rate limit, and the tag is what cargo resolves anyway."""
+	result = subprocess.run(
+		["git", "ls-remote", "--tags", "--refs", ZED],
+		capture_output=True,
+		text=True,
+		timeout=60,
+	)
+	if result.returncode != 0:
+		sys.exit(f"git ls-remote {ZED} failed:\n{result.stderr}")
+	found = []
+	for line in result.stdout.splitlines():
+		match = STABLE.search(line)
+		if match:
+			found.append(tuple(int(part) for part in match.groups()))
+	return sorted(found)
+
+
+def main(argv: list[str]) -> int:
+	dry = "--dry-run" in argv or "-n" in argv
+	text = MANIFEST.read_text()
+	pins = {tuple(int(part) for part in m.group(2, 3, 4)) for m in PINNED.finditer(text)}
+	if len(pins) != 1:
+		sys.exit(f"Cargo.toml should take every Zed crate at one tag, and names {len(pins)}")
+	current = pins.pop()
+	available = releases()
+	within = [tag for tag in available if tag[0] == current[0]]
+	newest = max(within, default=current)
+	beyond = [tag for tag in available if tag[0] > current[0]]
+
+	show = lambda tag: "v" + ".".join(map(str, tag))
+	if newest <= current:
+		print(f"zed: {show(current)} is the newest stable release of its major")
+	elif dry:
+		print(f"zed: would move {show(current)} -> {show(newest)}")
+	else:
+		MANIFEST.write_text(PINNED.sub(lambda m: m.group(1) + show(newest) + m.group(5), text))
+		print(f"zed: moved {show(current)} -> {show(newest)}")
+	if beyond:
+		print(f"zed: {show(max(beyond))} waits across the major; raising it is an edit to Cargo.toml")
+	return 0
+
+
+if __name__ == "__main__":
+	sys.exit(main(sys.argv[1:]))

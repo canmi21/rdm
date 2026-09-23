@@ -7,25 +7,47 @@ macOS editor; the alternatives were judged on that and not on API taste.
 
 ## Where the crates come from
 
-`gpui` is the crates.io package `gpui-unofficial`, renamed back to `gpui` at the dependency so
-the source never names the supplier. Zed's own crates.io release of `gpui` stopped at 0.2.2 in
-October 2025, while the framework kept moving with the editor; `gpui-unofficial` republishes
-`crates/gpui` and its workspace dependencies on every Zed release tag, automatically, with the
-version number equal to Zed's. It was chosen over two alternatives:
+`gpui` and `gpui_platform` are git dependencies on Zed's repository at a stable release tag, the
+same tag on both. Zed's own crates.io release of `gpui` stopped at 0.2.2 in October 2025, while the
+framework kept moving with the editor, and inside Zed it is a workspace member like any other: its
+manifest inherits versions from Zed's root and reaches its siblings by path. A git dependency is
+the one way to take it as Zed builds it -- cargo checks the repository out, finds the crate by name
+and reads the root manifest the crate expects -- so the source never names a supplier and there is
+nothing to rename.
 
-- **A git dependency on Zed's `main`** tracks the framework to the hour, at the cost of pulling
-  the whole Zed repository and pinning to a commit hash that `cargo update` cannot reason about.
-  Zed's own release tags are the version that has been run, so following those loses little.
+**The crates.io mirror `gpui-unofficial` was the first choice, and it was dropped** because what it
+added was the failure. It republishes each crate on every Zed release tag, and to do that it
+rewrites manifests and build scripts; `gpui-apple`'s build script came out looking for a sibling
+directory that exists in Zed's workspace and not in the registry, so it panicked on install. 1.19.2
+and 1.20.2 both carried it, the mirror's fix for it referred to a constant nothing defined, and the
+1.21.0 release failed to publish on that fix -- three weeks held at 1.18.1 while Zed shipped every
+week. The mirror's own CI builds from its workspace, where the path resolves, so it could not see
+the fault its users hit.
+
+Two other alternatives, still rejected:
+
+- **Zed's `main`** pinned by commit tracks the framework to the hour, at a hash nobody can read.
+  A release tag is the version the editor shipped and says which one it is.
 - **`gpui-ce`**, a community fork, is not a mirror: it adds and diverges, and its crates.io
   history at the time was three versions, two of them yanked, on a number that collides with the
   official crate's.
 
-The version constraint is the major, `"1"`, as every pin in the workspace is; `Cargo.lock`
-records the exact release. A major here means a Zed 2.0.
+**What the tag costs is that cargo never moves it**, so `.mise/tasks/update` does what the mirror's
+`version = "1"` did: it asks the remote for Zed's stable tags, rewrites every Zed tag in
+`Cargo.toml` to the newest of the same major, and names a newer major without taking it -- a
+major here means a Zed 2.0. The workspace's `mise run update` runs it before `cargo update`, so a
+release that breaks the build is reverted like any other; see
+[spec/toolchain.md](../../../spec/toolchain.md), "Dependency policy". A stable tag is exactly
+`vX.Y.Z`; the `-pre` tags are prereleases and are never taken.
+
+The other costs: the first build clones Zed, some half a gigabyte, into `~/.cargo/git`, which CI's
+cache keeps. And Zed's `[patch.crates-io]` does not reach a dependent -- cargo applies only the root
+workspace's -- so gpui builds here against the crates.io releases of the few crates Zed patches,
+async-task and calloop among them, as it did from the mirror.
 
 **The platform backends are a second dependency.** Zed split them out of `gpui` into
 `gpui_platform`, so the entry point is `gpui_platform::application()` and `Application::new()`
-no longer exists. The mirror's readme still says one dependency is enough; it is not.
+no longer exists.
 
 ## The tray speaks StatusNotifierItem, so gtk3 is not in the tree
 

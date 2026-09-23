@@ -105,9 +105,9 @@ pub fn backdrop(p: Palette) -> Div {
 		.items_center()
 		.justify_center()
 		.bg(p.dim)
-		.on_mouse_down(MouseButton::Left, |_, window, _| {
+		.on_mouse_down(MouseButton::Left, |_, window, cx| {
 			if !window.default_prevented() {
-				window.blur();
+				window.blur(cx);
 			}
 		})
 }
