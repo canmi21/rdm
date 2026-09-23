@@ -2,7 +2,6 @@
 //! by hand beside a field that sets it exactly. GPUI ships none. See spec/ui.md.
 
 use std::cell::Cell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -24,8 +23,8 @@ type OnChange = Box<dyn Fn(usize, f32, usize, &mut Window, &mut App)>;
 type Snap = Box<dyn Fn(usize, f32, &App) -> f32>;
 
 /// A drag moves through levels, coarse to exact, and going finer is zooming into one gap of the
-/// level above: the gaps it went into are kept, and leaving the last of them goes back out. See
-/// spec/ui.md, "A slider reads the hand's intent from its pauses".
+/// level above: the track is redrawn as that gap, and its two ends go back out. See spec/ui.md,
+/// "A slider reads the hand's intent from its pauses".
 pub const EXACT: usize = 3;
 
 /// A hand this still, in points, is holding the value: it does not move, and the time counts
@@ -39,17 +38,11 @@ const DWELL: Duration = Duration::from_millis(300);
 const LINGER: Duration = Duration::from_millis(600);
 /// How far from a place, as a share of its gap, a hand is hanging between two rather than on one.
 const AWAY: f32 = 0.25;
-/// How far past a gap's edge, as a share of the gap, a hand has to go to be outside it, and at
-/// least how many points.
-const EXIT: f32 = 0.3;
-const EXIT_POINTS: f32 = 8.0;
-/// How long a hand has to stay outside the gap to have left it: fine work near an edge crosses it
-/// and comes back, and a band that vanished on every crossing was the first complaint about it.
-const EXIT_HOLD: Duration = Duration::from_millis(500);
-/// A throw: this share of the track covered within `THROW_WINDOW` goes straight to the coarsest
-/// level, however deep the drag was.
-const THROW_SPAN: f32 = 0.2;
-const THROW_WINDOW: Duration = Duration::from_millis(150);
+/// While zoomed, the gap fills the track but for this share at each end, where the value stops at
+/// the gap's edge and a hand that stays goes back out a level.
+const MARGIN: f32 = 0.05;
+/// How long a hand has to stay in an end to go back out.
+const EDGE_HOLD: Duration = Duration::from_millis(400);
 /// How finely each level's places are found, by asking the snap at this many points along the track.
 const PROBES: usize = 2000;
 /// Two positions closer than this are one place.
@@ -75,6 +68,23 @@ fn gap(places: &[f32], at: f32, toward: f32) -> Option<(f32, f32)> {
 	Some((places[i], places[i + 1]))
 }
 
+/// Where a value is drawn when the track shows `zoom`: the gap across the middle, its edges at the
+/// margins.
+fn view(zoom: Option<(f32, f32)>, value: f32) -> f32 {
+	match zoom {
+		Some((lo, hi)) if hi > lo => MARGIN + (1.0 - 2.0 * MARGIN) * (value - lo) / (hi - lo),
+		_ => value,
+	}
+}
+
+/// The value a place on the track stands for when it shows `zoom`, held to the gap.
+fn unview(zoom: Option<(f32, f32)>, at: f32) -> f32 {
+	match zoom {
+		Some((lo, hi)) if hi > lo => (lo + (at - MARGIN) / (1.0 - 2.0 * MARGIN) * (hi - lo)).clamp(lo, hi),
+		_ => at.clamp(0.0, 1.0),
+	}
+}
+
 pub struct Slider {
 	/// Where each handle is along the track, 0 to 1, in order from the left.
 	handles: Vec<f32>,
@@ -88,18 +98,18 @@ pub struct Slider {
 	/// Every stepped level's places, found when a handle is taken hold of.
 	places: Vec<Vec<f32>>,
 	/// The gaps the drag went into, one a level: its length is the level, 0 the coarsest and
-	/// `EXACT` the pointer itself, and the last is the gap a move has to leave to go back out.
+	/// `EXACT` the pointer itself, and the last is what the track shows.
 	gaps: Vec<(f32, f32)>,
 	/// Since when the hand has hung between two places, away from both.
 	hanging: Option<Instant>,
-	/// Since when the hand has been outside the gap the drag went into.
-	leaving: Option<Instant>,
-	/// Where the handle was lately, for a throw to be seen in.
-	recent: VecDeque<(Instant, f32)>,
+	/// Since when the hand has been in an end of a zoomed track.
+	edge: Option<Instant>,
 	/// Where the hand came to rest and since when; a move within `DEADZONE` of it is not a move.
 	rest: Option<(Pixels, Instant)>,
-	/// How far the handle sits from the pointer, as a share of the track: set when a level grows
-	/// finer, so the handle carries on from its round place instead of jumping to the pointer.
+	/// Where the pointer was last, along the track, for a zoom that changes while it is still.
+	pointer: f32,
+	/// How far the handle is drawn from the pointer, as a share of the track: set whenever the
+	/// track is redrawn at another zoom, so the value carries on from where it is.
 	offset: f32,
 }
 
@@ -115,9 +125,9 @@ impl Slider {
 			places: Vec::new(),
 			gaps: Vec::new(),
 			hanging: None,
-			leaving: None,
-			recent: VecDeque::new(),
+			edge: None,
 			rest: None,
+			pointer: 0.0,
 			offset: 0.0,
 		}
 	}
@@ -144,6 +154,11 @@ impl Slider {
 
 	fn level(&self) -> usize {
 		self.gaps.len()
+	}
+
+	/// The gap the track shows while a drag is in one.
+	fn zoom(&self) -> Option<(f32, f32)> {
+		self.dragging.and(self.gaps.last().copied())
 	}
 
 	/// The places a level lands on, in order, found by asking the snap along the whole track.
@@ -174,13 +189,42 @@ impl Slider {
 		}
 	}
 
-	/// One level finer, into the gap of this level that holds `at`.
-	fn go_finer(&mut self, at: f32, toward: f32) {
+	/// One level finer, into the gap of this level that holds `value`, with the pointer at `along`
+	/// now standing for `value` on the zoomed track.
+	fn zoom_in(&mut self, value: f32, toward: f32, along: f32) {
 		let level = self.level();
-		if let Some(around) = self.places.get(level).and_then(|places| gap(places, at, toward)) {
+		if let Some(around) = self.places.get(level).and_then(|places| gap(places, value, toward)) {
 			self.gaps.push(around);
 		}
+		self.offset = view(self.zoom(), value) - along;
 		self.hanging = None;
+		self.edge = None;
+	}
+
+	/// One level coarser, the handle's value where it was and the pointer standing for it.
+	fn zoom_out(&mut self, index: usize) {
+		self.gaps.pop();
+		self.offset = view(self.zoom(), self.handles[index]) - self.pointer;
+		self.hanging = None;
+		self.edge = None;
+		self.rest = self.rest.map(|(x, _)| (x, Instant::now()));
+	}
+
+	/// The hand went into an end: if it is still there when the hold is up, the track goes back out,
+	/// whether or not it moved in the meantime.
+	fn hold_edge(&mut self, since: Instant, cx: &mut Context<Self>) {
+		cx.spawn(async move |this, cx| {
+			cx.background_executor().timer(EDGE_HOLD).await;
+			let _ = this.update(cx, |this, cx| {
+				if let (Some(index), Some(edge)) = (this.dragging, this.edge)
+					&& edge == since
+				{
+					this.zoom_out(index);
+					cx.notify();
+				}
+			});
+		})
+		.detach();
 	}
 
 	pub fn handles(&self) -> &[f32] {
@@ -237,24 +281,24 @@ impl Slider {
 			[] => return,
 		};
 		self.dragging = Some(index);
-		let now = Instant::now();
-		self.rest = Some((event.position.x, now));
+		self.rest = Some((event.position.x, Instant::now()));
 		self.hanging = None;
-		self.leaving = None;
-		self.recent.clear();
+		self.edge = None;
+		self.pointer = position;
 		self.places = (0..EXACT).map(|level| self.find_places(level, cx)).collect();
-		// The level is the value's own, so a drag picks up where the last one left off.
+		// A press on the handle takes hold of it where it is, at the value's own level, so a drag
+		// picks up where the last one left off; one elsewhere on the track brings it there, on a
+		// coarse place.
 		let value = self.handles[index];
-		self.start_at(value, cx);
-		// A press on the handle takes hold of it where it is; one elsewhere on the track brings it
-		// there, on a place of its level.
 		let width = self.track.get().map(|t| t.size.width / px(1.0)).unwrap_or(0.0);
 		if width > 0.0 && (value - position).abs() * width <= 7.0 {
-			self.offset = value - position;
+			self.start_at(value, cx);
+			self.offset = view(self.zoom(), value) - position;
 			cx.notify();
 		} else {
+			self.gaps.clear();
 			self.offset = 0.0;
-			let landed = self.snapped(self.level(), position, cx);
+			let landed = self.snapped(0, position, cx);
 			self.move_handle(index, landed, window, cx);
 		}
 	}
@@ -262,62 +306,48 @@ impl Slider {
 	fn drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
 		let Some(index) = self.dragging else { return };
 		if event.pressed_button != Some(MouseButton::Left) {
-			self.dragging = None;
-			cx.notify();
+			self.release(cx);
 			return;
 		}
 		let x = event.position.x;
 		let now = Instant::now();
 		let Some(along) = self.along(x) else { return };
-		let width = self.track.get().map(|t| t.size.width / px(1.0)).unwrap_or(1.0);
-		let at = (along + self.offset).clamp(0.0, 1.0);
+		self.pointer = along;
+		let at = along + self.offset;
 
-		// A throw goes straight out to the coarsest level, under the pointer.
-		self.recent.push_back((now, at));
-		while self.recent.front().is_some_and(|(t, _)| now.duration_since(*t) > THROW_WINDOW) {
-			self.recent.pop_front();
-		}
-		let (low, high) = self.recent.iter().fold((at, at), |(l, h), (_, a)| (l.min(*a), h.max(*a)));
-		if self.level() > 0 && high - low >= THROW_SPAN {
-			self.gaps.clear();
-			self.offset = 0.0;
-			self.hanging = None;
-			self.leaving = None;
-		}
-		let at = (along + self.offset).clamp(0.0, 1.0);
-
-		// Leaving the gap the drag went into, and staying out, goes back out to the level above, as
-		// often as the hand is outside gaps.
-		let outside = |(lo, hi): (f32, f32)| {
-			let margin = ((hi - lo) * EXIT).max(EXIT_POINTS / width);
-			at < lo - margin || at > hi + margin
-		};
-		match (self.gaps.last().copied().is_some_and(outside), self.leaving) {
-			(false, _) => self.leaving = None,
-			(true, None) => self.leaving = Some(now),
-			(true, Some(since)) if now.duration_since(since) >= EXIT_HOLD => {
-				while self.gaps.last().copied().is_some_and(outside) {
-					self.gaps.pop();
+		// An end of a zoomed track, held, goes back out a level; the value waits at the gap's edge.
+		if self.level() > 0 && !(MARGIN..=1.0 - MARGIN).contains(&at) {
+			match self.edge {
+				None => {
+					self.edge = Some(now);
+					self.hold_edge(now, cx);
 				}
-				self.leaving = None;
-				self.hanging = None;
+				Some(since) if now.duration_since(since) >= EDGE_HOLD => {
+					self.zoom_out(index);
+					self.rest = Some((x, now));
+					cx.notify();
+					return;
+				}
+				Some(_) => {}
 			}
-			(true, Some(_)) => {}
+		} else {
+			self.edge = None;
 		}
 
 		// Hanging between two places, away from both, for long enough: the number is not on this
 		// level. The finest stepped level goes to exact only on a pause.
+		let wanted = unview(self.zoom(), at);
 		let level = self.level();
 		let mut finer = false;
-		if level + 1 < EXACT {
-			let away = self.places.get(level).and_then(|p| gap(p, at, 0.0)).is_some_and(|(lo, hi)| {
-				(at - lo).min(hi - at) > (hi - lo) * AWAY
+		if level + 1 < EXACT && self.edge.is_none() {
+			let away = self.places.get(level).and_then(|p| gap(p, wanted, 0.0)).is_some_and(|(lo, hi)| {
+				(wanted - lo).min(hi - wanted) > (hi - lo) * AWAY
 			});
 			match (away, self.hanging) {
 				(false, _) => self.hanging = None,
 				(true, None) => self.hanging = Some(now),
 				(true, Some(since)) if now.duration_since(since) >= LINGER => {
-					self.go_finer(at, 0.0);
+					self.zoom_in(wanted, 0.0, along);
 					finer = true;
 				}
 				(true, Some(_)) => {}
@@ -329,19 +359,27 @@ impl Slider {
 			// Held: the value stays what it is while the number is read.
 			return;
 		}
-		if !finer && self.level() < EXACT && now.duration_since(since) >= DWELL {
+		if !finer && self.edge.is_none() && self.level() < EXACT && now.duration_since(since) >= DWELL {
 			// A pause, then a move: one level finer, into the gap on the side the hand moved to,
 			// carrying on from where the handle is rather than from where the pointer is.
 			let held = self.handles[index];
-			if let Some(from) = self.along(rest) {
-				self.offset = held - from;
-			}
-			self.go_finer(held, ((x - rest) / px(1.0)).signum());
+			let from = self.along(rest).unwrap_or(along);
+			self.zoom_in(held, ((x - rest) / px(1.0)).signum(), from);
 		}
 		self.rest = Some((x, now));
-		let at = (along + self.offset).clamp(0.0, 1.0);
-		let position = self.snapped(self.level(), at, cx);
+		let value = unview(self.zoom(), along + self.offset);
+		let position = self.snapped(self.level(), value, cx);
 		self.move_handle(index, position, window, cx);
+	}
+
+	fn release(&mut self, cx: &mut Context<Self>) {
+		self.dragging = None;
+		self.gaps.clear();
+		self.rest = None;
+		self.offset = 0.0;
+		self.hanging = None;
+		self.edge = None;
+		cx.notify();
 	}
 }
 
@@ -351,24 +389,28 @@ impl Render for Slider {
 		let track = self.track.clone();
 		let slider = cx.weak_entity();
 		let dragging = self.dragging.is_some();
+		// While zoomed, every value is drawn where the zoomed track puts it.
+		let zoom = self.zoom();
+		let shown = |value: f32| view(zoom, value).clamp(0.0, 1.0);
 		// The filled part: between the handles of a pair, or from the left end to a lone handle.
 		let (from, to) = match self.handles.as_slice() {
 			[] => (0.0, 0.0),
-			[one] => (0.0, *one),
-			[first, .., last] => (*first, *last),
+			[one] => (0.0, shown(*one)),
+			[first, .., last] => (shown(*first), shown(*last)),
 		};
 		let label = self.label.clone();
 		let pair = self.handles.len() > 1;
-		// The gap the drag went into, as a band on the track, and the places of its level inside it,
-		// so both where a move lands and where leaving goes back out are seen before they happen.
-		// No places when two would be closer than a few points, where they would be a texture.
+		// The gap a drag went into fills the track as a band, with its level's places across it; no
+		// places when two would be closer than a few points, where they would be a texture.
 		let width = self.track.get().map(|t| t.size.width / px(1.0)).unwrap_or(0.0);
-		let band = self.gaps.last().copied().filter(|_| dragging);
-		let (lo, hi) = band.unwrap_or((0.0, 1.0));
+		let (lo, hi) = zoom.unwrap_or((0.0, 1.0));
 		let mut ticks: Vec<f32> = match self.places.get(self.level()) {
-			Some(places) if dragging => {
-				places.iter().copied().filter(|p| *p >= lo - SAME && *p <= hi + SAME).collect()
-			}
+			Some(places) if dragging => places
+				.iter()
+				.copied()
+				.filter(|p| *p >= lo - SAME && *p <= hi + SAME)
+				.map(|p| view(zoom, p))
+				.collect(),
 			_ => Vec::new(),
 		};
 		if ticks.windows(2).any(|w| (w[1] - w[0]) * width < 6.0) {
@@ -407,15 +449,7 @@ impl Render for Slider {
 						let released = slider.clone();
 						window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
 							if phase == DispatchPhase::Bubble {
-								let _ = released.update(cx, |slider, cx| {
-									slider.dragging = None;
-									slider.rest = None;
-									slider.offset = 0.0;
-									slider.hanging = None;
-									slider.leaving = None;
-									slider.recent.clear();
-									cx.notify();
-								});
+								let _ = released.update(cx, |slider, cx| slider.release(cx));
 							}
 						});
 					},
@@ -426,13 +460,13 @@ impl Render for Slider {
 				.size_full(),
 			)
 			.child(div().absolute().left_0().right_0().top(px(8.0)).h(px(4.0)).rounded_full().bg(p.track))
-			.children(band.map(|(lo, hi)| {
+			.children(zoom.map(|_| {
 				div()
 					.absolute()
 					.top(px(5.0))
 					.h(px(10.0))
-					.left(relative(lo))
-					.w(relative(hi - lo))
+					.left(relative(MARGIN))
+					.w(relative(1.0 - 2.0 * MARGIN))
 					.rounded_sm()
 					.bg(p.accent.opacity(0.22))
 			}))
@@ -462,7 +496,7 @@ impl Render for Slider {
 					.aria_numeric_value(f64::from((at * 100.0).round()))
 					.absolute()
 					.top(px(3.0))
-					.left(relative(at))
+					.left(relative(shown(at)))
 					.ml(px(-7.0))
 					.size(px(14.0))
 					.rounded_full()
@@ -485,16 +519,20 @@ mod tests {
 	}
 
 	#[test]
-	fn a_gap_is_the_one_holding_a_value_or_on_a_place_the_one_it_leans_to() {
+	fn a_gap_is_the_one_holding_a_value_and_a_zoomed_track_draws_it_across_the_middle() {
 		let places = [0.0, 0.1, 0.2, 0.3];
 		assert_eq!(gap(&places, 0.15, 0.0), Some((0.1, 0.2)));
 		assert_eq!(gap(&places, 0.2, 1.0), Some((0.2, 0.3)));
 		assert_eq!(gap(&places, 0.2, -1.0), Some((0.1, 0.2)));
 		assert_eq!(gap(&places, 0.3, 1.0), Some((0.2, 0.3)), "the last place has only the gap before it");
 		assert_eq!(gap(&places, 0.0, -1.0), Some((0.0, 0.1)), "and the first only the one after");
-		assert!((even(0, 0.437) - 0.4).abs() < 1e-6);
+		let zoom = Some((0.4, 0.5));
+		assert!((view(zoom, 0.4) - MARGIN).abs() < 1e-6, "the gap's start is at the left margin");
+		assert!((view(zoom, 0.5) - (1.0 - MARGIN)).abs() < 1e-6, "its end at the right one");
+		assert!((unview(zoom, 0.5) - 0.45).abs() < 1e-6, "the middle of the track is the middle of the gap");
+		assert_eq!(unview(zoom, 0.01), 0.4, "an end holds the value at the gap's edge");
+		assert_eq!(unview(None, 0.3), 0.3, "an unzoomed track is itself");
 		assert!((even(1, 0.437) - 0.425).abs() < 1e-6);
-		assert_eq!(even(EXACT, 0.437), 0.437, "exact is the pointer");
 	}
 
 	fn opened(handles: Vec<f32>, cx: &mut TestAppContext) -> (Entity<Slider>, VisualTestContext, Bounds<Pixels>) {
@@ -510,7 +548,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn a_pause_then_a_move_goes_one_level_finer_from_where_the_handle_is(cx: &mut TestAppContext) {
+	fn a_pause_zooms_into_a_gap_and_an_end_held_zooms_back_out(cx: &mut TestAppContext) {
 		let (slider, mut cx, track) = opened(vec![0.5], cx);
 		let y = track.center().y;
 		let width = track.size.width / px(1.0);
@@ -526,33 +564,26 @@ mod tests {
 		cx.run_until_parked();
 		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "a hand this still holds the value");
 		std::thread::sleep(DWELL + Duration::from_millis(50));
-		cx.simulate_mouse_move(point(at(0.61).x + px(12.0), y), MouseButton::Left, Modifiers::default());
+		cx.simulate_mouse_move(point(at(0.61).x + px(40.0), y), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 1, "the pause bought one level");
-		let expected = even(1, 0.6 + 12.0 / width);
-		assert!((handle(&mut cx) - expected).abs() < 1e-6, "carried on from 0.6, not from the pointer");
 		assert!(one_gap(&slider, &mut cx, (0.6, 0.7)), "into the gap it moved to");
-		// Leaving that gap, and staying out, goes back out; a crossing that comes back does not.
-		std::thread::sleep(THROW_WINDOW);
-		cx.simulate_mouse_move(at(0.76), MouseButton::Left, Modifiers::default());
+		// The gap fills the track, so 40 points is a ninth of a tenth: the value carried on from 0.6.
+		let expected = even(1, 0.6 + 40.0 / width / (1.0 - 2.0 * MARGIN) * 0.1);
+		assert!((handle(&mut cx) - expected).abs() < 1e-6, "carried on from 0.6, zoomed: {}", handle(&mut cx));
+		// Into the left end, where the value waits at the gap's edge, and held there.
+		cx.simulate_mouse_move(point(at(0.61).x - px(20.0), y), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
-		assert_eq!(level(&mut cx), 1, "just outside is not yet left");
-		cx.simulate_mouse_move(at(0.68), MouseButton::Left, Modifiers::default());
+		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "an end holds the value at the edge");
+		assert_eq!(level(&mut cx), 1, "not yet out");
+		cx.executor().advance_clock(EDGE_HOLD + Duration::from_millis(10));
 		cx.run_until_parked();
-		assert_eq!(level(&mut cx), 1, "and a crossing that came back is still inside");
-		// Out, and moving on out there, never still for a pause's time.
-		for along in [0.77, 0.775, 0.78] {
-			cx.simulate_mouse_move(at(along), MouseButton::Left, Modifiers::default());
-			std::thread::sleep(EXIT_HOLD / 2 + Duration::from_millis(10));
-		}
-		cx.simulate_mouse_move(at(0.785), MouseButton::Left, Modifiers::default());
-		cx.run_until_parked();
-		assert_eq!(level(&mut cx), 0, "outside for long enough is the level above");
-		cx.simulate_mouse_up(at(0.785), MouseButton::Left, Modifiers::default());
+		assert_eq!(level(&mut cx), 0, "held in the end, still, goes back out");
+		cx.simulate_mouse_up(at(0.6), MouseButton::Left, Modifiers::default());
 	}
 
 	#[gpui::test]
-	fn hanging_between_two_places_goes_finer_and_a_value_between_them_starts_there(cx: &mut TestAppContext) {
+	fn hanging_between_two_places_zooms_in_and_a_value_between_them_starts_there(cx: &mut TestAppContext) {
 		let (slider, mut cx, track) = opened(vec![0.5], cx);
 		let y = track.center().y;
 		let at = |along: f32| point(track.left() + track.size.width * along, y);
@@ -566,13 +597,14 @@ mod tests {
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 1, "between 0.5 and 0.6, away from both, for long enough");
 		let value = slider.read_with(&cx, |slider, _| slider.handles[0]);
-		assert!((value - 0.55).abs() < 1e-6, "on the finer places: {value}");
+		assert!((value - 0.55).abs() < 1e-6, "on the finer places, where the hand was: {value}");
 		cx.simulate_mouse_up(at(0.551), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
+		assert_eq!(level(&mut cx), 0, "a release leaves the track unzoomed");
 		// The next press starts where this one left off: 0.55 is a place of the middle level only.
 		cx.simulate_mouse_down(at(0.55), MouseButton::Left, Modifiers::default());
 		assert_eq!(level(&mut cx), 1, "a value between coarse places starts at its own level");
-		assert!(one_gap(&slider, &mut cx, (0.5, 0.6)), "and in the gap it holds");
+		assert!(one_gap(&slider, &mut cx, (0.5, 0.6)), "and in the gap that holds it");
 		cx.simulate_mouse_up(at(0.55), MouseButton::Left, Modifiers::default());
 	}
 

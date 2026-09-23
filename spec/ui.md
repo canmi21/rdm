@@ -893,15 +893,18 @@ would fail rather than quietly pass, which is what the first pair of them did.
 
 A slider is for a value set roughly by hand beside a field that sets it exactly, and within one
 press it moves through levels, coarse to exact. **Going finer is zooming into one gap of the level
-above, and leaving that gap is zooming back out.** The drag keeps the gaps it went into, one a
-level, and draws the last as a band on the track with its level's places inside it, so where a move
-lands and where leaving it goes back out are both seen before they happen.
+above: the track is redrawn as that gap.** Its middle 90% becomes the gap, drawn as a band with its
+level's places across it, and the handle, the fill and the places are all drawn where the zoomed
+track puts them. The 5% at each end is the way back out. The drag keeps the gaps it went into, one a
+level, and the track shows the last. A band drawn over the gap's own width on an unzoomed track came
+first; it showed where the gap was, but a gap of a hundredth of the track left the hand a few points
+to work in, and the precision a level promised was not there to be had.
 
-- **A press starts at the value's own level.** A value on one of the coarsest places starts
-  coarse; one on the middle level's places starts there, inside the coarse gap that holds it; one
-  on none starts exact, since the last drag ended there. A drag picks up where the last one left
-  off. A press on the handle takes hold of it where it is; a press elsewhere on the track brings it
-  there, on a place of its level.
+- **A press on the handle starts at the value's own level.** A value on one of the coarsest places
+  starts coarse; one on the middle level's places starts there, zoomed into the coarse gap that
+  holds it; one on none starts exact, since the last drag ended there. A drag picks up where the
+  last one left off. A press elsewhere on the track brings the handle there, on a coarse place,
+  since a press away from the handle is going somewhere. A release shows the whole track again.
 - **Slowing down changes nothing.** A hand that slows is reading the number, and the number stays
   on its level's places while it is read. A hand held within 3 points of where it came to rest
   holds the value.
@@ -911,11 +914,13 @@ lands and where leaving it goes back out are both seen before they happen.
   600 ms: the number it wants is not on this level. Hanging does not work at the finest stepped
   level; only a pause and a move goes from there to exact, since exact is a different kind of
   place, not a finer one.
-- **Coarser, by leaving.** A hand past the edge of the gap it went into -- by 30% of the gap and at
-  least 8 points -- and still out there 500 ms later goes back out one level, as many times as it
-  is outside gaps. Fine work near an edge crosses it and comes back, and the first version, which
-  left on the crossing itself, took the band away in the middle of that work. A throw, a fifth of
-  the track within 150 ms, goes straight out to the coarsest.
+- **Coarser, at an end.** In the 5% at either end of a zoomed track the value waits at the gap's
+  edge, and a hand that stays there 400 ms -- moving or still -- goes back out one level, with the
+  value where it was. Each level out is one more stay in an end. Leaving by crossing the gap's edge
+  on an unzoomed track came before, and fine work near an edge crossed it and came back, taking the
+  band away in the middle of the work; an end that has to be gone into and stayed in is not
+  reached by accident. A throw that went straight out to the coarsest went with it: on a zoomed
+  track a fast move is a fast move within the gap.
 
 Two versions came before this and each was wrong in a way worth keeping. The first let the pace
 choose the step, so slowing down to read the number dropped the slider to exact, and the number
