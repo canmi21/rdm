@@ -113,3 +113,11 @@ the selection past the content, and the next replacement sliced out of bounds. L
 marks text, so the field looked fine until Chinese was typed into it. The arithmetic is corrected
 and every range that slices the content is clamped to it and to character boundaries; the
 headless tests drive the field the way an input method does, keystroke by keystroke.
+
+**Enter and Escape reach the field's owner after the field is done with itself.** The field runs
+its key actions inside its own update, and an owner acting on Enter reads its fields -- the New
+Task sheet reads the address Enter was pressed in -- which GPUI refuses with a panic for an entity
+already being updated. Pasting an address and pressing Enter took the application down that way.
+So the callbacks go through `Window::defer`, which runs them once the update has finished;
+`Context::defer_in` is not enough, since it runs its callback inside another update of the same
+entity. A headless test presses both keys and reads the field from the callbacks.

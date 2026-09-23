@@ -678,8 +678,10 @@ all-capital `FILE` was tried over the found card's columns and taken out: capita
 slower than the word they spell.
 
 **An icon where it carries meaning faster than its word, and nowhere else.** On the sheet that is
-the arrow back, the arrows on Continue and Download, and the chevrons on More options and Details
-that turn as they open. A fact -- a type, a size, a host, a date -- has no icon, since its label
+the arrow back, the arrow on Continue, the return key after Download, and the chevrons on More
+options and Details that turn as they open. Download's glyph was a download arrow before it, and
+said what the whole sheet already says; the return key after the word says that Enter presses it,
+which nothing else on the sheet does, and it sits after the word as a key's hint does. A fact -- a type, a size, a host, a date -- has no icon, since its label
 says what it is. The category's own icon beside `Type` was tried and dropped for that reason, and
 a forked arrow for resuming was tried and read as nothing.
 
@@ -711,7 +713,10 @@ section of their own, are the engine's defaults for every new download and are l
 reach it as they are typed.
 
 **More options is three columns.** A label column, the controls, and a fixed column on the right
-that holds what a slider's field or reading shows: the limit's field, the part's size. So both
+that holds what a slider's field or reading shows: the limit's field, the part's size. The part
+reads as the file's size while it is the whole file, in a label's grey, and as the part out of the
+whole once it is less -- `1.2 GB / 3.9 GB`, the part in the text's color and the whole in grey --
+so what was left out is read without looking back up at the card. So both
 sliders end on one line and every field ends on the sheet's right edge, and every control is one
 field's height. The folder is a box like a field, showing the path the file goes to -- the one
 chosen, or the download folder's own -- with `Choose` inside it and `Reset` beside once one was
@@ -895,11 +900,22 @@ A slider is for a value set roughly by hand beside a field that sets it exactly,
 press it moves through levels, coarse to exact. **Going finer is zooming into one gap of the level
 above: the track is redrawn as that gap.** Its middle 90% becomes the gap, drawn as a band with its
 level's places across it, and the handle, the fill and the places are all drawn where the zoomed
-track puts them. The 5% at each end is the way back out. The drag keeps the gaps it went into, one a
-level, and the track shows the last. A band drawn over the gap's own width on an unzoomed track came
+track puts them. The 5% at each end is the way back out. The drag keeps what it zoomed into, one a
+level, and the track shows the last.
+
+**A zoom is placed around the pointer.** It is a gap of the level above wide, and it sits so the
+value is drawn exactly where the pointer is: the track is redrawn under a handle that stays under the
+hand. The first zoom drew the gap itself from end to end, and kept the value by moving the handle
+away from the pointer by however far the gap's edge was; every zoom in and out added another
+distance, and within a few the hand was working a handle a third of the track away. A zoom placed
+around the pointer is not aligned to the level's places, and does not need to be: its places are
+the level's, wherever they fall in it. A band drawn over the gap's own width on an unzoomed track came
 first; it showed where the gap was, but a gap of a hundredth of the track left the hand a few points
 to work in, and the precision a level promised was not there to be had.
 
+- **A press takes a handle anywhere on its dot.** A handle at an end is centred on it and half its
+  dot lies past the track, so what takes a press reaches a dot's radius past each end; a handle at
+  the far right used to take nothing when pressed at its centre.
 - **A press on the handle starts at the value's own level.** A value on one of the coarsest places
   starts coarse; one on the middle level's places starts there, zoomed into the coarse gap that
   holds it; one on none starts exact, since the last drag ended there. A drag picks up where the
@@ -908,15 +924,20 @@ to work in, and the precision a level promised was not there to be had.
 - **Slowing down changes nothing.** A hand that slows is reading the number, and the number stays
   on its level's places while it is read. A hand held within 3 points of where it came to rest
   holds the value.
-- **Finer, on one of two signals.** A move after a rest of 300 ms goes one level finer, into the
-  gap on the side the hand moved to, and the handle carries on from its place rather than jumping
-  to the pointer. Or the hand hangs between two places, away from both by a quarter of the gap, for
-  600 ms: the number it wants is not on this level. Hanging does not work at the finest stepped
+- **Finer, on one of two signals.** A move after a rest goes one level finer, zoomed around the value
+  the handle holds. Or the hand hangs between two places, away from both by a quarter of the gap:
+  the number it wants is not on this level. On the whole track the rest is 300 ms and the hang 600
+  ms, since the first zoom is wanted soon; on a zoomed track they are 700 ms and a second, since a
+  hand doing fine work rests often, and at the shorter times each rest took it a level deeper than
+  it meant to go. Hanging does not work at the finest stepped
   level; only a pause and a move goes from there to exact, since exact is a different kind of
   place, not a finer one.
-- **Coarser, at an end.** In the 5% at either end of a zoomed track the value waits at the gap's
-  edge, and a hand that stays there 400 ms -- moving or still -- goes back out one level, with the
-  value where it was. Each level out is one more stay in an end. Leaving by crossing the gap's edge
+- **Coarser, at an end.** In the 5% at either end of a zoomed track the value stops where it was,
+  and a hand that stays there 400 ms -- moving or still -- goes back out one level, with the value
+  where it was and the zoom it goes back to placed around it at the pointer. Out on the whole track,
+  which has no zoom to place, the handle waits where it is until the pointer comes to it, then
+  follows again: the pointer is in an end and the value is not, and following at once would have
+  thrown the value to the end. Each level out is one more stay in an end. Leaving by crossing the gap's edge
   on an unzoomed track came before, and fine work near an edge crossed it and came back, taking the
   band away in the middle of the work; an end that has to be gone into and stayed in is not
   reached by accident. A throw that went straight out to the coarsest went with it: on a zoomed
@@ -927,19 +948,34 @@ choose the step, so slowing down to read the number dropped the slider to exact,
 began to jitter at the moment it was read. The second made only a pause go finer and only speed go
 coarser, with no way back that meant anything: a level was a mode, not a place.
 
-**What is round is the owner's to say, in its own units.** The slider knows positions; the owner
-gives it a snap for each level, and the slider finds each level's places by asking it along the
-track. The limit lands on even steps of its log scale, five a decade, then
-twenty, then a hundred, and on no limit. Five a decade is the preferred numbers, so the coarse
-places are evenly spaced on the track and read as round in the field -- 1, 1.6, 2.5, 4, 6.3, 10. The
-1, 2 and 5 of each decade came first and were rounder, and cut the track unevenly, which read as
-wrong before any number was read. A limit the slider wrote does not move the slider back to its
-rounded value, which would take the handle off the place the next drag starts from. A part of a file lands
-on a tenth, a hundredth and a thousandth of the file, each put on the nearest 1, 2 or 5 times a
-power of ten, so the bytes in the field are a round number at every level; the level travels with
-each move so the owner rounds the bytes themselves, which a position cannot hold exactly for a file
-of gigabytes. A slider whose owner gives no snap lands on tenths, fortieths and two-hundredths of
-its track.
+**Each way the hand can go is drawn as it fills.** Going deeper and going back out both wait on
+the hand, and a wait nobody can see reads as nothing happening, so each has a mark that grows as its
+condition is met and is full at the moment it would act. Deeper is a halo round the held handle,
+growing as a rest or a hang goes on, ringed in the accent when a move would go a level finer; it
+shows from a fifth of the way, so the short rests between a moving hand's events do not flicker it.
+Back out is the two ends of a zoomed track, each a pale block with a chevron pointing out of the
+track, and the one the hand is in darkening as it stays. Both are drawn frame by frame while a
+drag is on and nothing is drawn once it ends.
+
+**Whatever the track shows is ten steps.** The whole track is ten, a zoom into one of them is ten
+more, and so on to a thousandth, then exact. Each level had its own count before -- a 1, 2 and 5
+of each decade, then five, then forty a decade for the limit, a first zoom narrowed to half a gap,
+a part of a file put on round byte counts -- and each was tuned against the last complaint, so no
+two levels, and no two sliders, behaved alike. Ten everywhere is one rule a hand learns once.
+
+**What a step stands for is the owner's to say, in its own units.** The slider knows positions;
+an owner that wants its steps somewhere other than even tenths of the track gives it a snap, and
+the slider finds each level's places by asking it along the track. The limit's ten across its
+scale of two decades are the preferred numbers, and its coarse places are put on them exactly --
+1, 1.6, 2.5, 4, 6.3, 10 -- which is under 1% of a decade from an even step, so they read as round in
+the field. **The field writes the limit to hundredths**, leaving off the zeros a round number ends
+in -- `37.58`, `12.5`, `40`. It wrote tenths below ten and whole numbers above at first, and two
+neighbouring places of a fine drag then read as the same number, so the drag looked as if it had
+done nothing. A limit the slider wrote does not move the slider back to its rounded value, which
+would take the handle off the place the next drag starts from. A part of a file is tenths,
+hundredths and thousandths of the file; the level travels with each move, so the owner works the
+byte out in whole numbers, which a position cannot hold exactly for a file of gigabytes. The bytes
+are therefore not round; the size beside the slider is, and it is what is read.
 
 Every number here is a starting point to be tuned by hand, and all of them are at the top of
 `src/ui/slider.rs`. A modifier key held for exact would say the same thing without inference, and

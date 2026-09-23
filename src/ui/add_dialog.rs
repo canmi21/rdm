@@ -12,7 +12,7 @@ use reqwest::Url;
 use crate::app::Rdm;
 use crate::engine::{Failure, Inspection, Link};
 use crate::ui::backdrop;
-use crate::ui::button;
+use crate::ui::{button, button_after};
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::slider::Slider;
 use crate::ui::text_input::TextInput;
@@ -99,10 +99,12 @@ pub fn parse_limit(text: &str) -> Result<Option<f64>, String> {
 	}
 }
 
-/// A limit as the field shows it: tenths where they matter, whole numbers otherwise.
+/// A limit as the field shows it: to hundredths, with the zeros a round number ends in left off --
+/// `37.58`, `12.5`, `40`. Hundredths so two neighbouring places of a fine drag read differently;
+/// see spec/ui.md, "A slider reads the hand's intent from its pauses".
 pub fn format_limit(megabytes: f64) -> String {
-	let text = format!("{megabytes:.1}");
-	text.strip_suffix(".0").map(str::to_owned).unwrap_or(text)
+	let text = format!("{megabytes:.2}");
+	text.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
 /// Where along the limit slider a limit sits. The scale runs from the slider's low end to its high
@@ -115,19 +117,19 @@ pub fn limit_position(limit: Option<f64>, (low, high): (f64, f64)) -> f32 {
 	along.clamp(0.0, 1.0) * SCALE
 }
 
-/// The limit a place on the slider stands for, rounded to what a person would type: tenths below
-/// ten, whole numbers above. None past the middle of the gap after the scale.
+/// The limit a place on the slider stands for, to hundredths, as the field writes it. None past the
+/// middle of the gap after the scale.
 pub fn limit_at(position: f32, (low, high): (f64, f64)) -> Option<f64> {
 	if position > (1.0 + SCALE) / 2.0 {
 		return None;
 	}
 	let along = f64::from((position / SCALE).clamp(0.0, 1.0));
 	let megabytes = low * (high / low).powf(along);
-	Some(if megabytes < 10.0 { (megabytes * 10.0).round() / 10.0 } else { megabytes.round() })
+	Some((megabytes * 100.0).round() / 100.0)
 }
 
-/// Where a limit slider's position lands at a drag's level: on even steps of its log scale, five
-/// a decade at the coarsest, then twenty, then a hundred, or on no limit. Five a decade is the
+/// Where a limit slider's position lands at a drag's level: on the level's steps of its log scale --
+/// ten across it, a hundred, a thousand -- or on no limit. Five a decade is the
 /// preferred numbers -- 1, 1.6, 2.5, 4, 6.3, 10 -- so the coarse places are both evenly spaced on
 /// the track and round as the field writes them. See spec/ui.md, "A slider reads the hand's intent
 /// from its pauses".
@@ -135,27 +137,36 @@ pub fn limit_snap(level: usize, position: f32, (low, high): (f64, f64)) -> f32 {
 	if position > (1.0 + SCALE) / 2.0 {
 		return 1.0;
 	}
-	let Some(per_decade) = [5.0, 20.0, 100.0].get(level) else { return position };
-	let steps = ((high / low).log10() * per_decade).round().max(1.0) as f32;
-	let step = SCALE / steps;
-	((position / step).round() * step).min(SCALE)
+	let Some(steps) = crate::ui::slider::steps(level) else { return position };
+	let step = SCALE / steps as f32;
+	let even = ((position / step).round() * step).min(SCALE);
+	if level > 0 {
+		return even;
+	}
+	// The coarsest places are put on the preferred number they stand in for -- 1.6 rather than the
+	// 1.58 an even fifth of a decade is -- which is under 1% of a decade away and reads as round.
+	let Some(megabytes) = limit_at(even, (low, high)) else { return even };
+	let decade = 10f64.powf(megabytes.log10().floor());
+	let preferred = [1.0, 1.6, 2.5, 4.0, 6.3, 10.0]
+		.map(|m| m * decade)
+		.into_iter()
+		.min_by(|a, b| (a / megabytes).ln().abs().total_cmp(&(b / megabytes).ln().abs()))
+		.unwrap_or(megabytes);
+	if (preferred / megabytes).ln().abs() < 0.02 { limit_position(Some(preferred), (low, high)) } else { even }
 }
 
-/// The step a part of a file is rounded to at a drag's level: a tenth, a hundredth and a thousandth
-/// of the file, each put on the nearest 1, 2 or 5 times a power of ten below it, so the bytes in
-/// the field are a round number at every level. None at exact.
-pub fn range_step(size: u64, level: usize) -> Option<u64> {
-	let share = [10, 100, 1000].get(level)?;
-	let rough = (size / share).max(1);
-	let decade = 10u64.pow(rough.ilog10());
-	Some([5, 2, 1].map(|m| m * decade).into_iter().find(|step| *step <= rough).unwrap_or(1))
-}
-
-/// Bytes on the nearest step, with the end of the file a place of its own rather than the step
-/// before it.
-pub fn round_bytes(bytes: u64, size: u64, step: u64) -> u64 {
-	let near = (bytes + step / 2) / step * step;
-	if size.saturating_sub(near) < step / 2 { size } else { near.min(size) }
+/// The byte a range handle stands for at a drag's level: on a level's steps it is that many tenths,
+/// hundredths or thousandths of the file, worked out in whole numbers, since a position cannot hold
+/// a byte of a file of gigabytes exactly. Exact is the position's own byte.
+pub fn part_at(position: f32, level: usize, size: u64) -> u64 {
+	let position = f64::from(position.clamp(0.0, 1.0));
+	match crate::ui::slider::steps(level) {
+		Some(n) => {
+			let step = (position * f64::from(n)).round() as u128;
+			((step * u128::from(size) + u128::from(n) / 2) / u128::from(n)) as u64
+		}
+		None => (position * size as f64).round() as u64,
+	}
 }
 
 /// The two range fields as the row keeps them: `start-end` in bytes, the end excluded, or None for
@@ -296,17 +307,7 @@ impl Rdm {
 				});
 				let owner = cx.weak_entity();
 				let range_slider = cx.new(|_| {
-					let size = owner.clone();
 					Slider::new("Range", vec![0.0, 1.0])
-						.snap(move |level, at, cx| {
-							let size = size.upgrade().and_then(|this| {
-								this.read(cx).adding.as_ref()?.found.as_ref()?.probe.size.filter(|s| *s > 0)
-							});
-							let Some(size) = size else { return at };
-							let Some(step) = range_step(size, level) else { return at };
-							let bytes = (f64::from(at) * size as f64).round() as u64;
-							(round_bytes(bytes, size, step) as f64 / size as f64) as f32
-						})
 						.on_change(move |handle, at, level, _, cx| {
 							let _ = owner.update(cx, |this, cx| this.slide_range(handle, at, level, cx));
 						})
@@ -551,8 +552,7 @@ impl Rdm {
 		let Some(size) = sheet.found.as_ref().and_then(|f| f.probe.size) else { return };
 		let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
 		let (start, end) = (read(&sheet.range_start).unwrap_or(0), read(&sheet.range_end).unwrap_or(size));
-		let at = (f64::from(position.clamp(0.0, 1.0)) * size as f64).round() as u64;
-		let at = range_step(size, level).map_or(at, |step| round_bytes(at, size, step));
+		let at = part_at(position, level, size);
 		let (field, bytes) = if handle == 0 {
 			(sheet.range_start.clone(), at.min(end.saturating_sub(1)))
 		} else {
@@ -726,10 +726,10 @@ impl Rdm {
 							)
 							.map(|s| {
 								if second {
-									s.child(button(
+									s.child(button_after(
 										p,
 										"add-confirm",
-										Icon::Download,
+										Icon::CornerDownLeft,
 										"Download",
 										true,
 										cx.listener(|this, _, _, cx| this.submit_add(cx)),
@@ -978,7 +978,7 @@ impl Rdm {
 		// field or reading shows, so both sliders end on one line and every field on another. A
 		// control taller than a line has its label beside its first line, which is `first` high.
 		const LABEL: f32 = 72.0;
-		const END: f32 = 112.0;
+		const END: f32 = 128.0;
 		const LINE: f32 = 30.0;
 		let label = |label: &'static str, first: f32| {
 			div()
@@ -1020,12 +1020,18 @@ impl Rdm {
 			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))
 			.map(|f| f.display().to_string())
 			.unwrap_or_else(|| "Download folder".to_owned());
-		// How much the two ends take in, so a part is read as a size rather than as two numbers.
+		// How much the two ends take in, so a part is read as a size rather than as two numbers, and
+		// out of how much once it is less than the whole: `1.2 GB / 3.9 GB`.
 		let parts = found.probe.size.filter(|_| found.probe.ranges).map(|size| {
 			let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
 			let start = read(&sheet.range_start).unwrap_or(0);
-			let end = read(&sheet.range_end).unwrap_or(size);
-			if end > start { crate::download::format_bytes(end - start) } else { String::new() }
+			let end = read(&sheet.range_end).unwrap_or(size).min(size);
+			let whole = crate::download::format_bytes(size);
+			match end.checked_sub(start).filter(|part| *part > 0) {
+				Some(part) if part < size => (crate::download::format_bytes(part), Some(whole)),
+				Some(_) => (whole, None),
+				None => (String::new(), None),
+			}
 		});
 		div()
 			.debug_selector(|| "add-more".to_owned())
@@ -1105,10 +1111,19 @@ impl Rdm {
 											div()
 												.w(px(END))
 												.flex_none()
-												.px_2()
-												.text_color(p.muted)
-												.truncate()
-												.child(text!(part)),
+												.pl_2()
+												.flex()
+												.gap_1()
+												.overflow_hidden()
+												.whitespace_nowrap()
+												.child(
+													div()
+														.text_color(if part.1.is_some() { p.text } else { p.muted })
+														.child(text!(part.0)),
+												)
+												.when_some(part.1, |s, whole| {
+													s.child(div().text_color(p.muted).child(text!(format!("/ {whole}"))))
+												}),
 										),
 								)
 								.child(
@@ -1170,7 +1185,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_drag_lands_on_round_rates_and_round_bytes_level_by_level() {
+	fn every_level_is_ten_steps_of_what_the_track_shows() {
 		let scale = (1.0, 100.0);
 		let rate = |level, mb: f64| limit_at(limit_snap(level, limit_position(Some(mb), scale), scale), scale);
 		let coarse: Vec<Option<f64>> =
@@ -1180,17 +1195,13 @@ mod tests {
 		assert_eq!(rate(0, 4.1), Some(4.0));
 		assert_eq!(rate(0, 37.0), Some(40.0));
 		assert_eq!(limit_snap(0, 0.97, scale), 1.0, "and no limit is a place of its own");
-		assert_eq!(rate(1, 37.4), Some(35.0), "then twenty a decade");
-		assert_eq!(rate(2, 3.46), Some(3.5), "then a hundred");
+		assert_eq!(rate(1, 37.4), Some(38.02), "then a hundred across, to hundredths");
+		assert_eq!(rate(2, 3.44), Some(3.44), "then a thousand");
 		let size = 3_888_513_024;
-		assert_eq!(range_step(size, 0), Some(200_000_000));
-		assert_eq!(range_step(size, 1), Some(20_000_000));
-		assert_eq!(range_step(size, 2), Some(2_000_000));
-		assert_eq!(range_step(size, 3), None, "exact is the byte");
-		assert_eq!(range_step(1_033_297, 0), Some(100_000));
-		assert_eq!(round_bytes(1_234_567_890, size, 200_000_000), 1_200_000_000);
-		assert_eq!(round_bytes(3_850_000_000, size, 200_000_000), size, "near the end is the end");
-		assert_eq!(round_bytes(0, size, 200_000_000), 0);
+		assert_eq!(part_at(0.3, 0, size), 1_166_553_907, "three tenths of the file, to the byte");
+		assert_eq!(part_at(0.31, 1, size), 1_205_439_037, "thirty-one hundredths");
+		assert_eq!(part_at(1.0, 0, size), size, "the end is the end");
+		assert_eq!(part_at(0.0, 2, size), 0);
 	}
 
 	#[test]
@@ -1204,12 +1215,15 @@ mod tests {
 		assert_eq!(limit_at(0.45, scale), Some(10.0));
 		assert_eq!(limit_at(SCALE, scale), Some(100.0));
 		assert_eq!(limit_at(1.0, scale), None, "the far right is no limit");
-		assert_eq!(limit_at(0.2, scale), Some(2.8), "tenths below ten");
+		assert_eq!(limit_at(0.2, scale), Some(2.78), "to hundredths");
 		assert_eq!(parse_limit(""), Ok(None));
 		assert_eq!(parse_limit("5"), Ok(Some(5.0)));
 		assert_eq!(parse_limit("2.5 MB/s"), Ok(Some(2.5)));
 		assert!(parse_limit("fast").is_err());
 		assert_eq!(format_limit(2.8), "2.8");
 		assert_eq!(format_limit(40.0), "40");
+		assert_eq!(format_limit(37.58), "37.58");
+		assert_eq!(format_limit(12.50), "12.5", "a zero at the end is left off");
+		assert_eq!(format_limit(3.0), "3", "and so is a point with nothing after it");
 	}
 }

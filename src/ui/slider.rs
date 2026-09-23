@@ -30,12 +30,16 @@ pub const EXACT: usize = 3;
 /// A hand this still, in points, is holding the value: it does not move, and the time counts
 /// towards a pause.
 const DEADZONE: f32 = 3.0;
-/// How long a hand has to hold before its next move goes one level finer.
+/// How long a hand has to hold before its next move goes one level finer: short on the whole track,
+/// where the first zoom is wanted soon, and longer on a zoomed one, where a hand doing fine work
+/// rests often and each rest was taking it a level deeper than it meant to go.
 const DWELL: Duration = Duration::from_millis(300);
+const DWELL_ZOOMED: Duration = Duration::from_millis(700);
 /// How long a hand has to hang between two places, away from both, before the level goes finer:
 /// the number it wants is not on this level. Not at the finest stepped level, which goes to exact
-/// only on a pause.
+/// only on a pause. Longer on a zoomed track, for the same reason.
 const LINGER: Duration = Duration::from_millis(600);
+const LINGER_ZOOMED: Duration = Duration::from_millis(1000);
 /// How far from a place, as a share of its gap, a hand is hanging between two rather than on one.
 const AWAY: f32 = 0.25;
 /// While zoomed, the gap fills the track but for this share at each end, where the value stops at
@@ -48,10 +52,17 @@ const PROBES: usize = 2000;
 /// Two positions closer than this are one place.
 const SAME: f32 = 1e-5;
 
-/// Steps of a share of the track, for a slider whose owner says nothing about what is round.
+/// How many steps a level cuts the whole track into: ten, and ten in each of those at every level
+/// finer, so whatever the track shows -- the whole of it, or a gap zoomed to fill it -- is ten
+/// steps. None at exact. See spec/ui.md, "A slider reads the hand's intent from its pauses".
+pub fn steps(level: usize) -> Option<u32> {
+	(level < EXACT).then(|| 10u32.pow(level as u32 + 1))
+}
+
+/// A position on the nearest of its level's steps, for a slider whose owner says nothing more.
 fn even(level: usize, position: f32) -> f32 {
-	match [0.1, 0.025, 0.005].get(level) {
-		Some(step) => ((position / step).round() * step).clamp(0.0, 1.0),
+	match steps(level) {
+		Some(n) => ((position * n as f32).round() / n as f32).clamp(0.0, 1.0),
 		None => position,
 	}
 }
@@ -77,12 +88,23 @@ fn view(zoom: Option<(f32, f32)>, value: f32) -> f32 {
 	}
 }
 
-/// The value a place on the track stands for when it shows `zoom`, held to the gap.
+/// The value a place on the track stands for when it shows `zoom`, held to the gap and the track.
 fn unview(zoom: Option<(f32, f32)>, at: f32) -> f32 {
 	match zoom {
-		Some((lo, hi)) if hi > lo => (lo + (at - MARGIN) / (1.0 - 2.0 * MARGIN) * (hi - lo)).clamp(lo, hi),
+		Some((lo, hi)) if hi > lo => {
+			(lo + (at - MARGIN) / (1.0 - 2.0 * MARGIN) * (hi - lo)).clamp(lo.max(0.0), hi.min(1.0))
+		}
 		_ => at.clamp(0.0, 1.0),
 	}
+}
+
+/// A zoom a gap wide, placed so `value` is drawn at `at`: the handle stays under the pointer as the
+/// track is redrawn, instead of the track moving under a pointer that stays. `at` is kept off the
+/// ends, which would otherwise put the value in one.
+fn around(width: f32, value: f32, at: f32) -> (f32, f32) {
+	let at = at.clamp(MARGIN + 0.02, 1.0 - MARGIN - 0.02);
+	let lo = value - (at - MARGIN) / (1.0 - 2.0 * MARGIN) * width;
+	(lo, lo + width)
 }
 
 pub struct Slider {
@@ -97,19 +119,28 @@ pub struct Slider {
 	snap: Option<Snap>,
 	/// Every stepped level's places, found when a handle is taken hold of.
 	places: Vec<Vec<f32>>,
-	/// The gaps the drag went into, one a level: its length is the level, 0 the coarsest and
-	/// `EXACT` the pointer itself, and the last is what the track shows.
+	/// What the drag zoomed into, one a level: its length is the level, 0 the coarsest and `EXACT`
+	/// the pointer itself, and the last is what the track shows. Each is a gap of the level above
+	/// wide, placed around the value where the pointer was when it was entered.
 	gaps: Vec<(f32, f32)>,
 	/// Since when the hand has hung between two places, away from both.
 	hanging: Option<Instant>,
 	/// Since when the hand has been in an end of a zoomed track.
 	edge: Option<Instant>,
+	/// Which end that is: the right one, or the left.
+	edge_right: bool,
 	/// Where the hand came to rest and since when; a move within `DEADZONE` of it is not a move.
 	rest: Option<(Pixels, Instant)>,
 	/// Where the pointer was last, along the track, for a zoom that changes while it is still.
 	pointer: f32,
-	/// How far the handle is drawn from the pointer, as a share of the track: set whenever the
-	/// track is redrawn at another zoom, so the value carries on from where it is.
+	/// Back out on the whole track, the handle waits where it is until the pointer comes to it, on
+	/// this side of it: the pointer is in an end and the value is not, and the whole track has no
+	/// zoom to place around the pointer. See spec/ui.md, "A slider reads the hand's intent from its
+	/// pauses".
+	pickup: Option<f32>,
+	/// How far the handle was from the pointer when it was taken hold of, as a share of the track,
+	/// so a press a little off its centre does not move it. Nothing else moves it apart from the
+	/// pointer: a zoom is placed around the pointer instead.
 	offset: f32,
 }
 
@@ -126,8 +157,10 @@ impl Slider {
 			gaps: Vec::new(),
 			hanging: None,
 			edge: None,
+			edge_right: false,
 			rest: None,
 			pointer: 0.0,
+			pickup: None,
 			offset: 0.0,
 		}
 	}
@@ -173,38 +206,47 @@ impl Slider {
 		places
 	}
 
-	/// The coarsest level a value is a place of, and the gaps of every coarser one around it: a
-	/// value left on a round rate starts the next drag at that rate's level, and one left between
-	/// every level's places starts it exact.
-	fn start_at(&mut self, value: f32, cx: &App) {
+	/// The coarsest level a value is a place of, and a zoom for every coarser one around it, drawn at
+	/// `at`: a value left on a round rate starts the next drag at that rate's level, and one left
+	/// between every level's places starts it exact.
+	fn start_at(&mut self, value: f32, at: f32, cx: &App) {
 		self.gaps.clear();
 		for level in 0..EXACT {
 			if (self.snapped(level, value, cx) - value).abs() <= SAME {
 				return;
 			}
 			match gap(&self.places[level], value, 1.0) {
-				Some(around) => self.gaps.push(around),
+				Some((lo, hi)) => self.gaps.push(around(hi - lo, value, at)),
 				None => return,
 			}
 		}
 	}
 
-	/// One level finer, into the gap of this level that holds `value`, with the pointer at `along`
-	/// now standing for `value` on the zoomed track.
-	fn zoom_in(&mut self, value: f32, toward: f32, along: f32) {
-		let level = self.level();
-		if let Some(around) = self.places.get(level).and_then(|places| gap(places, value, toward)) {
-			self.gaps.push(around);
+	/// How wide a zoom into this level's gap around `value` is.
+	fn gap_width(&self, level: usize, value: f32) -> Option<f32> {
+		let (lo, hi) = self.places.get(level).and_then(|places| gap(places, value, 0.0))?;
+		Some(hi - lo)
+	}
+
+	/// One level finer: the track redrawn as a gap of this level, around `value` at `at`.
+	fn zoom_in(&mut self, value: f32, at: f32) {
+		if let Some(width) = self.gap_width(self.level(), value) {
+			self.gaps.push(around(width, value, at));
 		}
-		self.offset = view(self.zoom(), value) - along;
 		self.hanging = None;
 		self.edge = None;
 	}
 
-	/// One level coarser, the handle's value where it was and the pointer standing for it.
+	/// One level coarser, the handle's value where it was, and the zoom that is now shown placed
+	/// around it at the pointer, as it was when it was entered.
 	fn zoom_out(&mut self, index: usize) {
 		self.gaps.pop();
-		self.offset = view(self.zoom(), self.handles[index]) - self.pointer;
+		let value = self.handles[index];
+		let at = self.pointer + self.offset;
+		match self.gaps.pop() {
+			Some((lo, hi)) => self.gaps.push(around(hi - lo, value, at)),
+			None => self.pickup = Some((at - value).signum()),
+		}
 		self.hanging = None;
 		self.edge = None;
 		self.rest = self.rest.map(|(x, _)| (x, Instant::now()));
@@ -284,6 +326,7 @@ impl Slider {
 		self.rest = Some((event.position.x, Instant::now()));
 		self.hanging = None;
 		self.edge = None;
+		self.pickup = None;
 		self.pointer = position;
 		self.places = (0..EXACT).map(|level| self.find_places(level, cx)).collect();
 		// A press on the handle takes hold of it where it is, at the value's own level, so a drag
@@ -292,8 +335,8 @@ impl Slider {
 		let value = self.handles[index];
 		let width = self.track.get().map(|t| t.size.width / px(1.0)).unwrap_or(0.0);
 		if width > 0.0 && (value - position).abs() * width <= 7.0 {
-			self.start_at(value, cx);
-			self.offset = view(self.zoom(), value) - position;
+			self.offset = value - position;
+			self.start_at(value, value, cx);
 			cx.notify();
 		} else {
 			self.gaps.clear();
@@ -315,29 +358,39 @@ impl Slider {
 		self.pointer = along;
 		let at = along + self.offset;
 
-		// An end of a zoomed track, held, goes back out a level; the value waits at the gap's edge.
+		// An end of a zoomed track stops the value, and held goes back out a level.
 		if self.level() > 0 && !(MARGIN..=1.0 - MARGIN).contains(&at) {
+			self.edge_right = at > 1.0 - MARGIN;
 			match self.edge {
 				None => {
 					self.edge = Some(now);
 					self.hold_edge(now, cx);
 				}
-				Some(since) if now.duration_since(since) >= EDGE_HOLD => {
-					self.zoom_out(index);
-					self.rest = Some((x, now));
-					cx.notify();
-					return;
-				}
+				Some(since) if now.duration_since(since) >= EDGE_HOLD => self.zoom_out(index),
 				Some(_) => {}
 			}
-		} else {
-			self.edge = None;
+			self.rest = Some((x, now));
+			cx.notify();
+			return;
+		}
+		self.edge = None;
+
+		// Back on the whole track, the handle waits for the pointer to reach it.
+		if let Some(side) = self.pickup {
+			let width = self.track.get().map(|t| t.size.width / px(1.0)).unwrap_or(1.0);
+			let value = self.handles[index];
+			if (at - value).signum() == side && (at - value).abs() * width > 7.0 {
+				self.rest = Some((x, now));
+				return;
+			}
+			self.pickup = None;
 		}
 
 		// Hanging between two places, away from both, for long enough: the number is not on this
 		// level. The finest stepped level goes to exact only on a pause.
 		let wanted = unview(self.zoom(), at);
 		let level = self.level();
+		let (dwell, linger) = if level == 0 { (DWELL, LINGER) } else { (DWELL_ZOOMED, LINGER_ZOOMED) };
 		let mut finer = false;
 		if level + 1 < EXACT && self.edge.is_none() {
 			let away = self.places.get(level).and_then(|p| gap(p, wanted, 0.0)).is_some_and(|(lo, hi)| {
@@ -346,8 +399,8 @@ impl Slider {
 			match (away, self.hanging) {
 				(false, _) => self.hanging = None,
 				(true, None) => self.hanging = Some(now),
-				(true, Some(since)) if now.duration_since(since) >= LINGER => {
-					self.zoom_in(wanted, 0.0, along);
+				(true, Some(since)) if now.duration_since(since) >= linger => {
+					self.zoom_in(wanted, at);
 					finer = true;
 				}
 				(true, Some(_)) => {}
@@ -359,15 +412,14 @@ impl Slider {
 			// Held: the value stays what it is while the number is read.
 			return;
 		}
-		if !finer && self.edge.is_none() && self.level() < EXACT && now.duration_since(since) >= DWELL {
-			// A pause, then a move: one level finer, into the gap on the side the hand moved to,
-			// carrying on from where the handle is rather than from where the pointer is.
+		if !finer && self.edge.is_none() && self.level() < EXACT && now.duration_since(since) >= dwell {
+			// A pause, then a move: one level finer, around the value the handle holds, drawn where
+			// the pointer is now.
 			let held = self.handles[index];
-			let from = self.along(rest).unwrap_or(along);
-			self.zoom_in(held, ((x - rest) / px(1.0)).signum(), from);
+			self.zoom_in(held, at);
 		}
 		self.rest = Some((x, now));
-		let value = unview(self.zoom(), along + self.offset);
+		let value = unview(self.zoom(), at);
 		let position = self.snapped(self.level(), value, cx);
 		self.move_handle(index, position, window, cx);
 	}
@@ -379,6 +431,7 @@ impl Slider {
 		self.offset = 0.0;
 		self.hanging = None;
 		self.edge = None;
+		self.pickup = None;
 		cx.notify();
 	}
 }
@@ -408,7 +461,7 @@ impl Render for Slider {
 			Some(places) if dragging => places
 				.iter()
 				.copied()
-				.filter(|p| *p >= lo - SAME && *p <= hi + SAME)
+				.filter(|p| *p >= lo - SAME && *p <= hi + SAME && (0.0..=1.0).contains(p))
 				.map(|p| view(zoom, p))
 				.collect(),
 			_ => Vec::new(),
@@ -417,6 +470,49 @@ impl Render for Slider {
 			ticks.clear();
 		}
 		let ticks = ticks.into_iter();
+
+		// Hints for where the hand can go, each filling as its condition is met and full at the moment
+		// it would act. See spec/ui.md, "A slider reads the hand's intent from its pauses".
+		let now = Instant::now();
+		let level = self.level();
+		let share = |since: Instant, of: Duration| (now.duration_since(since).as_secs_f32() / of.as_secs_f32()).min(1.0);
+		// Deeper: a halo round the held handle that grows as a rest or a hang goes on. It shows from a
+		// fifth of the way, so the rests between the events of a moving hand do not flicker it.
+		let deeper = if dragging && level < EXACT && self.edge.is_none() {
+			let (dwell, linger) = if level == 0 { (DWELL, LINGER) } else { (DWELL_ZOOMED, LINGER_ZOOMED) };
+			let rested = self.rest.map_or(0.0, |(_, since)| share(since, dwell));
+			let hung = self.hanging.filter(|_| level + 1 < EXACT).map_or(0.0, |since| share(since, linger));
+			((rested.max(hung) - 0.2) / 0.8).max(0.0)
+		} else {
+			0.0
+		};
+		// Back out: the two ends of a zoomed track, each marked as a way out, the one the hand is in
+		// filling as it stays.
+		let leaving = self.edge.map_or(0.0, |since| share(since, EDGE_HOLD));
+		if dragging && ((deeper < 1.0 && level < EXACT) || self.edge.is_some()) {
+			window.request_animation_frame();
+		}
+		let held = self.dragging;
+		let end = |right: bool| {
+			let fill = if self.edge.is_some() && self.edge_right == right { leaving } else { 0.0 };
+			div()
+				.absolute()
+				.top(px(4.0))
+				.h(px(12.0))
+				.w(relative(MARGIN))
+				.when(right, |s| s.right_0())
+				.when(!right, |s| s.left_0())
+				.rounded_sm()
+				.bg(p.accent.opacity(0.08 + 0.5 * fill))
+				.flex()
+				.items_center()
+				.justify_center()
+				.text_size(px(11.0))
+				.line_height(px(12.0))
+				.text_color(if fill > 0.0 { p.text } else { p.muted })
+				.child(if right { "\u{203A}" } else { "\u{2039}" })
+		};
+
 		div()
 			.id(SharedString::from(format!("slider:{label}")))
 			.debug_selector({
@@ -427,9 +523,7 @@ impl Render for Slider {
 			.w_full()
 			.min_w(px(60.0))
 			.h(px(20.0))
-			.cursor_pointer()
 			.leaves_focus()
-			.on_mouse_down(MouseButton::Left, cx.listener(Self::press))
 			.child(
 				// Where the track is, for a pointer to be measured against, and while a handle is held,
 				// the window's listeners: an element hears the pointer only while it is over the
@@ -460,6 +554,7 @@ impl Render for Slider {
 				.size_full(),
 			)
 			.child(div().absolute().left_0().right_0().top(px(8.0)).h(px(4.0)).rounded_full().bg(p.track))
+			.when(zoom.is_some(), |s| s.child(end(false)).child(end(true)))
 			.children(zoom.map(|_| {
 				div()
 					.absolute()
@@ -483,6 +578,18 @@ impl Render for Slider {
 			.children(ticks.map(|at| {
 				div().absolute().top(px(7.0)).h(px(6.0)).w(px(1.0)).left(relative(at)).bg(p.muted.opacity(0.6))
 			}))
+			.children(held.filter(|_| deeper > 0.0).and_then(|index| self.handles.get(index)).map(|&at| {
+				let radius = 7.0 + 5.0 * deeper;
+				div()
+					.absolute()
+					.top(px(10.0 - radius))
+					.left(relative(shown(at)))
+					.ml(px(-radius))
+					.size(px(2.0 * radius))
+					.rounded_full()
+					.bg(p.accent.opacity(0.15 + 0.25 * deeper))
+					.when(deeper >= 1.0, |s| s.border_1().border_color(p.accent))
+			}))
 			.children(self.handles.iter().enumerate().map(|(index, &at)| {
 				let name = match (pair, index) {
 					(false, _) => label.to_string(),
@@ -504,6 +611,20 @@ impl Render for Slider {
 					.border_color(p.border)
 					.bg(p.text)
 			}))
+			.child(
+				// What takes a press: the track and a dot's radius past each end, since a handle at an end
+				// is centred on it and half its dot lies outside the track. Pressed at its centre, the
+				// dot of a handle at the far right used to take nothing at all.
+				div()
+					.id("press")
+					.absolute()
+					.top_0()
+					.bottom_0()
+					.left(px(-7.0))
+					.right(px(-7.0))
+					.cursor_pointer()
+					.on_mouse_down(MouseButton::Left, cx.listener(Self::press)),
+			)
 	}
 }
 
@@ -513,9 +634,10 @@ mod tests {
 
 	use super::*;
 
-	fn one_gap(slider: &Entity<Slider>, cx: &mut VisualTestContext, (lo, hi): (f32, f32)) -> bool {
+	/// One zoom, a gap this wide, drawing `value` where the pointer is.
+	fn zoomed(slider: &Entity<Slider>, cx: &mut VisualTestContext, width: f32, value: f32, at: f32) -> bool {
 		let gaps = slider.read_with(cx, |slider, _| slider.gaps.clone());
-		gaps.len() == 1 && (gaps[0].0 - lo).abs() < 1e-5 && (gaps[0].1 - hi).abs() < 1e-5
+		gaps.len() == 1 && ((gaps[0].1 - gaps[0].0) - width).abs() < 1e-5 && (view(gaps.first().copied(), value) - at).abs() < 1e-4
 	}
 
 	#[test]
@@ -532,15 +654,31 @@ mod tests {
 		assert!((unview(zoom, 0.5) - 0.45).abs() < 1e-6, "the middle of the track is the middle of the gap");
 		assert_eq!(unview(zoom, 0.01), 0.4, "an end holds the value at the gap's edge");
 		assert_eq!(unview(None, 0.3), 0.3, "an unzoomed track is itself");
-		assert!((even(1, 0.437) - 0.425).abs() < 1e-6);
+		assert!((even(0, 0.437) - 0.4).abs() < 1e-6, "ten steps across the track");
+		assert!((even(1, 0.437) - 0.44).abs() < 1e-6, "ten in each of those");
+		assert!((even(2, 0.4371) - 0.437).abs() < 1e-6, "and ten again");
+		assert_eq!(steps(EXACT), None, "exact has none");
+	}
+
+	/// The slider with room around it, as it has in a sheet: a press past its ends lands in the window.
+	struct Room(Entity<Slider>);
+
+	impl Render for Room {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			div().p(px(40.0)).child(self.0.clone())
+		}
 	}
 
 	fn opened(handles: Vec<f32>, cx: &mut TestAppContext) -> (Entity<Slider>, VisualTestContext, Bounds<Pixels>) {
 		let window = cx.update(|cx| {
-			cx.open_window(Default::default(), |_, cx| cx.new(|_| Slider::new("Limit", handles))).unwrap()
+			cx.open_window(Default::default(), |_, cx| {
+				let slider = cx.new(|_| Slider::new("Limit", handles));
+				cx.new(|_| Room(slider))
+			})
+			.unwrap()
 		});
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
-		let slider = window.root(&mut cx).unwrap();
+		let slider = window.root(&mut cx).unwrap().read_with(&cx, |room, _| room.0.clone());
 		cx.update(|window, _| window.refresh());
 		cx.run_until_parked();
 		let track = slider.read_with(&cx, |slider, _| slider.track.get()).expect("the track was drawn");
@@ -548,7 +686,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn a_pause_zooms_into_a_gap_and_an_end_held_zooms_back_out(cx: &mut TestAppContext) {
+	fn a_zoom_is_placed_around_the_pointer_and_an_end_held_zooms_back_out(cx: &mut TestAppContext) {
 		let (slider, mut cx, track) = opened(vec![0.5], cx);
 		let y = track.center().y;
 		let width = track.size.width / px(1.0);
@@ -564,22 +702,34 @@ mod tests {
 		cx.run_until_parked();
 		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "a hand this still holds the value");
 		std::thread::sleep(DWELL + Duration::from_millis(50));
-		cx.simulate_mouse_move(point(at(0.61).x + px(40.0), y), MouseButton::Left, Modifiers::default());
+		let entered = 0.61 + 40.0 / width;
+		cx.simulate_mouse_move(at(entered), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 1, "the pause bought one level");
-		assert!(one_gap(&slider, &mut cx, (0.6, 0.7)), "into the gap it moved to");
-		// The gap fills the track, so 40 points is a ninth of a tenth: the value carried on from 0.6.
-		let expected = even(1, 0.6 + 40.0 / width / (1.0 - 2.0 * MARGIN) * 0.1);
-		assert!((handle(&mut cx) - expected).abs() < 1e-6, "carried on from 0.6, zoomed: {}", handle(&mut cx));
-		// Into the left end, where the value waits at the gap's edge, and held there.
-		cx.simulate_mouse_move(point(at(0.61).x - px(20.0), y), MouseButton::Left, Modifiers::default());
+		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "the value did not move as the track was redrawn");
+		assert!(zoomed(&slider, &mut cx, 0.1, 0.6, entered), "a gap wide, with 0.6 under the pointer");
+		// On the zoomed track the handle follows the pointer, a tenth across the band's width.
+		cx.simulate_mouse_move(at(entered + 36.0 / width), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
-		assert!((handle(&mut cx) - 0.6).abs() < 1e-6, "an end holds the value at the edge");
+		let expected = even(1, 0.6 + 36.0 / width / (1.0 - 2.0 * MARGIN) * 0.1);
+		assert!((handle(&mut cx) - expected).abs() < 1e-6, "zoomed: {}", handle(&mut cx));
+		// Into the left end: the value stops, and held there, still, the track goes back out.
+		let before = handle(&mut cx);
+		cx.simulate_mouse_move(at(0.02), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert_eq!(handle(&mut cx), before, "an end stops the value");
 		assert_eq!(level(&mut cx), 1, "not yet out");
 		cx.executor().advance_clock(EDGE_HOLD + Duration::from_millis(10));
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 0, "held in the end, still, goes back out");
-		cx.simulate_mouse_up(at(0.6), MouseButton::Left, Modifiers::default());
+		// Back on the whole track the handle waits for the pointer to come to it, then follows.
+		cx.simulate_mouse_move(at(0.3), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert_eq!(handle(&mut cx), before, "short of the handle, nothing moves");
+		cx.simulate_mouse_move(at(0.81), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert!((handle(&mut cx) - 0.8).abs() < 1e-6, "past it, the handle is the pointer's again");
+		cx.simulate_mouse_up(at(0.81), MouseButton::Left, Modifiers::default());
 	}
 
 	#[gpui::test]
@@ -598,14 +748,31 @@ mod tests {
 		assert_eq!(level(&mut cx), 1, "between 0.5 and 0.6, away from both, for long enough");
 		let value = slider.read_with(&cx, |slider, _| slider.handles[0]);
 		assert!((value - 0.55).abs() < 1e-6, "on the finer places, where the hand was: {value}");
+		assert!(zoomed(&slider, &mut cx, 0.1, 0.551, 0.551), "around the pointer");
 		cx.simulate_mouse_up(at(0.551), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 0, "a release leaves the track unzoomed");
 		// The next press starts where this one left off: 0.55 is a place of the middle level only.
 		cx.simulate_mouse_down(at(0.55), MouseButton::Left, Modifiers::default());
 		assert_eq!(level(&mut cx), 1, "a value between coarse places starts at its own level");
-		assert!(one_gap(&slider, &mut cx, (0.5, 0.6)), "and in the gap that holds it");
+		assert!(zoomed(&slider, &mut cx, 0.1, 0.55, 0.55), "zoomed around it, under the pointer");
 		cx.simulate_mouse_up(at(0.55), MouseButton::Left, Modifiers::default());
+	}
+
+	#[gpui::test]
+	fn a_handle_at_the_end_is_taken_by_a_press_on_its_dot(cx: &mut TestAppContext) {
+		let (slider, mut cx, track) = opened(vec![1.0], cx);
+		let y = track.center().y;
+		// The dot is centred on the track's end, so half of it lies past the track.
+		cx.simulate_mouse_down(point(track.right() + px(3.0), y), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert!(slider.read_with(&cx, |slider, _| slider.dragging.is_some()), "the dot's outer half takes the press");
+		cx.simulate_mouse_up(point(track.right() + px(3.0), y), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		cx.simulate_mouse_down(point(track.right(), y), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert!(slider.read_with(&cx, |slider, _| slider.dragging.is_some()), "and so does its centre");
+		cx.simulate_mouse_up(point(track.right(), y), MouseButton::Left, Modifiers::default());
 	}
 
 	#[gpui::test]

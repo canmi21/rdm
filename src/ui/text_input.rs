@@ -2,6 +2,7 @@
 //! (Apache-2.0), trimmed to one line and drawn in this application's palette.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use gpui::{
 	App, Bounds, ClipboardItem, Context, CursorStyle, DispatchPhase, ElementId, ElementInputHandler,
@@ -67,8 +68,8 @@ pub fn key_bindings() -> Vec<gpui::KeyBinding> {
 }
 
 /// What Enter does, decided by whoever owns the field.
-type OnConfirm = Box<dyn Fn(&str, &mut Window, &mut App)>;
-type OnCancel = Box<dyn Fn(&mut Window, &mut App)>;
+type OnConfirm = Rc<dyn Fn(&str, &mut Window, &mut App)>;
+type OnCancel = Rc<dyn Fn(&mut Window, &mut App)>;
 
 pub struct TextInput {
 	focus_handle: FocusHandle,
@@ -116,12 +117,12 @@ impl TextInput {
 	}
 
 	pub fn on_confirm(mut self, f: impl Fn(&str, &mut Window, &mut App) + 'static) -> Self {
-		self.on_confirm = Some(Box::new(f));
+		self.on_confirm = Some(Rc::new(f));
 		self
 	}
 
 	pub fn on_cancel(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-		self.on_cancel = Some(Box::new(f));
+		self.on_cancel = Some(Rc::new(f));
 		self
 	}
 
@@ -151,15 +152,19 @@ impl TextInput {
 		window.focus_next(cx);
 	}
 
+	// Enter and Escape reach their owner once this field is done with itself, not from inside its
+	// own update: an owner reads its fields when it acts on them, and reading this one from in here
+	// panicked. The New Task sheet did exactly that on Enter, and the application went down with it.
 	fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
-		if let Some(on_cancel) = self.on_cancel.as_ref() {
-			on_cancel(window, cx);
+		if let Some(on_cancel) = self.on_cancel.clone() {
+			window.defer(cx, move |window, cx| on_cancel(window, cx));
 		}
 	}
 
 	fn confirm(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
-		if let Some(on_confirm) = self.on_confirm.as_ref() {
-			on_confirm(self.content.trim(), window, cx);
+		if let Some(on_confirm) = self.on_confirm.clone() {
+			let text = self.content.trim().to_owned();
+			window.defer(cx, move |window, cx| on_confirm(&text, window, cx));
 		}
 	}
 
@@ -786,6 +791,47 @@ mod tests {
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 		let input = window.root(&mut cx).unwrap();
 		(input, cx)
+	}
+
+	#[gpui::test]
+	fn enter_and_escape_reach_their_callbacks_after_the_field_is_done_with_itself(cx: &mut TestAppContext) {
+		use std::cell::RefCell;
+		use std::rc::Rc;
+		// What a sheet does on Enter: read the field Enter was pressed in. Called from inside the
+		// field's own update, that read panicked, and took the application down with it.
+		let field: Rc<RefCell<Option<Entity<TextInput>>>> = Rc::default();
+		let seen: Rc<RefCell<Vec<String>>> = Rc::default();
+		cx.update(|cx| cx.bind_keys(key_bindings()));
+		let window = cx.update(|cx| {
+			let (field, seen) = (field.clone(), seen.clone());
+			cx.open_window(Default::default(), move |_, cx| {
+				let (confirmed, cancelled) = ((field.clone(), seen.clone()), (field.clone(), seen.clone()));
+				let input = cx.new(|cx| {
+					TextInput::new("", cx)
+						.on_confirm(move |_, _, cx| {
+							let input = confirmed.0.borrow().clone().unwrap();
+							confirmed.1.borrow_mut().push(format!("confirm {}", input.read(cx).content));
+						})
+						.on_cancel(move |_, cx| {
+							let input = cancelled.0.borrow().clone().unwrap();
+							cancelled.1.borrow_mut().push(format!("cancel {}", input.read(cx).content));
+						})
+				});
+				*field.borrow_mut() = Some(input.clone());
+				input
+			})
+			.unwrap()
+		});
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+		let input = window.root(&mut cx).unwrap();
+		cx.update(|window, cx| {
+			window.focus(&input.read(cx).focus(), cx);
+			input.update(cx, |input, cx| input.replace_text_in_range(None, "https://a.example/x", window, cx));
+		});
+		cx.simulate_keystrokes("enter");
+		cx.simulate_keystrokes("escape");
+		cx.run_until_parked();
+		assert_eq!(*seen.borrow(), ["confirm https://a.example/x", "cancel https://a.example/x"]);
 	}
 
 	#[gpui::test]

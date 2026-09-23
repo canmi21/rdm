@@ -133,6 +133,31 @@ pub fn button(
 	enabled: bool,
 	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
+	labelled(p, id, glyph, label, enabled, false, on_click)
+}
+
+/// The same with the glyph after the word, for a glyph that says how the action is reached rather
+/// than what it is: the return key's on the button Enter presses.
+pub fn button_after(
+	p: Palette,
+	id: impl Into<ElementId>,
+	glyph: Icon,
+	label: &'static str,
+	enabled: bool,
+	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Stateful<Div> {
+	labelled(p, id, glyph, label, enabled, true, on_click)
+}
+
+fn labelled(
+	p: Palette,
+	id: impl Into<ElementId>,
+	glyph: Icon,
+	label: &'static str,
+	enabled: bool,
+	after: bool,
+	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Stateful<Div> {
 	let color = if enabled { p.text } else { p.muted };
 	let base = div()
 		.id(id)
@@ -146,8 +171,9 @@ pub fn button(
 		.py_0p5()
 		.rounded_sm()
 		.text_color(color)
-		.child(icon(glyph, color).size_3p5())
-		.child(label);
+		.when(!after, |s| s.child(icon(glyph, color).size_3p5()))
+		.child(label)
+		.when(after, |s| s.child(icon(glyph, color).size_3p5()));
 	if enabled {
 		base.cursor_pointer().hover(move |s| s.bg(p.hover)).on_click(on_click)
 	} else {
