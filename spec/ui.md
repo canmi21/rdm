@@ -913,8 +913,10 @@ the level's, wherever they fall in it. A band drawn over the gap's own width on 
 first; it showed where the gap was, but a gap of a hundredth of the track left the hand a few points
 to work in, and the precision a level promised was not there to be had.
 
-- **A press takes a handle anywhere on its dot.** A handle at an end is centred on it and half its
-  dot lies past the track, so what takes a press reaches a dot's radius past each end; a handle at
+- **The handle is a white pill lying along the track**, 18 points by 10, flatter and wider than the
+  round dot of 14 it replaced; 22 by 12 was tried first and read as heavy beside a 4-point track: it reads as something to slide, and gives the hand more to take hold
+  of. A press anywhere on it takes it where it is. A handle at an end is centred on it and half of
+  it lies past the track, so what takes a press reaches half a handle past each end; a handle at
   the far right used to take nothing when pressed at its centre.
 - **A press on the handle starts at the value's own level.** A value on one of the coarsest places
   starts coarse; one on the middle level's places starts there, zoomed into the coarse gap that
@@ -924,14 +926,16 @@ to work in, and the precision a level promised was not there to be had.
 - **Slowing down changes nothing.** A hand that slows is reading the number, and the number stays
   on its level's places while it is read. A hand held within 3 points of where it came to rest
   holds the value.
-- **Finer, on one of two signals.** A move after a rest goes one level finer, zoomed around the value
-  the handle holds. Or the hand hangs between two places, away from both by a quarter of the gap:
-  the number it wants is not on this level. On the whole track the rest is 300 ms and the hang 600
-  ms, since the first zoom is wanted soon; on a zoomed track they are 700 ms and a second, since a
-  hand doing fine work rests often, and at the shorter times each rest took it a level deeper than
-  it meant to go. Hanging does not work at the finest stepped
-  level; only a pause and a move goes from there to exact, since exact is a different kind of
-  place, not a finer one.
+- **Finer, on a swing or a hang, and on nothing else.** Anywhere else a hand may go where it likes
+  without the level changing, since going somewhere is what a drag is. A **swing** is the handle
+  landing on a place, then on its neighbour, then back on the first: the number is plainly between
+  the two, and a hold of 150 ms inside their gap goes into it. A **hang** is the hand between two
+  places, away from both by a quarter of the gap, for a second: long, because a hand between two
+  places may only be unsure, and the length of the hang is what says it wants what is between. Both
+  work at every level, the finest stepped one into exact included, and a zoom goes in around the
+  value where the hand is. A rest followed by a move went a level finer before, and it was the
+  wrong signal: a hand rests to read the number, and a hand doing fine work rests often, so each
+  rest took it a level deeper than it meant to go.
 - **Coarser, at an end.** In the 5% at either end of a zoomed track the value stops where it was,
   and a hand that stays there 400 ms -- moving or still -- goes back out one level, with the value
   where it was and the zoom it goes back to placed around it at the pointer. Out on the whole track,
@@ -951,8 +955,9 @@ coarser, with no way back that meant anything: a level was a mode, not a place.
 **Each way the hand can go is drawn as it fills.** Going deeper and going back out both wait on
 the hand, and a wait nobody can see reads as nothing happening, so each has a mark that grows as its
 condition is met and is full at the moment it would act. Deeper is a halo round the held handle,
-growing as a rest or a hang goes on, ringed in the accent when a move would go a level finer; it
-shows from a fifth of the way, so the short rests between a moving hand's events do not flicker it.
+growing as a hang goes on or as the short hold after a swing does, ringed in the accent at the
+moment it goes in; a hang's shows from a fifth of the way, so passing between two places does not
+flicker it.
 Back out is the two ends of a zoomed track, each a pale block with a chevron pointing out of the
 track, and the one the hand is in darkening as it stays. Both are drawn frame by frame while a
 drag is on and nothing is drawn once it ends.
