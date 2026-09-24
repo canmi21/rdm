@@ -44,6 +44,19 @@ pub struct Options {
 	/// Turn away a request that arrives while more than this many connections are open, as a
 	/// server limiting connections per client does: with a status, or by closing without a word.
 	pub crowded: Option<(usize, Turned)>,
+	/// A connection that goes quiet or slow partway, as one stuck on a bad path does.
+	pub stall: Option<Stall>,
+}
+
+/// The first `times` requests whose range starts at or past `from` send `after` body bytes at
+/// full speed, then sleep `pause` before each further 4 KiB: a long pause is a connection that
+/// has stopped, a short one a connection crawling.
+#[derive(Clone, Copy, Debug)]
+pub struct Stall {
+	pub from: usize,
+	pub after: usize,
+	pub pause: Duration,
+	pub times: usize,
 }
 
 /// How a server limiting connections turns one away.
@@ -69,6 +82,7 @@ impl Default for Options {
 			delay_per_chunk: Duration::ZERO,
 			ignore_ranges: false,
 			crowded: None,
+			stall: None,
 		}
 	}
 }
@@ -93,8 +107,10 @@ struct Inner {
 	options: Arc<Mutex<Options>>,
 	seen: Arc<Mutex<Vec<Seen>>>,
 	failures: Arc<AtomicUsize>,
+	stalls: Arc<AtomicUsize>,
 	open: Arc<AtomicUsize>,
 	peak: Arc<AtomicUsize>,
+	accepted: Arc<AtomicUsize>,
 	turned: Arc<AtomicUsize>,
 	stop: Arc<AtomicBool>,
 }
@@ -114,8 +130,10 @@ impl TestServer {
 			options: Arc::new(Mutex::new(options)),
 			seen: Arc::new(Mutex::new(Vec::new())),
 			failures: Arc::new(AtomicUsize::new(0)),
+			stalls: Arc::new(AtomicUsize::new(0)),
 			open: Arc::new(AtomicUsize::new(0)),
 			peak: Arc::new(AtomicUsize::new(0)),
+			accepted: Arc::new(AtomicUsize::new(0)),
 			turned: Arc::new(AtomicUsize::new(0)),
 			stop: Arc::new(AtomicBool::new(false)),
 		};
@@ -151,6 +169,11 @@ impl TestServer {
 	}
 
 	/// The most connections open at one moment so far.
+	/// How many TCP connections were opened, as against requests made on them.
+	pub fn accepted(&self) -> usize {
+		self.inner.accepted.load(Ordering::Relaxed)
+	}
+
 	pub fn peak_connections(&self) -> usize {
 		self.inner.peak.load(Ordering::Relaxed)
 	}
@@ -176,6 +199,7 @@ impl Drop for TestServer {
 
 impl Inner {
 	fn serve(&self, mut stream: TcpStream) {
+		self.accepted.fetch_add(1, Ordering::Relaxed);
 		let open = self.open.fetch_add(1, Ordering::Relaxed) + 1;
 		self.peak.fetch_max(open, Ordering::Relaxed);
 		// The listener is non-blocking so the accept loop can watch the stop flag, and on macOS
@@ -183,13 +207,17 @@ impl Inner {
 		// read, which the client saw as a reset or a truncated response.
 		let _ = stream.set_nonblocking(false);
 		let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-		// One request per connection is enough for these tests; the client is told so. The
-		// socket is closed politely -- our side shut, theirs read to its end -- because a close
-		// with bytes still unread in the receive buffer is answered with a reset, and the client
-		// then reports the reset instead of the response it already had.
-		let _ = self.serve_one(&mut stream);
-		// Counted until the answer is sent or the client has gone, not through the polite close
-		// below, which waits on the client's pace rather than the server's.
+		// Kept alive as a real server keeps it, so a client's pooled connection is asked again on
+		// the same socket, and counted as open, as a server limiting connections counts it, until
+		// the client closes it or an answer ends it. The socket is then closed politely -- our side
+		// shut, theirs read to its end -- because a close with bytes still unread in the receive
+		// buffer is answered with a reset, and the client then reports the reset instead of the
+		// response it already had.
+		let Ok(clone) = stream.try_clone() else { return };
+		let mut reader = BufReader::new(clone);
+		while matches!(self.serve_one(&mut reader, &mut stream, open), Ok(true)) {}
+		// Counted until the last answer is sent or the client has gone, not through the polite
+		// close below, which waits on the client's pace rather than the server's.
 		self.open.fetch_sub(1, Ordering::Relaxed);
 		let _ = stream.shutdown(std::net::Shutdown::Write);
 		let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
@@ -197,10 +225,19 @@ impl Inner {
 		while matches!(stream.read(&mut sink), Ok(n) if n > 0) {}
 	}
 
-	fn serve_one(&self, stream: &mut TcpStream) -> std::io::Result<()> {
-		let mut reader = BufReader::new(stream.try_clone()?);
+	/// One request and its answer; whether the connection stays open for another.
+	/// One request and its answer; whether the connection stays open for another. `admitted` is
+	/// how many were open, this one among them, when it arrived.
+	fn serve_one(
+		&self,
+		reader: &mut BufReader<TcpStream>,
+		stream: &mut TcpStream,
+		admitted: usize,
+	) -> std::io::Result<bool> {
 		let mut line = String::new();
-		reader.read_line(&mut line)?;
+		if reader.read_line(&mut line)? == 0 {
+			return Ok(false);
+		}
 		let mut words = line.split_whitespace();
 		let method = words.next().unwrap_or("").to_owned();
 		let path = words.next().unwrap_or("/").to_owned();
@@ -230,17 +267,23 @@ impl Inner {
 		let options = self.options.lock().unwrap().clone();
 		let body = self.body.lock().unwrap().clone();
 
+		// Judged by the count the connection arrived to, as a server admitting connections in turn
+		// judges it: read now, the count would take in connections that arrived after this one, and
+		// two arriving together would each be turned away for the other.
 		if let Some((limit, turned)) = options.crowded
-			&& self.open.load(Ordering::Relaxed) > limit
+			&& admitted > limit
 		{
 			self.turned.fetch_add(1, Ordering::Relaxed);
 			return match turned {
-				Turned::Status(status) => write_head(stream, status, &[("Content-Length", "0".into())], true),
-				Turned::Closed => Ok(()),
+				Turned::Status(status) => {
+					write_head(stream, status, &[("Content-Length", "0".into())], true, false).map(|_| false)
+				}
+				Turned::Closed => Ok(false),
 			};
 		}
 		if let Some(status) = options.status {
-			return write_head(stream, status, &[("Content-Length", "0".into())], true);
+			return write_head(stream, status, &[("Content-Length", "0".into())], true, false)
+				.map(|_| false);
 		}
 		if options.redirect_from.as_deref() == Some(path.as_str()) {
 			return write_head(
@@ -248,7 +291,9 @@ impl Inner {
 				302,
 				&[("Location", "/target".into()), ("Content-Length", "0".into())],
 				true,
-			);
+				false,
+			)
+			.map(|_| false);
 		}
 		let mut headers: Vec<(&str, String)> = Vec::new();
 		if options.ranges {
@@ -276,7 +321,7 @@ impl Inner {
 				let total = body.len() as u64;
 				if start >= total {
 					headers.push(("Content-Range", format!("bytes */{total}")));
-					return write_head(stream, 416, &headers, true);
+					return write_head(stream, 416, &headers, true, false).map(|_| false);
 				}
 				let end = end.map_or(total - 1, |e| e.min(total - 1));
 				headers.push(("Content-Range", format!("bytes {start}-{end}/{total}")));
@@ -290,14 +335,22 @@ impl Inner {
 		} else {
 			headers.push(("Content-Length", slice.len().to_string()));
 		}
-		write_head(stream, status, &headers, false)?;
+		write_head(stream, status, &headers, false, true)?;
 		if method == "HEAD" {
-			return Ok(());
+			return Ok(true);
 		}
 		let cut =
 			options.fail_after.filter(|_| self.failures.load(Ordering::Relaxed) < options.fail_times);
+		let slow = options.stall.filter(|stall| {
+			status == 206
+				&& range.is_some_and(|(start, _)| start as usize >= stall.from)
+				&& self.stalls.fetch_add(1, Ordering::Relaxed) < stall.times
+		});
 		let mut sent = 0usize;
 		for chunk in slice.chunks(4096) {
+			if let Some(stall) = slow.filter(|stall| sent >= stall.after) {
+				thread::sleep(stall.pause);
+			}
 			let chunk = match cut {
 				Some(limit) if sent + chunk.len() > limit => &chunk[..limit.saturating_sub(sent)],
 				_ => chunk,
@@ -314,7 +367,7 @@ impl Inner {
 				// Dropped mid-body, as a flaky link would; the client sees an unexpected EOF.
 				self.failures.fetch_add(1, Ordering::Relaxed);
 				let _ = stream.shutdown(std::net::Shutdown::Both);
-				return Ok(());
+				return Ok(false);
 			}
 			if !options.delay_per_chunk.is_zero() {
 				thread::sleep(options.delay_per_chunk);
@@ -324,7 +377,7 @@ impl Inner {
 			stream.write_all(b"0\r\n\r\n")?;
 		}
 		stream.flush()?;
-		Ok(())
+		Ok(true)
 	}
 }
 
@@ -333,6 +386,7 @@ fn write_head(
 	status: u16,
 	headers: &[(&str, String)],
 	done: bool,
+	keep: bool,
 ) -> std::io::Result<()> {
 	let reason = match status {
 		200 => "OK",
@@ -344,7 +398,8 @@ fn write_head(
 		503 => "Service Unavailable",
 		_ => "Status",
 	};
-	write!(stream, "HTTP/1.1 {status} {reason}\r\nConnection: close\r\n")?;
+	let connection = if keep { "keep-alive" } else { "close" };
+	write!(stream, "HTTP/1.1 {status} {reason}\r\nConnection: {connection}\r\n")?;
 	for (name, value) in headers {
 		write!(stream, "{name}: {value}\r\n")?;
 	}

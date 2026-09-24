@@ -75,7 +75,9 @@ pub async fn probe(client: &Client, url: Url) -> Result<Probe> {
 		.and_then(|d| disposition_name(&d))
 		.or_else(|| url_name(&final_url))
 		.unwrap_or_else(|| "download".to_owned());
-	Ok(Probe {
+	let small =
+		text(CONTENT_LENGTH).and_then(|v| v.parse::<u64>().ok()).is_some_and(|n| n <= 64 * 1024);
+	let probed = Probe {
 		url: final_url,
 		size,
 		ranges,
@@ -85,7 +87,15 @@ pub async fn probe(client: &Client, url: Url) -> Result<Probe> {
 		content_type: text(CONTENT_TYPE),
 		version,
 		server: text(SERVER),
-	})
+	};
+	// The byte asked for is read to its end, which is what puts the connection back in the
+	// client's pool for the first connection of the download to go on with; a body left unread
+	// closes it instead. A 200 is the whole file and is let go. See spec/engine.md, "The server
+	// decides how many connections it takes".
+	if status == StatusCode::PARTIAL_CONTENT && small {
+		let _ = response.bytes().await;
+	}
+	Ok(probed)
 }
 
 /// How a protocol version is written where people read it.
@@ -161,7 +171,11 @@ mod tests {
 		assert_eq!(probe.etag.as_deref(), Some("\"v1\""));
 		assert_eq!(probe.validator(), Some("\"v1\""));
 		assert_eq!(probe.file_name, "data.bin");
-		assert_eq!((probe.version, probe.server.as_deref()), ("HTTP/1.1", None), "no Server header sent");
+		assert_eq!(
+			(probe.version, probe.server.as_deref()),
+			("HTTP/1.1", None),
+			"no Server header sent"
+		);
 		assert_eq!(server.requests().len(), 1, "one request, and its body was one byte");
 		assert_eq!(server.requests()[0].range, Some((0, Some(0))));
 	}

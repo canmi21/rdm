@@ -136,14 +136,12 @@ impl Default for Handle {
 pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<Finished> {
 	let settings =
 		Settings { connections: request.settings.connections.clamped(), ..request.settings.clone() };
-	// The probe's client goes as soon as it has answered, and its connection with it: kept, the
-	// connection would sit idle in the pool for the whole download, holding one of the places a
-	// server limiting connections per client counts. See spec/engine.md, "The server decides how
-	// many connections it takes".
-	let probed = {
-		let single = crate::engine::client::build(&settings, false)?;
-		probe(&single, request.url.clone()).await?
-	};
+	// The probe's client, with its connection in the pool, is the first connection of the download:
+	// dropped, the server would go on counting a socket it had not noticed close, and turn away a
+	// connection it would have taken; kept idle, it would hold one of the places for the whole
+	// download. See spec/engine.md, "The server decides how many connections it takes".
+	let first = crate::engine::client::build(&settings, false)?;
+	let probed = probe(&first, request.url.clone()).await?;
 	*handle.probed.lock().unwrap() = Some(probed.clone());
 	if let (Some(size), Some(limit)) = (probed.size, settings.max_size)
 		&& size > limit
@@ -214,9 +212,18 @@ pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<F
 
 	let mut sources = vec![probed.url.clone()];
 	sources.extend(request.mirrors.iter().cloned());
-	let result =
-		schedule(&settings, &probed, &sources, validator, plan.clone(), writer.clone(), handle, global)
-			.await;
+	let result = schedule(
+		&settings,
+		&probed,
+		first,
+		&sources,
+		validator,
+		plan.clone(),
+		writer.clone(),
+		handle,
+		global,
+	)
+	.await;
 	match result {
 		Ok(()) => {
 			let size = plan.lock().unwrap().span.len();
@@ -252,6 +259,26 @@ const PROBE_AFTER: Duration = Duration::from_secs(10);
 /// How long a connection of ours may go on being counted by a server after we closed it: the
 /// round trip for it to notice, with room to spare.
 const LINGER: Duration = Duration::from_millis(500);
+
+/// How many times slower than the others a connection has to be, for `stall_timeout` on end,
+/// before it is taken for stuck on a bad path rather than merely slower.
+const CRAWL: f64 = 16.0;
+
+/// One running connection as the stall watch sees it: its own stop, when it started and from how
+/// far into its segment, and when its segment last moved.
+struct Watch {
+	stop: CancellationToken,
+	started: Instant,
+	from: u64,
+	seen: u64,
+	moved: Instant,
+	slow_since: Option<Instant>,
+}
+
+fn median(mut values: Vec<f64>) -> f64 {
+	values.sort_by(f64::total_cmp);
+	values[values.len() / 2]
+}
 
 /// Whether a failure is the server turning a connection away rather than the network failing:
 /// too busy, a refusal, or a connection closed before it delivered a byte. A refusal and a close
@@ -289,6 +316,7 @@ impl LenOrZero for Span {
 async fn schedule(
 	settings: &Settings,
 	probed: &Probe,
+	first: reqwest::Client,
 	sources: &[Url],
 	validator: Option<String>,
 	plan: Arc<Mutex<Plan>>,
@@ -332,8 +360,12 @@ async fn schedule(
 	let mut strikes = 0u32;
 	// When a connection of ours that was being served last closed. A server goes on counting one
 	// until it has noticed, so a refusal just after is more likely that than a limit, and is
-	// waited out the same way. The probe's is not one: its client is dropped as it answers.
+	// waited out the same way. The probe's is not one: it goes on as the first connection.
 	let mut closed_at: Option<Instant> = None;
+	// When a connection of ours was last turned away. Not a reason to doubt the refusals that
+	// come after it, which were mostly asked for at the same moment; only one opened within a
+	// LINGER after it, which the server may have counted beside the one it was still closing.
+	let mut refused_at: Option<Instant> = None;
 	let mut answering: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
 	// No new connection before this, after one was turned away: the wait the server asked for,
 	// or the retry wait.
@@ -341,6 +373,13 @@ async fn schedule(
 	// Each segment's pace in bytes a second, smoothed, for cutting the one that will finish last.
 	let mut pace: Vec<f64> = Vec::new();
 	let mut landed: Vec<u64> = Vec::new();
+	// Each running connection's own stop, and what the stall watch knows of it; and the pace the
+	// fastest of them kept, for judging the last one left, which has nobody else to be judged
+	// against. See spec/engine.md, "A stuck connection is reopened".
+	let mut watch: HashMap<usize, Watch> = HashMap::new();
+	let mut peers_pace = 0f64;
+	// The probe's client, for the first connection to go on with the connection it left.
+	let mut reuse = Some(first);
 	let mut workers: JoinSet<(usize, bool, Result<Outcome>)> = JoinSet::new();
 	let mut active: Vec<usize> = Vec::new();
 	let mut attempts: Vec<u32> = vec![0; plan.lock().unwrap().segments.len()];
@@ -374,7 +413,8 @@ async fn schedule(
 						// The cut goes where the download will finish last: a segment's bytes left
 						// at its own pace, or at the typical pace while it has none yet.
 						let known: Vec<f64> = pace.iter().copied().filter(|r| *r > 0.0).collect();
-						let typical = if known.is_empty() { 1.0 } else { known.iter().sum::<f64>() / known.len() as f64 };
+						let typical =
+							if known.is_empty() { 1.0 } else { known.iter().sum::<f64>() / known.len() as f64 };
 						let pace = &pace;
 						plan.steal_latest(settings.min_segment, |i, segment| {
 							let rate = pace.get(i).copied().filter(|r| *r > 0.0).unwrap_or(typical);
@@ -390,7 +430,10 @@ async fn schedule(
 			}
 			active.push(index);
 			let split = ceiling() > 1;
-			let client = crate::engine::client::build(settings, split)?;
+			let client = match reuse.take() {
+				Some(client) => client,
+				None => crate::engine::client::build(settings, split)?,
+			};
 			let allowed = allowed.clone();
 			let grew = grew.clone();
 			// Whether this connection delivered a byte: one turned away before it did is the
@@ -398,7 +441,16 @@ async fn schedule(
 			let first = Arc::new(AtomicBool::new(false));
 			let answered = first.clone();
 			answering.insert(index, first.clone());
-			let base = plan.lock().unwrap().span.start;
+			let (base, from) = {
+				let plan = plan.lock().unwrap();
+				(plan.span.start, plan.segments[index].done)
+			};
+			let stop = handle.cancel.child_token();
+			let now = Instant::now();
+			watch.insert(
+				index,
+				Watch { stop: stop.clone(), started: now, from, seen: from, moved: now, slow_since: None },
+			);
 			let received = received.clone();
 			let done = handle.progress.clone();
 			// Spread across the sources by segment, and on to the next source with each retry.
@@ -416,7 +468,7 @@ async fn schedule(
 				writer: writer.clone(),
 				limits: vec![handle.limit.clone(), global.clone()],
 				idle_timeout: settings.idle_timeout,
-				cancel: handle.cancel.clone(),
+				cancel: stop,
 				// Counted as the bytes land, so a progress report between the ticks below is
 				// current: a download shorter than a tick once reported nothing but its end, and
 				// on Linux, whose sleeps are punctual, a half-second test file was exactly that.
@@ -463,6 +515,11 @@ async fn schedule(
 				served = served.max(answering.values().filter(|a| a.load(Ordering::Relaxed)).count());
 				answering.remove(&index);
 				active.retain(|&i| i != index);
+				let watched = watch.remove(&index);
+				let opened_after_refusal = refused_at
+					.zip(watched.as_ref().map(|w| w.started))
+					.is_some_and(|(refused, opened)| opened >= refused && opened.duration_since(refused) < LINGER);
+				let turned_away = matches!(&outcome, Err(e) if crowding(e, answered));
 				if answered {
 					strikes = 0;
 				}
@@ -471,6 +528,24 @@ async fn schedule(
 					Ok(Outcome::Complete) => {}
 					Ok(Outcome::EndOfFile(size)) => {
 						handle.progress.total.store(size, Ordering::Relaxed);
+					}
+					// Dropped by the stall watch, not by the user: the segment goes back and is reopened
+					// from where it stands. One that got nowhere at all spends a try, so a server that
+					// never sends a byte still fails the download in the end.
+					Err(Error::Cancelled) if !handle.cancel.is_cancelled() => {
+						let done_now = plan.lock().unwrap().segments[index].done;
+						if watched.is_some_and(|w| done_now == w.from) {
+							if attempts[index] >= settings.retries {
+								handle.cancel.cancel();
+								while workers.join_next().await.is_some() {}
+								let seconds = settings.stall_timeout.as_secs();
+								return Err(Error::GaveUp { tries: attempts[index] + 1, last: Box::new(Error::Stalled { seconds }) });
+							}
+							attempts[index] += 1;
+						}
+						if let Some(pace) = pace.get_mut(index) {
+							*pace = 0.0;
+						}
 					}
 					Err(Error::Cancelled) => {
 						handle.cancel.cancel();
@@ -483,7 +558,7 @@ async fn schedule(
 					// over; and no try spent on it.
 					Err(e) if crowding(&e, answered) && !active.is_empty() => {
 						strikes += 1;
-						let lingering = closed_at.is_some_and(|at| at.elapsed() < LINGER);
+						let lingering = closed_at.is_some_and(|at| at.elapsed() < LINGER) || opened_after_refusal;
 						if (active.len() + 1 > served && !lingering) || strikes >= 3 {
 							cap = active.len().min(cap);
 							strikes = 0;
@@ -500,7 +575,7 @@ async fn schedule(
 					Err(e) if (e.is_transient() || crowding(&e, answered)) && attempts[index] < settings.retries => {
 						// Alone and turned away is the limit at one -- unless one of ours closed just
 						// now, which the server may still be counting.
-						if crowding(&e, answered) && !closed_at.is_some_and(|at| at.elapsed() < LINGER) {
+						if crowding(&e, answered) && !closed_at.is_some_and(|at| at.elapsed() < LINGER) && !opened_after_refusal {
 							cap = 1;
 							handle.learned.store(1, Ordering::Relaxed);
 							handle.crowded.store(true, Ordering::Relaxed);
@@ -527,6 +602,9 @@ async fn schedule(
 				// turned away was never counted there as served.
 				if answered {
 					closed_at = Some(Instant::now());
+				}
+				if turned_away {
+					refused_at = Some(Instant::now());
 				}
 				let snapshot = plan.lock().unwrap().clone();
 				handle.progress.done.store(snapshot.done(), Ordering::Relaxed);
@@ -555,6 +633,43 @@ async fn schedule(
 					}
 				}
 				served = served.max(answering.values().filter(|a| a.load(Ordering::Relaxed)).count());
+				// A server that will not serve ranges cannot be asked to go on from the middle, and
+				// under a speed limit a slow connection is the limit working.
+				let limited = handle.limit.rate().is_some() || global.rate().is_some();
+				if ranges && !limited {
+					let answered = |i: &usize| answering.get(i).is_some_and(|a| a.load(Ordering::Relaxed));
+					let moving: Vec<(usize, f64)> = active
+						.iter()
+						.filter(|i| answered(i))
+						.filter_map(|&i| pace.get(i).copied().filter(|p| *p > 0.0).map(|p| (i, p)))
+						.collect();
+					if moving.len() >= 2 {
+						peers_pace = moving.iter().map(|(_, p)| *p).fold(0.0, f64::max);
+					}
+					let alone = active.len() == 1;
+					for (&index, w) in watch.iter_mut() {
+						let Some(segment) = snapshot.segments.get(index) else { continue };
+						if segment.done != w.seen {
+							w.seen = segment.done;
+							w.moved = now;
+						}
+						if now.duration_since(w.started) < settings.stall_timeout {
+							continue;
+						}
+						let own = pace.get(index).copied().unwrap_or(0.0);
+						let others: Vec<f64> = moving.iter().filter(|(i, _)| *i != index).map(|(_, p)| *p).collect();
+						let reference = if others.is_empty() { peers_pace } else { median(others) };
+						let crawling = reference > 0.0
+							&& own * CRAWL < reference
+							&& segment.remaining() as f64 / own.max(1.0) > settings.stall_timeout.as_secs_f64();
+						w.slow_since = if crawling { w.slow_since.or(Some(now)) } else { None };
+						let stopped = now.duration_since(w.moved) >= settings.stall_timeout && (answered(&index) || alone);
+						let crawled = w.slow_since.is_some_and(|since| now.duration_since(since) >= settings.stall_timeout);
+						if stopped || crawled {
+							w.stop.cancel();
+						}
+					}
+				}
 				// Held a while at the limit and never turned away since: one more is asked for, so
 				// a limit learnt on a bad moment does not hold the download down for good.
 				if cap < ceiling() && active.len() >= cap && now.duration_since(settled_at) >= PROBE_AFTER {
@@ -587,7 +702,7 @@ pub fn discard(directory: &Path, file_name: &str) {
 mod tests {
 	use super::*;
 	use crate::engine::settings::Connections;
-	use crate::engine::testing::{Options, TestServer, Turned, body};
+	use crate::engine::testing::{Options, Stall, TestServer, Turned, body};
 	use crate::testing::scratch;
 
 	fn request(server: &TestServer, dir: &Path, path: &str, connections: Connections) -> Request {
@@ -691,6 +806,70 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn the_probes_connection_is_the_first_one_the_download_uses() {
+		// Two requests, the probe's and the body's, on one socket: a second socket would be one the
+		// server counted twice while it noticed the first close.
+		let data = body(30_000);
+		let server = TestServer::start(data.clone(), Options::default());
+		let dir = scratch("reuse");
+		let req = request(&server, &dir, "/reuse.bin", Connections::fixed(1));
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
+		assert_eq!(std::fs::read(&done.path).unwrap(), data);
+		assert_eq!(server.requests().len(), 2);
+		assert_eq!(server.accepted(), 1, "the body was asked for on the probe's connection");
+	}
+
+	#[tokio::test]
+	async fn a_connection_that_stops_sending_is_reopened_from_where_it_stood() {
+		// The second half's connection sends 8 KiB and then nothing. Left to the idle timeout it
+		// would hold the download for a minute, the whole of it done but that.
+		let data = body(200_000);
+		let stall = Stall { from: 100_000, after: 8192, pause: Duration::from_secs(30), times: 1 };
+		let server =
+			TestServer::start(data.clone(), Options { stall: Some(stall), ..Options::default() });
+		let dir = scratch("stopped");
+		let mut req = request(&server, &dir, "/stop.bin", Connections::fixed(2));
+		req.settings.stall_timeout = Duration::from_millis(600);
+		let started = Instant::now();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
+		assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+		assert_eq!(std::fs::read(&done.path).unwrap(), data);
+		let starts: Vec<u64> =
+			server.requests().iter().filter_map(|r| r.range.map(|(s, _)| s)).collect();
+		assert!(starts.iter().any(|&s| s > 100_000), "reopened past what had landed: {starts:?}");
+	}
+
+	#[tokio::test]
+	async fn a_connection_crawling_far_behind_the_others_is_reopened() {
+		// Four quarters at about a megabyte a second each, the last at forty kilobytes once its
+		// first 8 KiB are in: it would take half a minute where the others take one.
+		let data = body(4_000_000);
+		let stall = Stall { from: 3_000_000, after: 8192, pause: Duration::from_millis(100), times: 1 };
+		let server = TestServer::start(
+			data.clone(),
+			Options {
+				stall: Some(stall),
+				delay_per_chunk: Duration::from_millis(4),
+				..Options::default()
+			},
+		);
+		let dir = scratch("crawl");
+		let mut req = request(&server, &dir, "/crawl.bin", Connections::fixed(4));
+		req.settings.stall_timeout = Duration::from_millis(600);
+		let started = Instant::now();
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
+		assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+		assert_eq!(std::fs::read(&done.path).unwrap(), data);
+		let last: Vec<u64> = server
+			.requests()
+			.iter()
+			.filter_map(|r| r.range.map(|(s, _)| s))
+			.filter(|&s| s >= 3_000_000)
+			.collect();
+		assert!(last.len() >= 2 && last[1] > 3_000_000, "the last quarter reopened mid-way: {last:?}");
+	}
+
+	#[tokio::test]
 	async fn a_cancelled_download_resumes_from_its_plan_in_a_later_run() {
 		// Slow enough that the cancel, sent once bytes have landed, comes before the end.
 		let data = body(400_000);
@@ -704,19 +883,25 @@ mod tests {
 		);
 		let dir = scratch("resume");
 		let req = request(&server, &dir, "/res.bin", Connections { min: 2, max: 2, auto: false });
-		let h = Handle::new();
-		let cancel = h.cancel.clone();
-		let progress = h.progress.clone();
-		// Cancel once something is on disk, not at a moment on the clock: on a busy runner the
-		// probe and the connections alone took longer than any moment chosen, and the cancel
-		// landed before the first byte. The worker marks the plan before it reports, so a
-		// report of bytes means the plan has them.
+		let h = Arc::new(Handle::new());
+		let watched = h.clone();
+		// Cancel once both halves have something on disk, not at a moment on the clock: on a busy
+		// runner the probe and the connections alone took longer than any moment chosen, and the
+		// cancel landed before the first byte; and cancelled when only one half had bytes, the
+		// other rightly began again from its start.
 		tokio::spawn(async move {
 			let deadline = Instant::now() + Duration::from_secs(20);
-			while progress.done.load(Ordering::Relaxed) == 0 && Instant::now() < deadline {
+			let both = || {
+				let plan = watched.plan.lock().unwrap().clone();
+				plan.is_some_and(|plan| {
+					let plan = plan.lock().unwrap();
+					plan.segments.len() == 2 && plan.segments.iter().all(|s| s.done > 0)
+				})
+			};
+			while !both() && Instant::now() < deadline {
 				tokio::time::sleep(Duration::from_millis(2)).await;
 			}
-			cancel.cancel();
+			watched.cancel.cancel();
 		});
 		let first = run(req.clone(), &h, Limiter::unlimited()).await;
 		assert!(matches!(first, Err(Error::Cancelled)));
@@ -869,7 +1054,8 @@ mod tests {
 		);
 		let dir = scratch(name);
 		let req = request(&server, &dir, "/crowded.bin", Connections { min: 1, max: 8, auto: true });
-		let done = run(req, &Handle::new(), Limiter::unlimited()).await.expect("finished despite the server");
+		let done =
+			run(req, &Handle::new(), Limiter::unlimited()).await.expect("finished despite the server");
 		assert_eq!(std::fs::read(&done.path).unwrap(), data, "every byte, once");
 		// Turned away past the limit, the download holds at what the server takes and waits a
 		// refusal out, rather than opening a new connection into it again and again: before this,

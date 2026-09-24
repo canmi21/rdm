@@ -26,6 +26,8 @@ pub enum Error {
 	Changed,
 	#[error("the server sent {got} bytes where {want} were expected")]
 	ShortBody { want: u64, got: u64 },
+	#[error("the server stopped sending for {seconds} seconds")]
+	Stalled { seconds: u64 },
 	#[error("the requested range lies outside the file")]
 	OutOfRange,
 	#[error("{path}: {source}")]
@@ -63,7 +65,9 @@ impl Error {
 			Error::Scheme(scheme) => format!("Only http and https can be downloaded, not {scheme}."),
 			Error::Http(error) if error.is_timeout() => "The server took too long to answer.".to_owned(),
 			Error::Http(error) if error.is_connect() => "The server could not be reached.".to_owned(),
-			Error::Http(error) if error.is_redirect() => "The address redirects too many times.".to_owned(),
+			Error::Http(error) if error.is_redirect() => {
+				"The address redirects too many times.".to_owned()
+			}
 			Error::Http(_) => "The connection failed before the server answered.".to_owned(),
 			Error::Refused { status } | Error::Busy { status, .. } => {
 				match reqwest::StatusCode::from_u16(*status).ok().and_then(|code| code.canonical_reason()) {
@@ -105,7 +109,7 @@ impl Error {
 	/// network; a refusal, a changed file or a full disk will not go away.
 	pub fn is_transient(&self) -> bool {
 		match self {
-			Error::Http(_) | Error::ShortBody { .. } | Error::Busy { .. } => true,
+			Error::Http(_) | Error::ShortBody { .. } | Error::Busy { .. } | Error::Stalled { .. } => true,
 			Error::Refused { status } => matches!(status, 408 | 429 | 500 | 502 | 503 | 504),
 			_ => false,
 		}
@@ -121,10 +125,8 @@ mod tests {
 		assert_eq!(Error::Refused { status: 403 }.summary(), "The server answered 403 Forbidden.");
 		assert_eq!(Error::Refused { status: 599 }.summary(), "The server answered 599.");
 		assert_eq!(Error::OutOfRange.summary(), "The requested range lies outside the file.");
-		let disk = Error::Disk {
-			path: PathBuf::from("/tmp/x"),
-			source: std::io::Error::other("no space left"),
-		};
+		let disk =
+			Error::Disk { path: PathBuf::from("/tmp/x"), source: std::io::Error::other("no space left") };
 		assert_eq!(disk.detail(), "/tmp/x: no space left", "a cause already in the text is said once");
 		let given_up = Error::GaveUp { tries: 3, last: Box::new(Error::Refused { status: 503 }) };
 		assert_eq!(given_up.summary(), "The server answered 503 Service Unavailable.");

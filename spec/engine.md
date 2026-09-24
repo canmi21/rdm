@@ -78,7 +78,9 @@ than as a slice of something else. A 200 says the server ignored the range: the 
 on its way and is dropped unread, the size is `Content-Length` if there is one, and
 `Accept-Ranges: bytes` is remembered but not believed, since some servers promise it and do not
 keep it. A HEAD would cost the same and answer less: servers that ignore Range on HEAD and
-honour it on GET are common, and the reverse is not.
+honour it on GET are common, and the reverse is not. The one byte of a 206 is read to its end,
+which puts the connection back in the client's pool, and that client is the download's first
+connection -- below, "The server decides how many connections it takes".
 
 The same answer says something of the server too: the protocol version it came over and its
 `Server` header. The probe keeps both for Add Task to show beside the size and the date, and
@@ -97,8 +99,12 @@ path and a server does not get to choose where on the disk it lands.
 with whatever misbehaviour a test asks for: no ranges, ranges advertised and ignored, a wrong
 status, a redirect, a chunked body with no length, a connection dropped part way through, bytes
 doled out slowly. It logs every request so a test can say what the engine did -- which ranges
-it asked for, how many connections it held open at once -- and that log is how the segment
-algorithm is tested without a network. It runs on its own threads rather than the runtime under
+it asked for, how many connections it held open at once, how many sockets it accepted for them --
+and that log is how the segment algorithm is tested without a network. It keeps a connection alive
+between requests, as a real server does, so a client's pooled connection is asked again on the
+same socket. Told to limit connections, it judges each by the count it arrived to, as a server
+admitting them in turn does: read when its request came, the count took in connections that
+arrived after it, and two arriving together were each turned away for the other. It runs on its own threads rather than the runtime under
 test so that a hang in one cannot hide in the other. A handful of tests against a public mirror
 exist for the sake of a real network and real sizes; they are ignored by default and run on
 request.
@@ -147,7 +153,7 @@ a changed file is answered with 200 and the whole file, which the connection ref
 change rather than splicing into what is on disk. A 200 to the one request that does start at
 the first byte is a server ignoring ranges, and harmless for that segment alone.
 
-## Connections grow one at a time, and each failure is retried on its own
+## Connections grow by rounds, and each failure is retried on its own
 
 Every setting here reaches the window: the ones that hold for every download are the
 Transfers section of Settings, kept in `config.json` and written over the engine's defaults
@@ -183,6 +189,28 @@ plan stays beside the partial file, and a cancelled download is a paused one unt
 discards its files. The plan is also written every half second while connections run, and at
 every segment's end, so a crash loses at most a moment.
 
+## A stuck connection is reopened
+
+A connection can stop without failing: the server stops sending, or a path goes bad and a
+connection that kept pace with the others drips a few kilobytes a second. The transport's own
+`idle_timeout`, a minute, catches only the first, and only after the minute; the second it never
+catches, and the download sits at ninety-nine percent on its last connection until somebody pauses
+it and starts it again -- which is what that does, and what the engine now does itself. Each tick
+the scheduler looks at every connection that has run for `stall_timeout`, ten seconds:
+
+- **Stopped.** Nothing landed for `stall_timeout`, from a connection that has answered or is the
+  only one left.
+- **Crawling.** For `stall_timeout` on end, under a sixteenth of the others' pace -- the median of
+  the rest, or for the last one left, the fastest the others kept while there were two -- with
+  more left than that pace would finish in `stall_timeout`.
+
+Either, and that connection alone is dropped: its segment goes back, and a new connection picks it
+up from where it stands. One dropped without a byte since it opened spends a try, so a server that
+never sends anything still fails the download when the tries are gone. Nothing is judged on a
+server without ranges, which cannot be asked to go on from the middle, or under a speed limit,
+where a slow connection is the limit working. Each connection has its own stop beneath the
+download's, so the scheduler tells its own drop from a pause by whether the download's was pulled.
+
 ## The server decides how many connections it takes
 
 Many servers cap how many connections one client may hold, and say so badly: a 429 or a 503,
@@ -192,7 +220,7 @@ of these as the download failing -- a 403 at once, the others after their retrie
 that took two connections refused a download that asked for eight. **So the count is learnt as it
 goes, the way TCP learns a window: additive increase, a drop on a refusal.**
 
-- **Up by one at a time.** A connection is allowed once the last has delivered a byte, as above.
+- **Up by rounds.** Two more are allowed each time one delivers its first byte, as above.
 - **Down to what the server is serving.** A connection turned away while others run is the limit
   found, and the count is set to how many are running: the one number the server has just shown
   it takes, which is closer than halving and never further. The connection's segment goes back
@@ -200,10 +228,13 @@ goes, the way TCP learns a window: additive increase, a drop on a refusal.**
   server asked for -- or `retry_wait` -- is over.
 - **Not for a connection of ours still closing.** A server goes on counting a connection we have
   closed until it notices. A refusal within half a second of one of ours that was being served
-  closing, or at a count the server has already served, is waited out without lowering anything;
-  three of those in a row, with nothing answering between, and the limit is taken as lowered.
-  Without this a download learnt a limit of one from a server that takes two, a little more than
-  half the time.
+  closing, or at a count the server has already served, or of a connection opened within half a
+  second after one of ours was turned away, is waited out without lowering anything; three of
+  those in a row, with nothing answering between, and the limit is taken as lowered. Only one
+  opened after the refusal: the rest of a round, asked for at the same moment, were turned away by
+  the same full server and count, and doubting them too learnt limits of three from a server that
+  takes two. Without this a download learnt a limit of one from a server that takes two, a little
+  more than half the time.
 - **One, and then failure.** Turned away with nothing else running is the limit at one, and the
   connection is retried as any other, after the longer of its doubling wait and the server's.
   Only when a single connection's tries are used up does the download fail.
@@ -213,9 +244,12 @@ goes, the way TCP learns a window: additive increase, a drop on a refusal.**
   it, which starts at that limit instead of finding it again; a run that was never turned away
   keeps one more than it reached, so the next asks a little further; and a host that reaches the
   most a download may ask for is forgotten. The window keeps the table in `state.json`.
-- **The probe's connection is let go.** Its client is dropped the moment it has answered: kept, the
-  connection sat idle in the pool for the whole download, holding one of the places the server
-  counts.
+- **The probe's connection is the first one.** Its client, with the connection in its pool, is
+  handed to the download's first connection, which asks for its segment on the same socket. Kept
+  idle beside the download, it held one of the places the server counts for the whole of it;
+  dropped, the server went on counting it until it noticed the close, and the first round -- sent
+  at that moment -- was turned away one short and learnt a limit of one from a server that takes
+  two.
 
 The failures are told apart in `engine/task.rs`, which the tests drive against a server that turns
 away connections past a limit with a 503, a 403, or a close, and which counts what it turned away.

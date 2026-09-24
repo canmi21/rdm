@@ -69,6 +69,11 @@ pub struct Settings {
 	pub connect_timeout: Duration,
 	/// A connection that sends nothing for this long is dropped and its segment retried.
 	pub idle_timeout: Duration,
+	/// How long a connection may go without a byte, or crawl far behind the others, before it is
+	/// dropped and reopened from where it stands. Much shorter than `idle_timeout`, which is the
+	/// transport's last word; this is the scheduler noticing one connection holding the rest up.
+	/// See spec/engine.md, "A stuck connection is reopened".
+	pub stall_timeout: Duration,
 	/// How many times a failing segment is retried before the download fails; the wait between
 	/// tries doubles from `retry_wait` each time.
 	pub retries: u32,
@@ -101,6 +106,7 @@ impl Default for Settings {
 			min_segment: 1024 * 1024,
 			connect_timeout: Duration::from_secs(30),
 			idle_timeout: Duration::from_secs(60),
+			stall_timeout: Duration::from_secs(10),
 			retries: 5,
 			retry_wait: Duration::from_secs(1),
 			speed_limit: None,
