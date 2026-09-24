@@ -1168,7 +1168,7 @@ mod tests {
 		assert_eq!(parse_connections(" Auto "), Ok(None));
 		assert_eq!(parse_connections("8"), Ok(Some(8)));
 		assert!(parse_connections("0").is_err());
-		assert!(parse_connections("257").is_err());
+		assert!(parse_connections("33").is_err());
 		assert!(parse_connections("lots").is_err());
 	}
 

@@ -791,11 +791,11 @@ allows; otherwise not known yet.
 
 **The settings are sliders beside fields, as New Task's limit is**, applied to the engine and kept
 on the row as they are moved or typed. The limit is in MB/s on New Task's scale, with no limit at
-the far right. The connections run on a log scale from one to 256, on the powers of two at the
+the far right. The connections run on a log scale from one to 32, on the powers of two at the
 coarsest and on whole counts once zoomed, with Auto at the far right, where a new download starts.
 They were fields alone at first, applied on Enter, with a hint beside each saying what they took.
 The connections' field takes empty or `auto` for the engine's judgement and a number from one to
-256 for a fixed count; how many are open is said with the transfer. A higher count opens
+32 for a fixed count; how many are open is said with the transfer. A higher count opens
 connections at once; a lower one is a ceiling the download
 drifts down to as its connections finish, since a connection already reading is not cut off
 ([engine.md](engine.md)). A server that never offered ranges stays on one whatever is typed.
@@ -842,7 +842,7 @@ can also be a word that does something -- `Check now` under `Latest build` -- wi
 beside it on how it last went, a choice of a few words with the chosen one lit -- `When a
 build is found` -- or a field applied on Enter with a word on what it takes -- `Speed limit`
 and `Connections` under Transfers, the first in kilobytes a second unless `m` or `g` says
-otherwise and empty for none, the second `Auto` or a number up to 256; what a field says no to
+otherwise and empty for none, the second `Auto` or a number up to 32; what a field says no to
 is said under its row. Like a switch, a word and a choice do not take the keyboard; a field
 does, being a field. A row that only means something
 under another is shown only then: the choice under `Automatic updates` goes when the switch

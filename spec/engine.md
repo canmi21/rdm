@@ -160,7 +160,11 @@ Transfers section of Settings, kept in `config.json` and written over the engine
 for each new request, and the ones a download can have of its own -- the folder, the name, the
 checksum, the range and a limit -- are New Task's, while the connections and the
 limit are its window's, changed as it runs; all of them are kept on the row. A download asks for connections in one of two shapes, `Connections::auto` or
-`Connections::fixed(n)`, and never more than `Connections::MAX`, 256, whatever it asks. In
+`Connections::fixed(n)`, and never more than `Connections::MAX`, 32, whatever it asks -- automatic
+mode's own ceiling, and past it nothing is gained: on a local network one connection fills the
+link, a public mirror that is slow on one fills a gigabit on sixteen to thirty-two, and a fixed
+sixty-four on a real mirror finished later than automatic thirty-two, its pieces cut too small at
+the start to be cut again at the end; it was 256, which only asks a server to ban the address. In
 automatic mode a download starts with `min` connections, four, and is allowed two more each time
 a connection delivers its first byte, up to `max`, thirty-two: each round of answers doubles the
 count, as TCP's slow start does, so a server that takes many is reached in a few round trips, and
@@ -263,7 +267,11 @@ and a download's latency says little about how many connections a server will ta
 `Engine` is what the application holds: it starts the runtime, keeps the downloads, runs at
 most `max_active` of them at once and starts the next as one ends, and carries the limit on
 their sum. The window talks to it three ways and no other. **Commands** -- add, pause, resume,
-remove, the limits -- are plain calls that return at once. **Events** -- started, progress at
+forget, discard, the limits -- are plain calls that return at once. Forgetting a download leaves
+its files; discarding it takes the partial file and the plan, found by the name it was written
+under -- the caller's, else the server's the probe learnt -- and never a finished file. It was one
+`remove(id, delete)`, a flag nobody could read at the call, which found nothing to delete when the
+server had chosen the name. **Events** -- started, progress at
 an interval, completed, failed, paused, removed -- arrive on a standard channel the window
 reads at its own pace; the sender never blocks, so a slow window costs the engine nothing.
 **Snapshots** answer for any download's state on request, for the frame that needs a number now

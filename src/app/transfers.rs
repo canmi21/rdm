@@ -515,7 +515,7 @@ impl Rdm {
 			self.selected = None;
 		}
 		self.open.remove(&id);
-		self.engine.remove(TaskId(id), true);
+		self.engine.discard(TaskId(id));
 		if let Some(store) = &self.store
 			&& let Err(error) = store.remove(id)
 		{

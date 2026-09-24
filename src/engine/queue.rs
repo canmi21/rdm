@@ -207,9 +207,19 @@ impl Engine {
 		self.pump();
 	}
 
-	/// Forgets the download. With `delete`, its partial file and plan go too; a completed
-	/// file is never deleted here, since it is the user's now.
-	pub fn remove(&self, id: TaskId, delete: bool) {
+	/// Forgets the download and leaves its files where they are: a partial file with its plan
+	/// beside it, which a later download of the same address continues, or a finished file.
+	pub fn forget(&self, id: TaskId) {
+		self.remove(id, false);
+	}
+
+	/// Forgets the download and throws away what it left unfinished, the partial file and the
+	/// plan. A finished file is never deleted here, since it is the user's now.
+	pub fn discard(&self, id: TaskId) {
+		self.remove(id, true);
+	}
+
+	fn remove(&self, id: TaskId, delete: bool) {
 		let removed = {
 			let mut inner = self.inner.lock().unwrap();
 			let entry = inner.entries.remove(&id);
@@ -222,17 +232,20 @@ impl Engine {
 		if let (Some(entry), true) = (removed, delete)
 			&& !matches!(entry.status, Status::Completed(_))
 		{
-			let name = entry.request.file_name.clone();
 			let directory = entry.request.directory.clone();
+			let handle = entry.handle.clone();
+			let asked = entry.request.file_name.clone();
 			// The files go once the download has actually stopped: it writes its plan on the way
-			// out, and a plan written after the discard would be a ghost. The name may be the
-			// server's, which only the probe learnt; a partial file without a plan is a stray this
-			// cannot find.
+			// out, and a plan written after the discard would be a ghost. The name is the one the
+			// download wrote under -- the caller's, else the server's, which only the probe learnt
+			// and is read once the probe is over.
 			let running = entry.running;
 			self.runtime.spawn(async move {
 				if let Some(running) = running {
 					let _ = running.await;
 				}
+				let name =
+					asked.or_else(|| handle.probed.lock().unwrap().as_ref().map(|p| p.file_name.clone()));
 				if let Some(name) = name {
 					task::discard(&directory, &name);
 				}
@@ -346,7 +359,8 @@ impl Engine {
 			let global = inner.global.clone();
 			let every = inner.settings.progress_every;
 			let events = inner.events.clone();
-			let learned = inner.entries.get(&id).and_then(|e| inner.hosts.get(&host_of(&e.request)).copied());
+			let learned =
+				inner.entries.get(&id).and_then(|e| inner.hosts.get(&host_of(&e.request)).copied());
 			let entry = inner.entries.get_mut(&id).expect("just listed");
 			entry.handle.learned.store(learned.map_or(0, u64::from), Ordering::Relaxed);
 			entry.handle.crowded.store(false, Ordering::Relaxed);
@@ -528,7 +542,12 @@ mod tests {
 		};
 		let first = engine.add(request("/one.bin"), None);
 		wait_for(&events, "first completed", |e| matches!(e, Event::Completed(id, _) if *id == first));
-		assert_eq!(engine.learned_hosts().get("127.0.0.1"), Some(&2), "turned away past two: {:?}", engine.learned_hosts());
+		assert_eq!(
+			engine.learned_hosts().get("127.0.0.1"),
+			Some(&2),
+			"turned away past two: {:?}",
+			engine.learned_hosts()
+		);
 		// The second starts at the limit instead of finding it again: never more open at once than
 		// the host was learnt to take, where the first went one past it to find out.
 		let second = engine.add(request("/two.bin"), None);
@@ -612,7 +631,7 @@ mod tests {
 	}
 
 	#[test]
-	fn removing_with_delete_takes_the_partial_file_and_a_checksum_guards_the_result() {
+	fn discarding_takes_the_partial_file_the_server_named_and_a_checksum_guards_the_result() {
 		// Long enough that the removal lands mid-download however late the first progress event
 		// reaches a test thread starved by the others: a download that had finished would keep
 		// its file, and the assertion below would blame the checksum.
@@ -627,15 +646,16 @@ mod tests {
 			..EngineSettings::default()
 		})
 		.unwrap();
-		let mut request = Request::new(server.url("/r.bin"), &dir);
-		request.file_name = Some("r.bin".into());
+		// No name given: the file is named for the address by the probe, and discarding finds it
+		// all the same.
+		let request = Request::new(server.url("/r.bin"), &dir);
 		let id = engine.add(request.clone(), None);
 		wait_for(
 			&events,
 			"first progress",
 			|e| matches!(e, Event::Progress(s) if s.id == id && s.done > 0),
 		);
-		engine.remove(id, true);
+		engine.discard(id);
 		wait_for(&events, "removed", |e| matches!(e, Event::Removed(i) if *i == id));
 		assert!(engine.snapshot(id).is_none());
 		// The files go once the download has stopped, a moment after the event.

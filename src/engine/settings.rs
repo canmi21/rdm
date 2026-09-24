@@ -25,7 +25,7 @@ impl Default for Connections {
 
 impl Connections {
 	/// The most a download may open, whatever is asked.
-	pub const MAX: u16 = 256;
+	pub const MAX: u16 = 32;
 
 	/// The engine's own judgement: four connections at once, then two more each time one delivers
 	/// its first byte -- twice as many each round, as TCP's slow start grows -- up to thirty-two,

@@ -511,15 +511,11 @@ mod tests {
 		assert_eq!(count_position(None), 1.0, "Auto is the far right");
 		assert_eq!(count_at(1.0), None);
 		assert_eq!(count_at(count_position(Some(1))), Some(1));
-		assert_eq!(count_at(count_position(Some(256))), Some(256));
-		assert_eq!(count_at(count_position(Some(37))), Some(37), "a count typed comes back as itself");
+		assert_eq!(count_at(count_position(Some(32))), Some(32));
+		assert_eq!(count_at(count_position(Some(23))), Some(23), "a count typed comes back as itself");
 		let coarse: Vec<Option<u16>> =
-			(0..=8).map(|k| count_at(count_snap(0, k as f32 * COUNT_SCALE / 8.0))).collect();
-		assert_eq!(
-			coarse,
-			[1, 2, 4, 8, 16, 32, 64, 128, 256].map(Some).to_vec(),
-			"the coarsest is powers of two"
-		);
+			(0..=5).map(|k| count_at(count_snap(0, k as f32 * COUNT_SCALE / 5.0))).collect();
+		assert_eq!(coarse, [1, 2, 4, 8, 16, 32].map(Some).to_vec(), "the coarsest is powers of two");
 		assert_eq!(count_at(count_snap(0, count_position(Some(20)))), Some(16));
 		assert_eq!(count_at(count_snap(1, count_position(Some(20)))), Some(20), "then whole counts");
 		assert_eq!(count_snap(0, 0.97), 1.0, "and Auto is a place of its own");
