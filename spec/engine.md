@@ -32,8 +32,12 @@ read it back, and every open segment continues from `start + done`.
 
 **Growing the connection count is aria2's "steal", not a fixed cut.** A download starts with
 one segment for the whole span. When a connection comes free -- at the start, or because its
-segment finished -- it takes an idle segment if there is one; otherwise it cuts the segment with
-the most bytes left where that remainder halves, and takes the far half. The near half never
+segment finished -- it takes an idle segment if there is one; otherwise it cuts the segment that
+will finish last where its remainder halves, and takes the far half. Which will finish last is
+its bytes left at its own pace, each segment's pace measured every half second; a segment with no
+pace yet is taken at the typical one. The segment with the most bytes left was cut at first, and
+with connections at different speeds that is not the one holding the download up: a slow
+connection with less left went on alone after the rest had finished. The near half never
 notices: its end moved closer, and it keeps writing towards it. A cut happens only while both
 halves would be at least `min_segment` long, so connections stop multiplying where they would
 spend more on setup than transfer. This is what "automatic" multi-connection means here; the
@@ -158,14 +162,63 @@ there is one and otherwise cuts the largest remainder, as the planner describes,
 started the moment growth is allowed rather than at the next tick, because a small file is over
 before a tick. Without automatic mode the span is cut into `max` pieces at the start.
 
+A connection asks for its segment and no further, `bytes=start-end`, so the server finishes the
+answer where the segment ends and the connection closes cleanly; a steal that cuts the segment
+while it runs has the writer stop at the new end and the connection dropped early. It asked
+open to the file's end at first, reading past its segment being cheaper than a new request, and
+every finished segment then left the server writing into a connection we had dropped, counted
+against its limit until it noticed.
+
 A connection that fails is retried on its own, from where its segment stands, after a wait
-that doubles from `retry_wait` each time and up to `retries` times; the others keep running.
+that doubles from `retry_wait` each time and up to `retries` times; the others keep running. A
+connection the server turned away is another matter, below.
 Only a failure that trying again cannot fix -- a refusal, a changed file, a full disk -- or
 one that has used up its tries stops the download, and then every connection is cancelled and
 the plan is written so the download can be picked up later. Cancelling is the same path: the
 plan stays beside the partial file, and a cancelled download is a paused one until somebody
 discards its files. The plan is also written every half second while connections run, and at
 every segment's end, so a crash loses at most a moment.
+
+## The server decides how many connections it takes
+
+Many servers cap how many connections one client may hold, and say so badly: a 429 or a 503,
+sometimes with a `Retry-After`; a 403 to the connection past the limit while the others go on
+being served; or a connection closed before it has answered at all. The engine used to take each
+of these as the download failing -- a 403 at once, the others after their retries -- and a server
+that took two connections refused a download that asked for eight. **So the count is learnt as it
+goes, the way TCP learns a window: additive increase, a drop on a refusal.**
+
+- **Up by one at a time.** A connection is allowed once the last has delivered a byte, as above.
+- **Down to what the server is serving.** A connection turned away while others run is the limit
+  found, and the count is set to how many are running: the one number the server has just shown
+  it takes, which is closer than halving and never further. The connection's segment goes back
+  for whoever comes free, no try is spent on it, and no new connection opens until the wait the
+  server asked for -- or `retry_wait` -- is over.
+- **Not for a connection of ours still closing.** A server goes on counting a connection we have
+  closed until it notices. A refusal within half a second of one of ours that was being served
+  closing, or at a count the server has already served, is waited out without lowering anything;
+  three of those in a row, with nothing answering between, and the limit is taken as lowered.
+  Without this a download learnt a limit of one from a server that takes two, a little more than
+  half the time.
+- **One, and then failure.** Turned away with nothing else running is the limit at one, and the
+  connection is retried as any other, after the longer of its doubling wait and the server's.
+  Only when a single connection's tries are used up does the download fail.
+- **Back up while it holds.** Ten seconds at the limit, every connection in use and none turned
+  away, and one more is asked for, so a limit learnt at a bad moment does not hold for good.
+- **Remembered by host.** What a run learnt is kept per host and handed to the next download from
+  it, which starts at that limit instead of finding it again; a run that was never turned away
+  keeps one more than it reached, so the next asks a little further; and a host that reaches the
+  most a download may ask for is forgotten. The window keeps the table in `state.json`.
+- **The probe's connection is let go.** Its client is dropped the moment it has answered: kept, the
+  connection sat idle in the pool for the whole download, holding one of the places the server
+  counts.
+
+The failures are told apart in `engine/task.rs`, which the tests drive against a server that turns
+away connections past a limit with a 503, a 403, or a close, and which counts what it turned away.
+The same download against the busy server made two dozen requests before this, most of them
+refused. It is AIMD rather than a borrowed library: the concurrency-limit families -- Netflix's
+`concurrency-limits` among them, with Vegas and gradient schemes -- judge a limit from latency,
+and a download's latency says little about how many connections a server will take.
 
 ## The engine is a queue, and the window talks to it in three ways
 

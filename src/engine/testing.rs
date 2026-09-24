@@ -41,6 +41,16 @@ pub struct Options {
 	/// Refuse a Range whose start is not zero with 200 and the whole body, as a server that
 	/// advertises ranges and does not honour them would.
 	pub ignore_ranges: bool,
+	/// Turn away a request that arrives while more than this many connections are open, as a
+	/// server limiting connections per client does: with a status, or by closing without a word.
+	pub crowded: Option<(usize, Turned)>,
+}
+
+/// How a server limiting connections turns one away.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Turned {
+	Status(u16),
+	Closed,
 }
 
 impl Default for Options {
@@ -58,6 +68,7 @@ impl Default for Options {
 			fail_times: usize::MAX,
 			delay_per_chunk: Duration::ZERO,
 			ignore_ranges: false,
+			crowded: None,
 		}
 	}
 }
@@ -84,6 +95,7 @@ struct Inner {
 	failures: Arc<AtomicUsize>,
 	open: Arc<AtomicUsize>,
 	peak: Arc<AtomicUsize>,
+	turned: Arc<AtomicUsize>,
 	stop: Arc<AtomicBool>,
 }
 
@@ -104,6 +116,7 @@ impl TestServer {
 			failures: Arc::new(AtomicUsize::new(0)),
 			open: Arc::new(AtomicUsize::new(0)),
 			peak: Arc::new(AtomicUsize::new(0)),
+			turned: Arc::new(AtomicUsize::new(0)),
 			stop: Arc::new(AtomicBool::new(false)),
 		};
 		let shared = inner.clone();
@@ -130,6 +143,11 @@ impl TestServer {
 
 	pub fn requests(&self) -> Vec<Seen> {
 		self.inner.seen.lock().unwrap().clone()
+	}
+
+	/// How many requests `crowded` turned away so far.
+	pub fn turned_away(&self) -> usize {
+		self.inner.turned.load(Ordering::Relaxed)
 	}
 
 	/// The most connections open at one moment so far.
@@ -170,11 +188,13 @@ impl Inner {
 		// with bytes still unread in the receive buffer is answered with a reset, and the client
 		// then reports the reset instead of the response it already had.
 		let _ = self.serve_one(&mut stream);
+		// Counted until the answer is sent or the client has gone, not through the polite close
+		// below, which waits on the client's pace rather than the server's.
+		self.open.fetch_sub(1, Ordering::Relaxed);
 		let _ = stream.shutdown(std::net::Shutdown::Write);
 		let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
 		let mut sink = [0u8; 1024];
 		while matches!(stream.read(&mut sink), Ok(n) if n > 0) {}
-		self.open.fetch_sub(1, Ordering::Relaxed);
 	}
 
 	fn serve_one(&self, stream: &mut TcpStream) -> std::io::Result<()> {
@@ -210,6 +230,15 @@ impl Inner {
 		let options = self.options.lock().unwrap().clone();
 		let body = self.body.lock().unwrap().clone();
 
+		if let Some((limit, turned)) = options.crowded
+			&& self.open.load(Ordering::Relaxed) > limit
+		{
+			self.turned.fetch_add(1, Ordering::Relaxed);
+			return match turned {
+				Turned::Status(status) => write_head(stream, status, &[("Content-Length", "0".into())], true),
+				Turned::Closed => Ok(()),
+			};
+		}
 		if let Some(status) = options.status {
 			return write_head(stream, status, &[("Content-Length", "0".into())], true);
 		}

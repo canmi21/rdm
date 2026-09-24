@@ -116,13 +116,22 @@ impl Plan {
 	/// connection waits. The near half keeps writing without noticing, since its end simply
 	/// moved closer.
 	pub fn steal(&mut self, min_segment: u64) -> Option<usize> {
+		self.steal_latest(min_segment, |_, segment| segment.remaining() as f64)
+	}
+
+	/// The same cut, made in the segment that will finish last rather than the one with the most
+	/// left: `eta` says how long a segment has to go at the pace it is going. With connections at
+	/// different speeds the one with the most bytes left is not always the one holding the
+	/// download up, and cutting that one is what has every connection finish together instead of
+	/// one slow connection trailing on alone. See spec/engine.md.
+	pub fn steal_latest(&mut self, min_segment: u64, eta: impl Fn(usize, &Segment) -> f64) -> Option<usize> {
 		let min_segment = min_segment.max(1);
 		let (index, segment) = self
 			.segments
 			.iter()
 			.enumerate()
 			.filter(|(_, s)| s.remaining() >= 2 * min_segment)
-			.max_by_key(|(_, s)| s.remaining())?;
+			.max_by(|(a, x), (b, y)| eta(*a, x).total_cmp(&eta(*b, y)))?;
 		let cut = segment.position() + segment.remaining() / 2;
 		let far = Span::new(cut, segment.span.end);
 		self.segments[index].span.end = cut;
@@ -202,6 +211,19 @@ mod tests {
 		assert_eq!(plan.segments[new].span, Span::new(40, 60), "segment 0 had 40 left, segment 1 five");
 		covers_exactly_once(&plan);
 		assert_eq!(plan.steal(30), None, "no remainder holds two of thirty");
+	}
+
+	#[test]
+	fn stealing_by_time_cuts_the_segment_that_would_finish_last() {
+		// Two halves: the first has 50 left at 10 a second, five seconds; the second 40 left at 2 a
+		// second, twenty. By bytes the first is cut; by time, the second, which is holding things up.
+		let mut plan = Plan::split(Span::new(0, 100), 2, 1);
+		plan.segments[1].done = 10;
+		let pace = [10.0, 2.0];
+		let new = plan.steal_latest(5, |i, s| s.remaining() as f64 / pace[i]).unwrap();
+		assert_eq!(plan.segments[new].span, Span::new(80, 100), "the slow half is cut at 60 + 40 / 2");
+		assert_eq!(plan.segments[0].span, Span::new(0, 50), "the fast half is left whole");
+		covers_exactly_once(&plan);
 	}
 
 	#[test]

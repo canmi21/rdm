@@ -3,6 +3,7 @@
 //! into connections: it grows their number as the server proves it can take more, retries a
 //! segment that fails, and writes the plan beside the file as it goes. See spec/engine.md.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -96,6 +97,14 @@ pub struct Handle {
 	/// Whether the download grows its own connection count and steals halves of segments, or was
 	/// cut into a fixed number at the start. Read beside `ceiling` and changed with it.
 	pub auto: AtomicBool,
+	/// How many connections the server has shown it will take: written before the run with what
+	/// an earlier download from the same host learnt, zero for nothing known, and kept current by
+	/// the scheduler as it learns more. See spec/engine.md, "The server decides how many
+	/// connections it takes".
+	pub learned: AtomicU64,
+	/// Whether the server turned a connection away during the run, which is what makes `learned`
+	/// a limit rather than only as far as the run happened to go.
+	pub crowded: AtomicBool,
 }
 
 impl Handle {
@@ -108,6 +117,8 @@ impl Handle {
 			plan: Mutex::new(None),
 			// Nothing until the settings are read; the scheduler writes both before it starts.
 			ceiling: AtomicU64::new(0),
+			learned: AtomicU64::new(0),
+			crowded: AtomicBool::new(false),
 			auto: AtomicBool::new(true),
 		}
 	}
@@ -125,8 +136,14 @@ impl Default for Handle {
 pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<Finished> {
 	let settings =
 		Settings { connections: request.settings.connections.clamped(), ..request.settings.clone() };
-	let single = crate::engine::client::build(&settings, false)?;
-	let probed = probe(&single, request.url.clone()).await?;
+	// The probe's client goes as soon as it has answered, and its connection with it: kept, the
+	// connection would sit idle in the pool for the whole download, holding one of the places a
+	// server limiting connections per client counts. See spec/engine.md, "The server decides how
+	// many connections it takes".
+	let probed = {
+		let single = crate::engine::client::build(&settings, false)?;
+		probe(&single, request.url.clone()).await?
+	};
 	*handle.probed.lock().unwrap() = Some(probed.clone());
 	if let (Some(size), Some(limit)) = (probed.size, settings.max_size)
 		&& size > limit
@@ -228,6 +245,36 @@ trait LenOrZero {
 	fn len_or_zero(self) -> u64;
 }
 
+/// How long a limit has to hold, unchallenged and in full use, before one more connection is asked
+/// for.
+const PROBE_AFTER: Duration = Duration::from_secs(10);
+
+/// How long a connection of ours may go on being counted by a server after we closed it: the
+/// round trip for it to notice, with room to spare.
+const LINGER: Duration = Duration::from_millis(500);
+
+/// Whether a failure is the server turning a connection away rather than the network failing:
+/// too busy, a refusal, or a connection closed before it delivered a byte. A refusal and a close
+/// only count while another connection is running, which the caller checks; on their own they
+/// are the ordinary failures they look like. See spec/engine.md, "The server decides how many
+/// connections it takes".
+fn crowding(error: &Error, answered: bool) -> bool {
+	match error {
+		Error::Busy { .. } => true,
+		Error::Refused { status: 403 } => true,
+		Error::Http(_) => !answered,
+		_ => false,
+	}
+}
+
+/// The wait a server asked for with its refusal, held to a minute.
+fn asked_wait(error: &Error) -> Option<Duration> {
+	match error {
+		Error::Busy { retry_after: Some(wait), .. } => Some((*wait).min(Duration::from_secs(60))),
+		_ => None,
+	}
+}
+
 impl LenOrZero for Span {
 	fn len_or_zero(self) -> u64 {
 		if self.end == u64::MAX { 0 } else { self.len() }
@@ -268,7 +315,33 @@ async fn schedule(
 	// tick; a file that takes less than a tick would otherwise never see a second connection.
 	let grew = Arc::new(Notify::new());
 	let received = Arc::new(AtomicU64::new(0));
-	let mut workers: JoinSet<(usize, Result<Outcome>)> = JoinSet::new();
+	// What the server will take, learnt as it goes: nothing known, or what an earlier download
+	// from the host learnt. Halved when a connection is turned away while others run, raised by
+	// one when it has held a while unchallenged. See spec/engine.md, "The server decides how
+	// many connections it takes".
+	let mut cap = match handle.learned.load(Ordering::Relaxed) as usize {
+		0 => usize::MAX,
+		learned => learned,
+	};
+	let mut settled_at = Instant::now();
+	// The most connections the server has served at once, every one of them answering: a refusal
+	// past this is its limit found; one within it is more likely a connection of ours it has not
+	// finished closing, and is waited out -- three of those in a row, with nothing answering in
+	// between, and the limit is taken as lowered.
+	let mut served = 0usize;
+	let mut strikes = 0u32;
+	// When a connection of ours that was being served last closed. A server goes on counting one
+	// until it has noticed, so a refusal just after is more likely that than a limit, and is
+	// waited out the same way. The probe's is not one: its client is dropped as it answers.
+	let mut closed_at: Option<Instant> = None;
+	let mut answering: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
+	// No new connection before this, after one was turned away: the wait the server asked for,
+	// or the retry wait.
+	let mut hold: Option<Instant> = None;
+	// Each segment's pace in bytes a second, smoothed, for cutting the one that will finish last.
+	let mut pace: Vec<f64> = Vec::new();
+	let mut landed: Vec<u64> = Vec::new();
+	let mut workers: JoinSet<(usize, bool, Result<Outcome>)> = JoinSet::new();
 	let mut active: Vec<usize> = Vec::new();
 	let mut attempts: Vec<u32> = vec![0; plan.lock().unwrap().segments.len()];
 	let mut ticker = tokio::time::interval(Duration::from_millis(500));
@@ -288,9 +361,9 @@ async fn schedule(
 			// and `allowed` because a connection may have earned the next one. The clamp is
 			// written back so that a ceiling lowered and raised again grows one connection at a
 			// time as it did the first time, rather than opening every one it had earned at once.
-			let allowed_now = (allowed.load(Ordering::Relaxed) as usize).min(ceiling());
+			let allowed_now = (allowed.load(Ordering::Relaxed) as usize).min(ceiling()).min(cap);
 			allowed.store(allowed_now as u64, Ordering::Relaxed);
-			if active.len() >= allowed_now {
+			if active.len() >= allowed_now || hold.is_some_and(|until| Instant::now() < until) {
 				break;
 			}
 			let index = {
@@ -298,7 +371,15 @@ async fn schedule(
 				match plan.idle(&active) {
 					Some(i) => Some(i),
 					None if ranges && handle.auto.load(Ordering::Relaxed) => {
-						plan.steal(settings.min_segment)
+						// The cut goes where the download will finish last: a segment's bytes left
+						// at its own pace, or at the typical pace while it has none yet.
+						let known: Vec<f64> = pace.iter().copied().filter(|r| *r > 0.0).collect();
+						let typical = if known.is_empty() { 1.0 } else { known.iter().sum::<f64>() / known.len() as f64 };
+						let pace = &pace;
+						plan.steal_latest(settings.min_segment, |i, segment| {
+							let rate = pace.get(i).copied().filter(|r| *r > 0.0).unwrap_or(typical);
+							segment.remaining() as f64 / rate
+						})
 					}
 					None => None,
 				}
@@ -312,6 +393,11 @@ async fn schedule(
 			let client = crate::engine::client::build(settings, split)?;
 			let allowed = allowed.clone();
 			let grew = grew.clone();
+			// Whether this connection delivered a byte: one turned away before it did is the
+			// server saying no, one that failed after is the network.
+			let first = Arc::new(AtomicBool::new(false));
+			let answered = first.clone();
+			answering.insert(index, first.clone());
 			let base = plan.lock().unwrap().span.start;
 			let received = received.clone();
 			let done = handle.progress.clone();
@@ -336,6 +422,7 @@ async fn schedule(
 				// on Linux, whose sleeps are punctual, a half-second test file was exactly that.
 				progress: Arc::new(move |n| {
 					if n == 0 {
+						answered.store(true, Ordering::Relaxed);
 						allowed.fetch_add(1, Ordering::Relaxed);
 						grew.notify_one();
 					} else {
@@ -345,9 +432,20 @@ async fn schedule(
 				}),
 			};
 			handle.progress.connections.store(active.len() as u64, Ordering::Relaxed);
-			workers.spawn(async move { (index, fetch(job).await) });
+			workers.spawn(async move {
+				let outcome = fetch(job).await;
+				(index, first.load(Ordering::Relaxed), outcome)
+			});
 		}
 		if active.is_empty() {
+			// Everything turned away and the wait not over: wait it out, then start again.
+			if let Some(until) = hold.filter(|until| Instant::now() < *until) {
+				tokio::select! {
+					_ = tokio::time::sleep_until(until) => {}
+					_ = handle.cancel.cancelled() => return Err(Error::Cancelled),
+				}
+				continue;
+			}
 			let plan = plan.lock().unwrap();
 			if plan.is_complete() {
 				return Ok(());
@@ -359,8 +457,13 @@ async fn schedule(
 		}
 		tokio::select! {
 			Some(finished) = workers.join_next() => {
-				let (index, outcome) = finished.map_err(|e| Error::Disk { path: target.clone(), source: std::io::Error::other(e) })?;
+				let (index, answered, outcome) = finished.map_err(|e| Error::Disk { path: target.clone(), source: std::io::Error::other(e) })?;
+				served = served.max(answering.values().filter(|a| a.load(Ordering::Relaxed)).count());
+				answering.remove(&index);
 				active.retain(|&i| i != index);
+				if answered {
+					strikes = 0;
+				}
 				handle.progress.connections.store(active.len() as u64, Ordering::Relaxed);
 				match outcome {
 					Ok(Outcome::Complete) => {}
@@ -372,9 +475,38 @@ async fn schedule(
 						while workers.join_next().await.is_some() {}
 						return Err(Error::Cancelled);
 					}
-					Err(e) if e.is_transient() && attempts[index] < settings.retries => {
+					// Turned away while others run: the server's limit, not this connection's fault.
+					// As many as it is serving now, which is the one number it has shown it takes;
+					// the segment back for whoever comes free; no new connection until the wait is
+					// over; and no try spent on it.
+					Err(e) if crowding(&e, answered) && !active.is_empty() => {
+						strikes += 1;
+						let lingering = closed_at.is_some_and(|at| at.elapsed() < LINGER);
+						if (active.len() + 1 > served && !lingering) || strikes >= 3 {
+							cap = active.len().min(cap);
+							strikes = 0;
+							handle.learned.store(cap as u64, Ordering::Relaxed);
+							handle.crowded.store(true, Ordering::Relaxed);
+							settled_at = Instant::now();
+						}
+						// Whatever it was, no more are opened than are running until the wait is over.
+						allowed.store((allowed.load(Ordering::Relaxed) as usize).min(cap).min(active.len()) as u64, Ordering::Relaxed);
+						hold = Some(Instant::now() + asked_wait(&e).unwrap_or(settings.retry_wait));
+					}
+					// Alone and turned away, or failed as the network fails: tried again from where
+					// it stands, after a wait that doubles, or the one the server asked for if longer.
+					Err(e) if (e.is_transient() || crowding(&e, answered)) && attempts[index] < settings.retries => {
+						// Alone and turned away is the limit at one -- unless one of ours closed just
+						// now, which the server may still be counting.
+						if crowding(&e, answered) && !closed_at.is_some_and(|at| at.elapsed() < LINGER) {
+							cap = 1;
+							handle.learned.store(1, Ordering::Relaxed);
+							handle.crowded.store(true, Ordering::Relaxed);
+							settled_at = Instant::now();
+						}
 						attempts[index] += 1;
-						let wait = settings.retry_wait * 2u32.pow(attempts[index] - 1);
+						let backoff = settings.retry_wait * 2u32.pow(attempts[index] - 1);
+						let wait = asked_wait(&e).map_or(backoff, |asked| asked.max(backoff));
 						tokio::select! {
 							_ = tokio::time::sleep(wait) => {}
 							_ = handle.cancel.cancelled() => return Err(Error::Cancelled),
@@ -384,10 +516,15 @@ async fn schedule(
 						handle.cancel.cancel();
 						while workers.join_next().await.is_some() {}
 						return Err(match e {
-							e if attempts[index] >= settings.retries && e.is_transient() => Error::GaveUp { tries: attempts[index] + 1, last: Box::new(e) },
+							e if attempts[index] >= settings.retries && (e.is_transient() || crowding(&e, answered)) => Error::GaveUp { tries: attempts[index] + 1, last: Box::new(e) },
 							e => e,
 						});
 					}
+				}
+				// Only a connection that was being served lingers on the server once closed; one
+				// turned away was never counted there as served.
+				if answered {
+					closed_at = Some(Instant::now());
 				}
 				let snapshot = plan.lock().unwrap().clone();
 				handle.progress.done.store(snapshot.done(), Ordering::Relaxed);
@@ -406,6 +543,24 @@ async fn schedule(
 				}
 				last_tick = (now, total);
 				let snapshot = plan.lock().unwrap().clone();
+				if elapsed > 0.0 {
+					pace.resize(snapshot.segments.len(), 0.0);
+					landed.resize(snapshot.segments.len(), 0);
+					for (i, segment) in snapshot.segments.iter().enumerate() {
+						let instant = segment.done.saturating_sub(landed[i]) as f64 / elapsed;
+						pace[i] = if pace[i] == 0.0 { instant } else { pace[i] * 0.75 + instant * 0.25 };
+						landed[i] = segment.done;
+					}
+				}
+				served = served.max(answering.values().filter(|a| a.load(Ordering::Relaxed)).count());
+				// Held a while at the limit and never turned away since: one more is asked for, so
+				// a limit learnt on a bad moment does not hold the download down for good.
+				if cap < ceiling() && active.len() >= cap && now.duration_since(settled_at) >= PROBE_AFTER {
+					cap += 1;
+					allowed.fetch_add(1, Ordering::Relaxed);
+					handle.learned.store(cap as u64, Ordering::Relaxed);
+					settled_at = now;
+				}
 				handle.progress.done.store(snapshot.done(), Ordering::Relaxed);
 				control::save(&target, &target_control(&snapshot))?;
 			}
@@ -430,7 +585,7 @@ pub fn discard(directory: &Path, file_name: &str) {
 mod tests {
 	use super::*;
 	use crate::engine::settings::Connections;
-	use crate::engine::testing::{Options, TestServer, body};
+	use crate::engine::testing::{Options, TestServer, Turned, body};
 	use crate::testing::scratch;
 
 	fn request(server: &TestServer, dir: &Path, path: &str, connections: Connections) -> Request {
@@ -696,6 +851,51 @@ mod tests {
 		let mut req = request(&flaky, &dir, "/n.bin", Connections { min: 1, max: 1, auto: false });
 		req.mirrors = vec![other.url("/n.bin")];
 		assert!(matches!(run(req, &Handle::new(), Limiter::unlimited()).await, Err(Error::Changed)));
+	}
+
+	/// A download against a server that turns away connections past `limit` the way `turned`
+	/// says: it has to finish, every byte right, without failing for it.
+	async fn crowded(name: &str, limit: usize, turned: Turned) -> TestServer {
+		let data = body(400_000);
+		let server = TestServer::start(
+			data.clone(),
+			Options {
+				delay_per_chunk: Duration::from_millis(2),
+				crowded: Some((limit, turned)),
+				..Options::default()
+			},
+		);
+		let dir = scratch(name);
+		let req = request(&server, &dir, "/crowded.bin", Connections { min: 1, max: 8, auto: true });
+		let done = run(req, &Handle::new(), Limiter::unlimited()).await.expect("finished despite the server");
+		assert_eq!(std::fs::read(&done.path).unwrap(), data, "every byte, once");
+		// Turned away past the limit, the download holds at what the server takes and waits a
+		// refusal out, rather than opening a new connection into it again and again: before this,
+		// the busy server saw two dozen requests, most of them turned away. A refusal or two more
+		// is a connection of ours the server had not finished closing.
+		let turned = server.turned_away();
+		assert!(turned <= 3, "{name}: turned away {turned} times");
+		server
+	}
+
+	#[tokio::test]
+	async fn a_server_that_answers_busy_past_two_connections_is_downloaded_on_fewer() {
+		crowded("busy", 2, Turned::Status(503)).await;
+	}
+
+	#[tokio::test]
+	async fn a_server_that_forbids_extra_connections_is_downloaded_on_fewer() {
+		crowded("forbids", 2, Turned::Status(403)).await;
+	}
+
+	#[tokio::test]
+	async fn a_server_that_closes_extra_connections_is_downloaded_on_fewer() {
+		crowded("closes", 2, Turned::Closed).await;
+	}
+
+	#[tokio::test]
+	async fn a_server_that_takes_one_connection_is_downloaded_on_one() {
+		crowded("one", 1, Turned::Status(403)).await;
 	}
 
 	#[tokio::test]

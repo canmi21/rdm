@@ -109,6 +109,15 @@ struct Inner {
 	settings: EngineSettings,
 	global: Limiter,
 	events: mpsc::Sender<Event>,
+	/// How many connections each host has shown it will take, learnt by downloads from it: the
+	/// next download from a host starts there rather than finding out again. A host not here has
+	/// shown no limit. See spec/engine.md, "The server decides how many connections it takes".
+	hosts: HashMap<String, u16>,
+}
+
+/// The host a download's connections go to, as `hosts` keys it.
+fn host_of(request: &Request) -> String {
+	request.url.host_str().unwrap_or_default().to_ascii_lowercase()
 }
 
 /// The engine. Cheap to clone; every clone is the same engine.
@@ -134,6 +143,7 @@ impl Engine {
 			global: Limiter::new(settings.speed_limit),
 			settings,
 			events,
+			hosts: HashMap::new(),
 		};
 		Ok((Engine { runtime: Arc::new(runtime), inner: Arc::new(Mutex::new(inner)) }, receiver))
 	}
@@ -264,6 +274,16 @@ impl Engine {
 		receiver
 	}
 
+	/// How many connections each host has shown it will take, for the window to keep between runs.
+	pub fn learned_hosts(&self) -> HashMap<String, u16> {
+		self.inner.lock().unwrap().hosts.clone()
+	}
+
+	/// What earlier runs learnt of each host, handed back at start.
+	pub fn learn_hosts(&self, hosts: HashMap<String, u16>) {
+		self.inner.lock().unwrap().hosts = hosts;
+	}
+
 	pub fn snapshot(&self, id: TaskId) -> Option<Snapshot> {
 		let inner = self.inner.lock().unwrap();
 		inner.entries.get(&id).map(|entry| snapshot_of(id, entry))
@@ -326,7 +346,10 @@ impl Engine {
 			let global = inner.global.clone();
 			let every = inner.settings.progress_every;
 			let events = inner.events.clone();
+			let learned = inner.entries.get(&id).and_then(|e| inner.hosts.get(&host_of(&e.request)).copied());
 			let entry = inner.entries.get_mut(&id).expect("just listed");
+			entry.handle.learned.store(learned.map_or(0, u64::from), Ordering::Relaxed);
+			entry.handle.crowded.store(false, Ordering::Relaxed);
 			entry.status = Status::Running;
 			let _ = events.send(Event::Started(id));
 			let job = self.clone();
@@ -388,6 +411,19 @@ impl Engine {
 		reporter.abort();
 		let event = {
 			let mut inner = self.inner.lock().unwrap();
+			// What the run learnt of the host: a limit where a connection was turned away; one more
+			// than it went to where none was, so the next download from it asks a little further;
+			// and nothing once that reaches the most a download may ask for.
+			let learned = handle.learned.load(Ordering::Relaxed);
+			if learned > 0 {
+				let next = if handle.crowded.load(Ordering::Relaxed) { learned } else { learned + 1 };
+				let host = host_of(&request);
+				if next >= u64::from(Connections::MAX) {
+					inner.hosts.remove(&host);
+				} else {
+					inner.hosts.insert(host, next as u16);
+				}
+			}
 			let Some(entry) = inner.entries.get_mut(&id) else { return };
 			entry.running = None;
 			match result {
@@ -451,7 +487,7 @@ mod tests {
 	use super::*;
 	use crate::engine::settings::Connections;
 	use crate::engine::testing::body;
-	use crate::engine::testing::{Options, TestServer};
+	use crate::engine::testing::{Options, TestServer, Turned};
 	use crate::testing::scratch;
 
 	/// The next event `want` accepts, within twenty seconds; `what` names it in the failure,
@@ -469,6 +505,46 @@ mod tests {
 				return event;
 			}
 		}
+	}
+
+	#[test]
+	fn a_host_that_turned_connections_away_is_asked_for_that_many_next_time() {
+		let server = TestServer::start(
+			body(400_000),
+			Options {
+				delay_per_chunk: Duration::from_millis(2),
+				crowded: Some((2, Turned::Status(503))),
+				..Options::default()
+			},
+		);
+		let dir = scratch("hosts");
+		let (engine, events) = Engine::new(EngineSettings::default()).unwrap();
+		let request = |path: &str| {
+			let mut request = Request::new(server.url(path), &dir);
+			request.settings.connections = Connections { min: 1, max: 8, auto: true };
+			request.settings.min_segment = 1000;
+			request.settings.retry_wait = Duration::from_millis(10);
+			request
+		};
+		let first = engine.add(request("/one.bin"), None);
+		wait_for(&events, "first completed", |e| matches!(e, Event::Completed(id, _) if *id == first));
+		assert_eq!(engine.learned_hosts().get("127.0.0.1"), Some(&2), "turned away past two: {:?}", engine.learned_hosts());
+		// The second starts at the limit instead of finding it again: never more open at once than
+		// the host was learnt to take, where the first went one past it to find out.
+		let second = engine.add(request("/two.bin"), None);
+		let mut most = 0;
+		wait_for(&events, "second completed", |e| {
+			if let Event::Progress(snapshot) = e
+				&& snapshot.id == second
+			{
+				most = most.max(snapshot.connections);
+			}
+			matches!(e, Event::Completed(id, _) if *id == second)
+		});
+		assert!(most <= 2, "{most} open at once against a host learnt to take two");
+		// Handed back at start, what was learnt before is what the engine holds.
+		engine.learn_hosts(HashMap::from([("example.com".to_owned(), 3)]));
+		assert_eq!(engine.learned_hosts().get("example.com"), Some(&3));
 	}
 
 	#[test]

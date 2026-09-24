@@ -65,10 +65,16 @@ pub async fn fetch(job: Job) -> Result<Outcome> {
 	}
 	let mut request = job.client.get(job.url.clone());
 	if job.ranges {
-		// The far end is left open even when the segment has one: the segment may grow again
-		// if a later split is undone, and reading past the end is cheaper than a new request.
-		// It is cut at the end by the writer, not by the server.
-		request = request.header(RANGE, format!("bytes={position}-"));
+		// Asked to the segment's end, so the server finishes the answer there and closes the
+		// connection cleanly. A segment's end only ever moves closer -- a steal cuts it, nothing
+		// grows it -- so the answer is never too short; when a steal does cut it, the writer stops
+		// at the new end and the connection is dropped early. It was asked open to the file's end
+		// at first, and every finished segment left the server writing into a connection we had
+		// dropped, counted against its limit until it noticed: the next connection opened was
+		// turned away for it. An open-ended segment, of a file of unknown length, is asked open.
+		// See spec/engine.md, "The server decides how many connections it takes".
+		let range = if open_ended { format!("bytes={position}-") } else { format!("bytes={position}-{}", end - 1) };
+		request = request.header(RANGE, range);
 		if position > 0
 			&& let Some(validator) = &job.validator
 		{
@@ -102,10 +108,10 @@ pub async fn fetch(job: Job) -> Result<Outcome> {
 			StatusCode::OK if position == 0 => {}
 			StatusCode::OK => return Err(Error::Changed),
 			StatusCode::RANGE_NOT_SATISFIABLE => return Err(Error::OutOfRange),
-			other => return Err(Error::Refused { status: other.as_u16() }),
+			_ => return Err(refused(&response)),
 		}
 	} else if !status.is_success() {
-		return Err(Error::Refused { status: status.as_u16() });
+		return Err(refused(&response));
 	}
 	let mut stream = response.bytes_stream();
 	let mut at = position;
@@ -166,4 +172,20 @@ pub async fn fetch(job: Job) -> Result<Outcome> {
 		return Err(Error::ShortBody { want: end_now - position, got: at - position });
 	}
 	Ok(Outcome::Complete)
+}
+
+/// What an answer that is not the file means: too busy -- 429 or 503, with the wait the server
+/// asked for, in seconds, when it gave one -- or a plain refusal.
+fn refused(response: &reqwest::Response) -> Error {
+	let status = response.status().as_u16();
+	if !matches!(status, 429 | 503) {
+		return Error::Refused { status };
+	}
+	let retry_after = response
+		.headers()
+		.get(reqwest::header::RETRY_AFTER)
+		.and_then(|value| value.to_str().ok())
+		.and_then(|value| value.trim().parse::<u64>().ok())
+		.map(Duration::from_secs);
+	Error::Busy { status, retry_after }
 }

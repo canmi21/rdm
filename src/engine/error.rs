@@ -13,6 +13,11 @@ pub enum Error {
 	Http(#[from] reqwest::Error),
 	#[error("the server answered {status}")]
 	Refused { status: u16 },
+	/// The server said it was too busy for this connection -- 429 or 503 -- and, when it said,
+	/// how long to wait: what a server limiting how many connections it takes usually answers,
+	/// so the scheduler reads it as a sign to open fewer. See spec/engine.md.
+	#[error("the server answered {status}")]
+	Busy { status: u16, retry_after: Option<std::time::Duration> },
 	#[error("the server does not serve byte ranges, so this download cannot be resumed or split")]
 	NoRanges,
 	#[error("the file is {size} bytes, over the limit of {limit}")]
@@ -60,7 +65,7 @@ impl Error {
 			Error::Http(error) if error.is_connect() => "The server could not be reached.".to_owned(),
 			Error::Http(error) if error.is_redirect() => "The address redirects too many times.".to_owned(),
 			Error::Http(_) => "The connection failed before the server answered.".to_owned(),
-			Error::Refused { status } => {
+			Error::Refused { status } | Error::Busy { status, .. } => {
 				match reqwest::StatusCode::from_u16(*status).ok().and_then(|code| code.canonical_reason()) {
 					Some(reason) => format!("The server answered {status} {reason}."),
 					None => format!("The server answered {status}."),
@@ -100,7 +105,7 @@ impl Error {
 	/// network; a refusal, a changed file or a full disk will not go away.
 	pub fn is_transient(&self) -> bool {
 		match self {
-			Error::Http(_) | Error::ShortBody { .. } => true,
+			Error::Http(_) | Error::ShortBody { .. } | Error::Busy { .. } => true,
 			Error::Refused { status } => matches!(status, 408 | 429 | 500 | 502 | 503 | 504),
 			_ => false,
 		}

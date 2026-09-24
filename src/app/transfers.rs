@@ -184,8 +184,13 @@ impl Rdm {
 			Event::Failed(_, message) => Some(Some(message.clone())),
 			_ => None,
 		};
+		// A run that ended may have learnt how many connections its host takes; kept with the rest.
+		let stopped = matches!(event, Event::Completed(..) | Event::Failed(..) | Event::Paused(_));
 		self.apply_event(event);
 		self.persist(touched);
+		if stopped {
+			self.schedule_save(cx);
+		}
 		let Some(failure) = ended else { return };
 		let row = self.download(touched);
 		let name = row.map(|d| d.name.clone()).unwrap_or_default();

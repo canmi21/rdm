@@ -399,6 +399,8 @@ impl Rdm {
 				None
 			}
 		};
+		// What earlier runs learnt of how many connections each host takes.
+		engine.learn_hosts(saved.hosts.clone());
 		let mut this = Self {
 			downloads,
 			engine,
@@ -950,6 +952,7 @@ impl Rdm {
 			view: Some(self.view),
 			folder_shown: Some(self.folder_shown),
 			last_build: crate::update::this_build(),
+			hosts: self.engine.learned_hosts(),
 			..State::default()
 		}
 	}

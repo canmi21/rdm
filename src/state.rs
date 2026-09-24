@@ -115,6 +115,11 @@ pub struct State {
 	/// older build wrote, or a hand build. See src/update/install.rs on the legacy names.
 	#[serde(default)]
 	pub last_build: Option<u64>,
+	/// How many connections each host has shown it will take, learnt by earlier downloads, so a
+	/// download from one starts there. Absent in a file written before there was anything to
+	/// learn. See spec/engine.md, "The server decides how many connections it takes".
+	#[serde(default)]
+	pub hosts: std::collections::HashMap<String, u16>,
 }
 
 impl Default for State {
@@ -128,6 +133,7 @@ impl Default for State {
 			display: None,
 			folder_shown: None,
 			last_build: None,
+			hosts: std::collections::HashMap::new(),
 		}
 	}
 }

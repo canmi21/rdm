@@ -35,8 +35,9 @@ open would be a third file with its own rules.
 Three files and a folder, because three kinds of writing and one kind of picture:
 
 - **`state.json`** is small and rewritten whole: the window's frame and whether it was maximised,
-  the column widths, the view, whether the header's funnel is lit (see [ui.md](ui.md)), and the
-  build that last ran, which the next reads to know what it
+  the column widths, the view, whether the header's funnel is lit (see [ui.md](ui.md)), how many
+  connections each host has shown it takes (see [engine.md](engine.md)), and the build that last
+  ran, which the next reads to know what it
   came after (see [release.md](release.md) on the old names). Written a third of a second after the last change, to a sibling
   and then renamed over the old file, so a crash mid-write leaves the previous state rather than
   half of the new one. It is written on change and not at quit, because a forced quit gives no
