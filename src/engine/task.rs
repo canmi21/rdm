@@ -841,10 +841,14 @@ mod tests {
 
 	#[tokio::test]
 	async fn a_connection_crawling_far_behind_the_others_is_reopened() {
-		// Four quarters at about a megabyte a second each, the last at forty kilobytes once its
-		// first 8 KiB are in: it would take half a minute where the others take one.
+		// Four quarters, three at up to a megabyte a second and the last at ten kilobytes once its
+		// first 8 KiB are in: it would take a minute and a half where the others take a second or
+		// three. Far enough apart that a runner's coarse sleeps -- a 4 ms one on a macOS runner is
+		// nearer 15 -- cannot bring the two within the sixteen times a crawl is judged by, which a
+		// crawler at forty kilobytes did there. The watch waits longer than the crawler's pauses,
+		// so the crawl is what it sees rather than a stop.
 		let data = body(4_000_000);
-		let stall = Stall { from: 3_000_000, after: 8192, pause: Duration::from_millis(100), times: 1 };
+		let stall = Stall { from: 3_000_000, after: 8192, pause: Duration::from_millis(400), times: 1 };
 		let server = TestServer::start(
 			data.clone(),
 			Options {
@@ -855,10 +859,10 @@ mod tests {
 		);
 		let dir = scratch("crawl");
 		let mut req = request(&server, &dir, "/crawl.bin", Connections::fixed(4));
-		req.settings.stall_timeout = Duration::from_millis(600);
+		req.settings.stall_timeout = Duration::from_millis(1500);
 		let started = Instant::now();
 		let done = run(req, &Handle::new(), Limiter::unlimited()).await.unwrap();
-		assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+		assert!(started.elapsed() < Duration::from_secs(20), "took {:?}", started.elapsed());
 		assert_eq!(std::fs::read(&done.path).unwrap(), data);
 		let last: Vec<u64> = server
 			.requests()
