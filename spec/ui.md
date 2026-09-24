@@ -954,13 +954,15 @@ to work in, and the precision a level promised was not there to be had.
   visit. The end went out on its own at first, after a hold, and went on doing so while the hand
   stayed, a level every 400 ms down to the whole track; then it went once and stopped, which still
   took the level away while the hand was only looking at where it had got to.
-- **No move between levels changes the value.** Going in, the zoom is placed around the value the
-  handle holds, drawn where the pointer is; going out, the zoom gone back to is placed the same way,
-  and on the whole track, which has no zoom to place, the handle is drawn at its value and follows
-  the pointer's moves from there. The value only ever moves because the hand moved it. Going out to
-  the whole track set the value to where the pointer was for a while, so a value in the forties came
-  back out by the right end as a hundred; before that the handle waited at its value until the
-  pointer reached it, which kept the value and left the hand holding nothing. Leaving by crossing
+- **The handle stays under the hand through every move between levels.** Going in, the zoom is
+  placed around the value the handle holds, drawn where the pointer is, and the value is unchanged;
+  going back out to a zoom, the same. The whole track has no zoom to place, since a place on it is
+  its value, so going back out to it the handle lands under the pointer and the value is that
+  place's: out by the right end and back, a value in the forties is where the hand is, up by the
+  right. Where the handle is matters more than what it held, and the whole track is the full scale,
+  so nothing is out of reach from there. Two ways of keeping the value came first and both took the
+  handle from the hand: it waited at its value until the pointer reached it, and then it stayed at
+  its value and followed the pointer's moves from there, away to the left of it. Leaving by crossing
   the gap's edge on an unzoomed track came first of all, and fine work near an edge crossed it and
   came back, taking the band away in the middle of the work.
 

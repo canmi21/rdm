@@ -262,21 +262,26 @@ impl Slider {
 		self.forget();
 	}
 
-	/// One level coarser, the handle's value where it was. The zoom now shown is placed around it at
-	/// the pointer, as it was when it was entered; on the whole track, where a place is its value and
-	/// there is no zoom to place, the handle is drawn at its value and follows the pointer's moves from
-	/// there. Going out never changes the value: it once set it to where the pointer was, and a value
-	/// in the forties came back out as a hundred.
-	fn zoom_out(&mut self, index: usize) {
+	/// One level coarser. The zoom now shown is placed around the handle's value at the pointer, as it
+	/// was when it was entered, so the handle stays under the hand with its value as it was. The whole
+	/// track has no zoom to place -- a place on it is its value -- so there the handle lands under the
+	/// pointer and the value is what that place is: where the handle is matters more than what it
+	/// held, and the whole track is the full scale anyway. Keeping the value there instead drew the
+	/// handle away from the hand, and the hand found it somewhere it had not put it.
+	fn zoom_out(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
 		self.gaps.pop();
 		let value = self.handles[index];
 		let at = self.pointer + self.offset;
-		match self.gaps.pop() {
-			Some((lo, hi)) => self.gaps.push(around(hi - lo, value, at)),
-			None => self.offset = value - self.pointer,
-		}
 		self.forget();
 		self.rest = self.rest.map(|(x, _)| (x, Instant::now()));
+		match self.gaps.pop() {
+			Some((lo, hi)) => self.gaps.push(around(hi - lo, value, at)),
+			None => {
+				self.offset = 0.0;
+				let landed = self.snapped(0, unview(None, self.pointer), cx);
+				self.move_handle(index, landed, window, cx);
+			}
+		}
 	}
 
 	/// What was being watched at the level just left: a hang, a swing, an end.
@@ -419,7 +424,7 @@ impl Slider {
 		if let Some(since) = self.edge.take()
 			&& now.duration_since(since) >= EDGE_HOLD
 		{
-			self.zoom_out(index);
+			self.zoom_out(index, window, cx);
 			cx.notify();
 			return;
 		}
@@ -866,15 +871,15 @@ mod tests {
 		cx.simulate_mouse_move(at(0.2), MouseButton::Left, Modifiers::default());
 		cx.run_until_parked();
 		assert_eq!(level(&mut cx), 0, "coming back from the end goes out");
-		assert_eq!(handle(&mut cx), before, "and going out does not change the value");
-		// On the whole track the handle follows the pointer's moves from where its value is.
-		cx.simulate_mouse_move(at(0.4), MouseButton::Left, Modifiers::default());
-		cx.run_until_parked();
 		assert!(
-			(handle(&mut cx) - even(0, before + 0.2)).abs() < 1e-6,
-			"a fifth of the track on from where it was: {}",
+			(handle(&mut cx) - 0.2).abs() < 1e-6,
+			"on the whole track the handle lands under the pointer, its value that place's: {} from {before}",
 			handle(&mut cx)
 		);
+		// And is the pointer's from there.
+		cx.simulate_mouse_move(at(0.4), MouseButton::Left, Modifiers::default());
+		cx.run_until_parked();
+		assert!((handle(&mut cx) - 0.4).abs() < 1e-6, "{}", handle(&mut cx));
 		cx.simulate_mouse_up(at(0.4), MouseButton::Left, Modifiers::default());
 	}
 
@@ -1042,7 +1047,11 @@ mod tests {
 		// And again by the right end: out to the whole track, the value still as it was.
 		visit(&mut cx, 0.98, 0.7);
 		assert_eq!(level(&mut cx), 0, "a second visit is a second level");
-		assert_eq!(handle(&mut cx), value, "and still the value it was");
+		assert!(
+			(handle(&mut cx) - 0.7).abs() < 1e-6,
+			"out on the whole track, under the pointer: {}",
+			handle(&mut cx)
+		);
 		cx.simulate_mouse_up(at(0.7), MouseButton::Left, Modifiers::default());
 	}
 
