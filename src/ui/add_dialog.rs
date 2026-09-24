@@ -502,7 +502,7 @@ impl Rdm {
 	}
 
 	/// The low and high ends of the limit slider, in MB/s, as Settings has them.
-	fn limit_scale(&self) -> (f64, f64) {
+	pub(crate) fn limit_scale(&self) -> (f64, f64) {
 		self.preferences.limit_slider()
 	}
 

@@ -69,6 +69,9 @@ pub struct Snapshot {
 	/// was never split. A window that draws these sorts by position first, as everything that
 	/// judges a plan does. See spec/engine.md.
 	pub segments: Vec<Segment>,
+	/// Whether the server serves ranges -- so the download can be resumed and split -- once the
+	/// probe has said; None before.
+	pub ranges: Option<bool>,
 }
 
 impl Snapshot {
@@ -439,6 +442,7 @@ fn snapshot_of(id: TaskId, entry: &Entry) -> Snapshot {
 			.as_ref()
 			.map(|plan| plan.lock().unwrap().segments.clone())
 			.unwrap_or_default(),
+		ranges: entry.handle.probed.lock().unwrap().as_ref().map(|probe| probe.ranges),
 	}
 }
 

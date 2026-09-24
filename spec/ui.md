@@ -627,10 +627,14 @@ Command on macOS and Control on Windows and Linux, bound once in `text_input.rs`
 field bound to Command alone could not be pasted into anywhere else, which is how it shipped
 first.
 
-**The toolbar says Add Task; the sheet it opens is New Task, and a download's window is Edit
-Task.** The button names what pressing it does, and each card names what is in front of it: a
-task not yet made, or one that exists and is being changed. The download's window therefore
-starts its body with the file's name, which its title no longer carries.
+**The toolbar says Add Task, and the sheet it opens is New Task.** The button names what pressing
+it does, and the card names what is in front of it: a task not yet made. **A download's window is
+titled with how far it has come, then the file's name**: the percentage while it moves, Paused,
+Queued or Failed while it waits or has stopped, and the name alone once it is complete -- the state
+first, in a label's grey, since it is what changes and what the window is opened to see, and the
+name after it, cut short where it has to be. It was titled Edit Task at
+first, after what the window is for, with the name at the top of its body; a title that says which
+download, and where it is, is what a window among several is found by.
 
 **New Task asks only what has to be settled before the first byte.** An address that turns out
 to be a file is not added on the spot: the sheet shows what the look turned up and asks for the
@@ -753,12 +757,46 @@ there keeps the line moving, a character a frame: the field first listened for t
 while it was over the field, so a selection stopped a few characters past the edge with most of
 the address still out of view.
 
-**Edit Task says what was asked and takes the changes a running download can.** Under the
-file's name, the address and the size: the folder, the mirrors, the checksum and the range where there were
-any, the error while there is one, and two fields applied on Enter to the engine and kept on the
-row. One is the download's own limit. The other is its connections: empty or `auto` for the
-engine's judgement, a number from one to 256 for a fixed count, and beside it how many are open
-while it runs. A higher count opens connections at once; a lower one is a ceiling the download
+**A download's window is one page, laid out as New Task is.** **It opens three by two, at 480 by
+320 with its title strip, exactly as wide as the New Task card**, so the body takes New Task's
+measures as they are: its padding, the facts card, the grid's 72-point label column and the
+128-point column at the right a slider's field sits in, with lines two points under New Task's
+thirty, which is what fits. It opened at the main window's proportion first, 680 wide, and the
+extra width was spent on gaps; a user resizing it by eye settled near three by two.
+
+From the top: the address on a line of its own, cut short, with a button that copies it whole --
+nothing there is typed, so it is not a field. Then the transfer's facts in a card, two columns as
+New Task shows what it found: how much has landed, the speed, the time left; whether the server
+serves ranges so the download can be resumed, how many parts it is in and how many connections are
+open on them, and the folder. Then the two settings. At the bottom, the transfer as **one bar made
+of two**: above, the file as the engine cut it, each part a slot of its own filled from its start
+as far as it has landed, with a hairline where one part ends and the next begins; under it, half
+as high and in green, the whole download's progress. Complete, both are green and the hairlines
+stay, so how many parts it took is still there to see. Last, the state at the left -- with the
+reason while it has failed -- and Pause or Resume, whichever applies, and Remove at the right.
+
+It was three pages at first -- details, parts and settings -- over the transfer, and before that
+everything stacked in one column; the pages hid what a glance at a download is for, and a page
+that listed sixteen parts said less than the bar that draws them. The address, the mirrors, the
+checksum, the range and the contents were rows of their own; the address alone is kept, since it
+is what is copied, and the others are asked at New Task and seen in the list.
+
+The engine keeps the parts in the order it made them, so they are sorted by where they lie before
+they are drawn. A download the engine does not hold -- paused since a restart -- is drawn from the
+plan in the control file beside its partial file, read once when the window needs it and dropped as
+soon as the engine holds the download again; one with neither, or never split, is one part. Whether
+it can be resumed is the probe's answer while the engine holds it, carried on its snapshot; from a
+plan on disk, yes when it was cut into more than one part, which only a server serving ranges
+allows; otherwise not known yet.
+
+**The settings are sliders beside fields, as New Task's limit is**, applied to the engine and kept
+on the row as they are moved or typed. The limit is in MB/s on New Task's scale, with no limit at
+the far right. The connections run on a log scale from one to 256, on the powers of two at the
+coarsest and on whole counts once zoomed, with Auto at the far right, where a new download starts.
+They were fields alone at first, applied on Enter, with a hint beside each saying what they took.
+The connections' field takes empty or `auto` for the engine's judgement and a number from one to
+256 for a fixed count; how many are open is said with the transfer. A higher count opens
+connections at once; a lower one is a ceiling the download
 drifts down to as its connections finish, since a connection already reading is not cut off
 ([engine.md](engine.md)). A server that never offered ranges stays on one whatever is typed.
 

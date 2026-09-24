@@ -1010,10 +1010,9 @@ impl Rdm {
 		// reads this entity, which is still being updated by the click that got us here.
 		let rdm = cx.entity();
 		cx.defer(move |cx| {
-			// Tall enough for the two live fields, the limit and the connections, and one of the
-			// optional lines -- mirrors, checksum, range, error -- above the buttons, under the
-			// window's own title strip.
-			let extent = size(px(480.0), px(440.0 + crate::ui::toolbar::HEIGHT));
+			// Three by two, title strip included, and as wide as the New Task card, whose measures
+			// the body takes. See spec/ui.md.
+			let extent = size(px(480.0), px(320.0));
 			let options = child_window(cx, "Edit Task", extent);
 			let view = rdm.clone();
 			if let Ok(handle) =

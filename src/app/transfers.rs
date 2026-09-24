@@ -358,9 +358,41 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// How many connections a download holds open right now, while the engine has it.
-	pub(crate) fn open_connections(&self, id: u64) -> Option<u64> {
-		self.engine.snapshot(TaskId(id)).map(|snapshot| snapshot.connections)
+	/// How a download the engine does not hold was divided when it last ran: the plan in the control
+	/// file beside its partial file, the parts sorted by where they lie. None when there is no
+	/// readable control file -- a finished download, or one never started. Read from disk, so a
+	/// caller keeps what it gets rather than asking every frame.
+	pub(crate) fn saved_parts_of(&self, download: &Download) -> Option<Vec<engine::segments::Segment>> {
+		let folder = match &download.directory {
+			Some(directory) => std::path::PathBuf::from(directory),
+			None => self.paths.as_ref()?.downloads.clone(),
+		};
+		let control = engine::control::load(&folder.join(&download.name)).ok().flatten()?;
+		let mut parts = control.plan.segments;
+		parts.sort_by_key(|part| part.span.start);
+		Some(parts)
+	}
+
+	/// Whether the server serves ranges, so the download can be resumed: the probe's answer while the
+	/// engine holds it; else, from a plan left on disk, yes when it was cut into more than one part,
+	/// which only a server serving ranges allows; else unknown.
+	pub(crate) fn resumable(&self, download: &Download) -> Option<bool> {
+		match self.engine.snapshot(TaskId(download.id)) {
+			Some(snapshot) => snapshot.ranges,
+			None => self.saved_parts_of(download).filter(|parts| parts.len() > 1).map(|_| true),
+		}
+	}
+
+	/// How the download is being divided, while the engine holds it: the connections open, and each
+	/// part's span and how much of it has landed, in the order they lie in the file -- the engine
+	/// keeps them in the order it made them. None when the engine has no entry for it, and no parts
+	/// before the plan is made or for a download that was never split. See spec/engine.md.
+	pub(crate) fn parts_of(&self, id: u64) -> Option<(u64, Vec<engine::segments::Segment>)> {
+		self.engine.snapshot(TaskId(id)).map(|snapshot| {
+			let mut parts = snapshot.segments;
+			parts.sort_by_key(|part| part.span.start);
+			(snapshot.connections, parts)
+		})
 	}
 
 	/// A new download, handed to the engine and shown at once under `name` or the address's
