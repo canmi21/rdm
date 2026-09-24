@@ -26,7 +26,9 @@ use rustls::crypto::aws_lc_rs as chosen;
 use rustls::crypto::ring as chosen;
 
 #[cfg(not(any(feature = "aws-lc-rs", feature = "ring")))]
-compile_error!("one of the aws-lc-rs and ring features has to be on: there is no third way to speak TLS");
+compile_error!(
+	"one of the aws-lc-rs and ring features has to be on: there is no third way to speak TLS"
+);
 
 /// Installs the provider, once, whoever asks first. Every client this application builds calls it
 /// before building, so a test that never runs `main` gets one too, and a provider is never

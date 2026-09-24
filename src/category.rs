@@ -621,7 +621,7 @@ mod tests {
 		assert_eq!(disks.shade("vm.vmdk"), Tint::Frost.rgb(), "a machine's disk is not");
 	}
 
-    /// The file records only what differs from the preset, so a shade the application adds later
+	/// The file records only what differs from the preset, so a shade the application adds later
 	/// reaches a file that never touched shades, and one the user cleared stays cleared.
 	#[test]
 	fn only_a_shade_that_differs_from_the_preset_is_written() {

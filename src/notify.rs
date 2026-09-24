@@ -31,8 +31,7 @@ pub enum Style {
 impl Style {
 	/// What Settings offers, in the order it offers it: the places a notice can go, then the
 	/// choice to send it nowhere, since somebody opening the row is usually turning one down.
-	pub const ALL: [Style; 4] =
-		[Style::System, Style::InApp, Style::Window, Style::Silent];
+	pub const ALL: [Style; 4] = [Style::System, Style::InApp, Style::Window, Style::Silent];
 
 	pub fn name(self) -> &'static str {
 		match self {

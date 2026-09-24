@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui::{
-	App, Bounds, Context, IntoElement, Render, Task, Window, WindowBounds,
-	WindowHandle, WindowOptions, div, prelude::*, px, size,
+	App, Bounds, Context, IntoElement, Render, Task, Window, WindowBounds, WindowHandle,
+	WindowOptions, div, prelude::*, px, size,
 };
 
 use serde::Serialize;
@@ -26,8 +26,8 @@ use crate::ui::theme::{self, Palette};
 mod categories;
 mod indexing;
 mod network;
-pub(crate) mod quarantine;
 mod notices;
+pub(crate) mod quarantine;
 #[cfg(test)]
 mod tests;
 mod transfers;
@@ -834,7 +834,8 @@ impl Rdm {
 	/// The drag starts from what is on screen, not from what was asked for: at a narrow window the
 	/// two differ, and the boundary has to leave from under the pointer.
 	pub(crate) fn begin_resize(&mut self, column: Column, at: gpui::Pixels) {
-		self.resizing = Some(Resize { column, from_x: at, from_widths: self.drawn(), asked: self.widths });
+		self.resizing =
+			Some(Resize { column, from_x: at, from_widths: self.drawn(), asked: self.widths });
 	}
 
 	/// What the name column is left once the fixed columns and their handles have taken theirs.
@@ -1018,17 +1019,15 @@ impl Rdm {
 			let extent = size(px(480.0), px(320.0));
 			let options = child_window(cx, "Edit Task", extent);
 			let view = rdm.clone();
-			if let Ok(handle) =
-				cx.open_window(options, |window, cx| {
-					// Linux is asked for client-side decorations, so the title strip is the frame
-					// there too; see src/ui/frame.rs.
-					#[cfg(target_os = "linux")]
-					window.request_decorations(gpui::WindowDecorations::Client);
-					#[cfg(not(target_os = "linux"))]
-					let _ = window;
-					cx.new(|cx| DownloadWindow::new(view, id, cx))
-				})
-			{
+			if let Ok(handle) = cx.open_window(options, |window, cx| {
+				// Linux is asked for client-side decorations, so the title strip is the frame
+				// there too; see src/ui/frame.rs.
+				#[cfg(target_os = "linux")]
+				window.request_decorations(gpui::WindowDecorations::Client);
+				#[cfg(not(target_os = "linux"))]
+				let _ = window;
+				cx.new(|cx| DownloadWindow::new(view, id, cx))
+			}) {
 				rdm.update(cx, |this, _| {
 					this.open.insert(id, handle);
 				});

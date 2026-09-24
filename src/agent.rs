@@ -109,7 +109,10 @@ mod tests {
 		let windows = Agent::Windows.string("rdm/0.0.0", "");
 		assert!(windows.starts_with("Mozilla/5.0 (Windows NT 10.0; Win64; x64)"));
 		assert!(windows.contains(&format!("Chrome/{CHROME}.0.0.0")), "and a version worth claiming");
-		assert!(Agent::Macos.string("rdm/0.0.0", "").contains("Mac OS X 10_15_7"), "as Chrome sends it");
+		assert!(
+			Agent::Macos.string("rdm/0.0.0", "").contains("Mac OS X 10_15_7"),
+			"as Chrome sends it"
+		);
 		assert!(Agent::Linux.string("rdm/0.0.0", "").contains("X11; Linux x86_64"));
 	}
 

@@ -6,8 +6,7 @@ use std::rc::Rc;
 
 use gpui::{
 	App, Bounds, ClipboardItem, Context, CursorStyle, DispatchPhase, ElementId, ElementInputHandler,
-	Entity,
-	EntityInputHandler, FocusHandle, Focusable, GlobalElementId, LayoutId, MouseButton,
+	Entity, EntityInputHandler, FocusHandle, Focusable, GlobalElementId, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString,
 	Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill, point, prelude::*,
 	px, relative, size,
@@ -794,7 +793,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn enter_and_escape_reach_their_callbacks_after_the_field_is_done_with_itself(cx: &mut TestAppContext) {
+	fn enter_and_escape_reach_their_callbacks_after_the_field_is_done_with_itself(
+		cx: &mut TestAppContext,
+	) {
 		use std::cell::RefCell;
 		use std::rc::Rc;
 		// What a sheet does on Enter: read the field Enter was pressed in. Called from inside the
@@ -826,7 +827,9 @@ mod tests {
 		let input = window.root(&mut cx).unwrap();
 		cx.update(|window, cx| {
 			window.focus(&input.read(cx).focus(), cx);
-			input.update(cx, |input, cx| input.replace_text_in_range(None, "https://a.example/x", window, cx));
+			input.update(cx, |input, cx| {
+				input.replace_text_in_range(None, "https://a.example/x", window, cx)
+			});
 		});
 		cx.simulate_keystrokes("enter");
 		cx.simulate_keystrokes("escape");
@@ -866,7 +869,11 @@ mod tests {
 		cx.run_until_parked();
 		let bounds = input.read_with(&cx, |input, _| input.last_bounds).expect("the field was drawn");
 		let y = bounds.center().y;
-		cx.simulate_mouse_down(point(bounds.right() - px(4.0), y), MouseButton::Left, Modifiers::default());
+		cx.simulate_mouse_down(
+			point(bounds.right() - px(4.0), y),
+			MouseButton::Left,
+			Modifiers::default(),
+		);
 		// Just past the edge and held there: the pointer alone reaches only what is in view, and
 		// the rest comes a character a frame.
 		let past = point(bounds.left() - px(4.0), y);

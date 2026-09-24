@@ -521,7 +521,6 @@ mod tests {
 		assert_eq!(junk(".ds_store"), Some(Junk::Noise), "the name is judged without its case");
 	}
 
-
 	/// The four states at the top of the sidebar are a grouping, not a list of statuses: what is
 	/// queued is downloading as far as anybody watching it is concerned, what is paused is still
 	/// owed, and what failed is as finished as what completed. One table says so and `matches`
@@ -529,11 +528,10 @@ mod tests {
 	#[test]
 	fn a_state_holds_the_statuses_the_sidebar_groups_under_it() {
 		assert_eq!(Filter::Downloading.statuses(), [Status::Queued, Status::Downloading]);
-		assert_eq!(Filter::Unfinished.statuses(), [
-			Status::Queued,
-			Status::Downloading,
-			Status::Paused
-		]);
+		assert_eq!(
+			Filter::Unfinished.statuses(),
+			[Status::Queued, Status::Downloading, Status::Paused]
+		);
 		assert_eq!(Filter::Completed.statuses(), [Status::Completed, Status::Failed]);
 		assert_eq!(Filter::All.statuses(), Status::ALL, "All holds everything there is");
 		for status in Status::ALL {

@@ -24,19 +24,18 @@ mod reveal;
 mod screens;
 mod startup;
 mod state;
-mod thumbnail;
-mod tls;
 mod store;
 #[cfg(test)]
 mod testing;
+mod thumbnail;
+mod tls;
 mod tray;
 mod ui;
 mod update;
 mod watch;
 
 use gpui::{
-	App, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
-	prelude::*, px, size,
+	App, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point, prelude::*, px, size,
 };
 use gpui_platform::application;
 

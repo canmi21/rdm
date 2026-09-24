@@ -227,10 +227,7 @@ impl Rdm {
 
 	/// Whether the queue still has anything to do: something moving, or something waiting to.
 	fn working(&self) -> bool {
-		self
-			.downloads
-			.iter()
-			.any(|d| matches!(d.status, Status::Downloading | Status::Queued))
+		self.downloads.iter().any(|d| matches!(d.status, Status::Downloading | Status::Queued))
 	}
 
 	fn apply_event(&mut self, event: Event) {
@@ -367,7 +364,10 @@ impl Rdm {
 	/// file beside its partial file, the parts sorted by where they lie. None when there is no
 	/// readable control file -- a finished download, or one never started. Read from disk, so a
 	/// caller keeps what it gets rather than asking every frame.
-	pub(crate) fn saved_parts_of(&self, download: &Download) -> Option<Vec<engine::segments::Segment>> {
+	pub(crate) fn saved_parts_of(
+		&self,
+		download: &Download,
+	) -> Option<Vec<engine::segments::Segment>> {
 		let folder = match &download.directory {
 			Some(directory) => std::path::PathBuf::from(directory),
 			None => self.paths.as_ref()?.downloads.clone(),

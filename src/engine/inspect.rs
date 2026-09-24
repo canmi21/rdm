@@ -47,8 +47,11 @@ pub fn confirmation(content_type: Option<&str>) -> Option<&'static str> {
 	let kind = content_type?.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
 	match kind.as_str() {
 		"text/html" | "application/xhtml+xml" => Some("web page"),
-		"text/javascript" | "application/javascript" | "application/x-javascript"
-		| "application/ecmascript" | "text/ecmascript" => Some("script"),
+		"text/javascript"
+		| "application/javascript"
+		| "application/x-javascript"
+		| "application/ecmascript"
+		| "text/ecmascript" => Some("script"),
 		"text/css" => Some("stylesheet"),
 		_ => None,
 	}

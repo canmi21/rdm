@@ -124,7 +124,11 @@ impl Plan {
 	/// different speeds the one with the most bytes left is not always the one holding the
 	/// download up, and cutting that one is what has every connection finish together instead of
 	/// one slow connection trailing on alone. See spec/engine.md.
-	pub fn steal_latest(&mut self, min_segment: u64, eta: impl Fn(usize, &Segment) -> f64) -> Option<usize> {
+	pub fn steal_latest(
+		&mut self,
+		min_segment: u64,
+		eta: impl Fn(usize, &Segment) -> f64,
+	) -> Option<usize> {
 		let min_segment = min_segment.max(1);
 		let (index, segment) = self
 			.segments

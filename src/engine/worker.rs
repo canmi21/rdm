@@ -73,7 +73,11 @@ pub async fn fetch(job: Job) -> Result<Outcome> {
 		// dropped, counted against its limit until it noticed: the next connection opened was
 		// turned away for it. An open-ended segment, of a file of unknown length, is asked open.
 		// See spec/engine.md, "The server decides how many connections it takes".
-		let range = if open_ended { format!("bytes={position}-") } else { format!("bytes={position}-{}", end - 1) };
+		let range = if open_ended {
+			format!("bytes={position}-")
+		} else {
+			format!("bytes={position}-{}", end - 1)
+		};
 		request = request.header(RANGE, range);
 		if position > 0
 			&& let Some(validator) = &job.validator

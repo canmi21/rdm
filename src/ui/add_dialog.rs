@@ -12,11 +12,11 @@ use reqwest::Url;
 use crate::app::Rdm;
 use crate::engine::{Failure, Inspection, Link};
 use crate::ui::backdrop;
-use crate::ui::{button, button_after};
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::slider::Slider;
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::Palette;
+use crate::ui::{button, button_after};
 
 /// The clipboard is read only up to this length: an address is never longer, and a document
 /// that happens to be on the clipboard is not worth parsing.
@@ -83,7 +83,11 @@ pub fn parse_count(text: &str) -> Result<u16, String> {
 /// engine's own judgement, anything else a count.
 pub fn parse_connections(text: &str) -> Result<Option<u16>, String> {
 	let text = text.trim();
-	if text.is_empty() || text.eq_ignore_ascii_case("auto") { Ok(None) } else { parse_count(text).map(Some) }
+	if text.is_empty() || text.eq_ignore_ascii_case("auto") {
+		Ok(None)
+	} else {
+		parse_count(text).map(Some)
+	}
 }
 
 /// The limit field, in megabytes a second: empty or `unlimited` is no limit.
@@ -152,7 +156,11 @@ pub fn limit_snap(level: usize, position: f32, (low, high): (f64, f64)) -> f32 {
 		.into_iter()
 		.min_by(|a, b| (a / megabytes).ln().abs().total_cmp(&(b / megabytes).ln().abs()))
 		.unwrap_or(megabytes);
-	if (preferred / megabytes).ln().abs() < 0.02 { limit_position(Some(preferred), (low, high)) } else { even }
+	if (preferred / megabytes).ln().abs() < 0.02 {
+		limit_position(Some(preferred), (low, high))
+	} else {
+		even
+	}
 }
 
 /// The byte a range handle stands for at a drag's level: on a level's steps it is that many tenths,
@@ -241,7 +249,10 @@ fn disclosure(
 		.hover(move |s| s.text_color(p.text))
 		.on_click(on_click)
 		.child(label)
-		.child(hover_icon(if open { Icon::ChevronUp } else { Icon::ChevronDown }, id, p.muted, Some(p.text)).size_3p5())
+		.child(
+			hover_icon(if open { Icon::ChevronUp } else { Icon::ChevronDown }, id, p.muted, Some(p.text))
+				.size_3p5(),
+		)
 }
 
 impl Rdm {
@@ -307,10 +318,9 @@ impl Rdm {
 				});
 				let owner = cx.weak_entity();
 				let range_slider = cx.new(|_| {
-					Slider::new("Range", vec![0.0, 1.0])
-						.on_change(move |handle, at, level, _, cx| {
-							let _ = owner.update(cx, |this, cx| this.slide_range(handle, at, level, cx));
-						})
+					Slider::new("Range", vec![0.0, 1.0]).on_change(move |handle, at, level, _, cx| {
+						let _ = owner.update(cx, |this, cx| this.slide_range(handle, at, level, cx));
+					})
 				});
 				self.adding = Some(AddSheet {
 					input: input.clone(),
@@ -392,7 +402,8 @@ impl Rdm {
 		sheet.details = false;
 		sheet.confirm = None;
 		let Some(url) = parse_address(&text) else {
-			sheet.problem = Some(Problem { summary: "That is not a web address.".to_owned(), detail: None });
+			sheet.problem =
+				Some(Problem { summary: "That is not a web address.".to_owned(), detail: None });
 			cx.notify();
 			return;
 		};
@@ -424,7 +435,8 @@ impl Rdm {
 		if range.is_some() && checksum.is_some() {
 			return Err("A checksum is for the whole file; clear it to download a part.".to_owned());
 		}
-		let speed_limit = parse_limit(&text(&sheet.limit))?.map(|megabytes| (megabytes * 1_048_576.0) as u64);
+		let speed_limit =
+			parse_limit(&text(&sheet.limit))?.map(|megabytes| (megabytes * 1_048_576.0) as u64);
 		Ok(crate::app::Asked {
 			connections,
 			directory: sheet.folder.as_ref().map(|p| p.display().to_string()),
@@ -446,7 +458,8 @@ impl Rdm {
 		sheet.confirm = None;
 		sheet.problem = None;
 		sheet.details = false;
-		let (field, start, end) = (sheet.name.clone(), sheet.range_start.clone(), sheet.range_end.clone());
+		let (field, start, end) =
+			(sheet.name.clone(), sheet.range_start.clone(), sheet.range_end.clone());
 		let fill = |field: &Entity<TextInput>, text: &str, cx: &mut Context<Self>| {
 			field.update(cx, |input, cx| {
 				if input.content.trim().is_empty() {
@@ -515,7 +528,8 @@ impl Rdm {
 		// and the field writes them rounded, and moving the handle to the rounded one would take it
 		// off the place the next drag starts from.
 		let scale = self.limit_scale();
-		if sheet.limit_slider.read(cx).handles().first().is_some_and(|at| limit_at(*at, scale) == limit) {
+		if sheet.limit_slider.read(cx).handles().first().is_some_and(|at| limit_at(*at, scale) == limit)
+		{
 			return;
 		}
 		let at = limit_position(limit, scale);
@@ -533,7 +547,8 @@ impl Rdm {
 	fn follow_range(&mut self, cx: &mut Context<Self>) {
 		cx.notify();
 		let Some(sheet) = &self.adding else { return };
-		let Some(size) = sheet.found.as_ref().and_then(|f| f.probe.size).filter(|size| *size > 0) else {
+		let Some(size) = sheet.found.as_ref().and_then(|f| f.probe.size).filter(|size| *size > 0)
+		else {
 			return;
 		};
 		let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
@@ -547,11 +562,18 @@ impl Rdm {
 	/// A range handle moved: its field says the byte it stands for, a byte short of the other end.
 	/// At a drag's level the byte is put back on that level's step, which a position cannot hold
 	/// exactly for a file of gigabytes.
-	pub(crate) fn slide_range(&mut self, handle: usize, position: f32, level: usize, cx: &mut Context<Self>) {
+	pub(crate) fn slide_range(
+		&mut self,
+		handle: usize,
+		position: f32,
+		level: usize,
+		cx: &mut Context<Self>,
+	) {
 		let Some(sheet) = &self.adding else { return };
 		let Some(size) = sheet.found.as_ref().and_then(|f| f.probe.size) else { return };
 		let read = |field: &Entity<TextInput>| field.read(cx).content.trim().parse::<u64>().ok();
-		let (start, end) = (read(&sheet.range_start).unwrap_or(0), read(&sheet.range_end).unwrap_or(size));
+		let (start, end) =
+			(read(&sheet.range_start).unwrap_or(0), read(&sheet.range_end).unwrap_or(size));
 		let at = part_at(position, level, size);
 		let (field, bytes) = if handle == 0 {
 			(sheet.range_start.clone(), at.min(end.saturating_sub(1)))
@@ -606,7 +628,8 @@ impl Rdm {
 				let found = Found { url, probe: inspection.probe };
 				match crate::engine::inspect::confirmation(found.probe.content_type.as_deref()) {
 					Some(kind) => {
-						sheet.confirm = Some(Confirm { found, kind, links: inspection.links, added: Vec::new() })
+						sheet.confirm =
+							Some(Confirm { found, kind, links: inspection.links, added: Vec::new() })
 					}
 					None => self.accept(found, cx),
 				}
@@ -678,7 +701,9 @@ impl Rdm {
 											cx.listener(|this, _, window, cx| this.back_to_address(window, cx)),
 										))
 									})
-									.child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(text!("New Task"))),
+									.child(
+										div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child(text!("New Task")),
+									),
 							)
 							.child(crate::ui::icon_button(
 								p,
@@ -692,9 +717,9 @@ impl Rdm {
 					// The second screen does not show the address: arriving there means it was right.
 					.map(|s| match &sheet.found {
 						Some(found) => s.child(self.found_notice(found, sheet, cx)),
-						None => s
-							.child(sheet.input.clone())
-							.when_some(sheet.confirm.as_ref(), |s, confirm| s.child(self.confirm_notice(confirm, cx))),
+						None => s.child(sheet.input.clone()).when_some(sheet.confirm.as_ref(), |s, confirm| {
+							s.child(self.confirm_notice(confirm, cx))
+						}),
 					})
 					.when_some(sheet.problem.as_ref(), |s, problem| {
 						s.child(self.problem_notice(problem, sheet.details, cx))
@@ -753,7 +778,12 @@ impl Rdm {
 
 	/// What went wrong in a line, and behind Details the whole text: an error is long enough to push
 	/// the sheet apart when it is shown as it comes.
-	fn problem_notice(&self, problem: &Problem, open: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+	fn problem_notice(
+		&self,
+		problem: &Problem,
+		open: bool,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement + use<> {
 		let p = self.palette;
 		div()
 			.flex()
@@ -1041,13 +1071,7 @@ impl Rdm {
 			.child(row(
 				"Folder",
 				boxed()
-					.child(
-						div()
-							.flex_1()
-							.min_w_0()
-							.truncate()
-							.child(text!(folder)),
-					)
+					.child(div().flex_1().min_w_0().truncate().child(text!(folder)))
 					.when(chosen, |s| {
 						s.child(
 							div()
@@ -1087,55 +1111,49 @@ impl Rdm {
 			))
 			.when_some(parts, |s, part| {
 				s.child(
-					div()
-						.flex()
-						.items_start()
-						.gap_2()
-						.text_xs()
-						.child(label("Range", LINE))
-						.child(
-							div()
-								.flex_1()
-								.min_w_0()
-								.flex()
-								.flex_col()
-								.gap_2()
-								.child(
-									div()
-										.h(px(LINE))
-										.flex()
-										.items_center()
-										.gap_3()
-										.child(div().flex_1().min_w_0().child(sheet.range_slider.clone()))
-										.child(
-											div()
-												.w(px(END))
-												.flex_none()
-												.pl_2()
-												.flex()
-												.gap_1()
-												.overflow_hidden()
-												.whitespace_nowrap()
-												.child(
-													div()
-														.text_color(if part.1.is_some() { p.text } else { p.muted })
-														.child(text!(part.0)),
-												)
-												.when_some(part.1, |s, whole| {
-													s.child(div().text_color(p.muted).child(text!(format!("/ {whole}"))))
-												}),
-										),
-								)
-								.child(
-									div()
-										.flex()
-										.items_center()
-										.gap_2()
-										.child(div().flex_1().min_w_0().child(sheet.range_start.clone()))
-										.child(div().flex_none().text_color(p.muted).child(text!("–")))
-										.child(div().flex_1().min_w_0().child(sheet.range_end.clone())),
-								),
-						),
+					div().flex().items_start().gap_2().text_xs().child(label("Range", LINE)).child(
+						div()
+							.flex_1()
+							.min_w_0()
+							.flex()
+							.flex_col()
+							.gap_2()
+							.child(
+								div()
+									.h(px(LINE))
+									.flex()
+									.items_center()
+									.gap_3()
+									.child(div().flex_1().min_w_0().child(sheet.range_slider.clone()))
+									.child(
+										div()
+											.w(px(END))
+											.flex_none()
+											.pl_2()
+											.flex()
+											.gap_1()
+											.overflow_hidden()
+											.whitespace_nowrap()
+											.child(
+												div()
+													.text_color(if part.1.is_some() { p.text } else { p.muted })
+													.child(text!(part.0)),
+											)
+											.when_some(part.1, |s, whole| {
+												s.child(div().text_color(p.muted).child(text!(format!("/ {whole}"))))
+											}),
+									),
+							)
+							.child(
+								div()
+									.flex()
+									.items_center()
+									.gap_2()
+									.child(div().flex_1().min_w_0().child(sheet.range_start.clone()))
+									.child(div().flex_none().text_color(p.muted).child(text!("–")))
+									.child(div().flex_1().min_w_0().child(sheet.range_end.clone())),
+							),
+					),
 				)
 			})
 			// Last, under the range it cannot be used with: a checksum is of the whole file.
@@ -1187,7 +1205,8 @@ mod tests {
 	#[test]
 	fn every_level_is_ten_steps_of_what_the_track_shows() {
 		let scale = (1.0, 100.0);
-		let rate = |level, mb: f64| limit_at(limit_snap(level, limit_position(Some(mb), scale), scale), scale);
+		let rate =
+			|level, mb: f64| limit_at(limit_snap(level, limit_position(Some(mb), scale), scale), scale);
 		let coarse: Vec<Option<f64>> =
 			(0..=10).map(|k| limit_at(limit_snap(0, k as f32 * SCALE / 10.0, scale), scale)).collect();
 		let preferred = [1.0, 1.6, 2.5, 4.0, 6.3, 10.0, 16.0, 25.0, 40.0, 63.0, 100.0];
@@ -1209,7 +1228,10 @@ mod tests {
 		let scale = (1.0, 100.0);
 		assert_eq!(limit_position(None, scale), 1.0, "no limit is the far right");
 		assert_eq!(limit_position(Some(1.0), scale), 0.0);
-		assert!((limit_position(Some(10.0), scale) - 0.45).abs() < 1e-4, "ten is halfway along the scale");
+		assert!(
+			(limit_position(Some(10.0), scale) - 0.45).abs() < 1e-4,
+			"ten is halfway along the scale"
+		);
 		assert!((limit_position(Some(100.0), scale) - SCALE).abs() < 1e-6);
 		assert_eq!(limit_at(0.0, scale), Some(1.0));
 		assert_eq!(limit_at(0.45, scale), Some(10.0));

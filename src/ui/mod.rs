@@ -12,8 +12,8 @@ pub mod list;
 pub mod notice_window;
 pub mod settings_sheet;
 pub mod sidebar;
-pub mod status_bar;
 pub mod slider;
+pub mod status_bar;
 pub mod text_input;
 pub mod theme;
 pub mod toolbar;
@@ -79,14 +79,7 @@ pub const MIN_HEIGHT: f32 = 320.0;
 /// Every element drawn over the window is built from this, or sits inside `backdrop`, which
 /// occludes the whole window on a sheet's behalf. See spec/ui.md.
 pub fn floating(p: Palette, id: impl Into<ElementId>) -> Stateful<Div> {
-	div()
-		.id(id)
-		.occlude()
-		.rounded_md()
-		.border_1()
-		.border_color(p.border)
-		.bg(p.panel)
-		.shadow_md()
+	div().id(id).occlude().rounded_md().border_1().border_color(p.border).bg(p.panel).shadow_md()
 }
 
 /// The wash under every sheet. It takes every mouse event, so nothing behind the sheet can be

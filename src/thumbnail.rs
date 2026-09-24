@@ -319,11 +319,8 @@ fn lines(path: &Path) -> Option<Made> {
 	let read = file.read(&mut head).ok()?;
 	head.truncate(read);
 	let text = String::from_utf8_lossy(&head);
-	let lines: Vec<String> = text
-		.lines()
-		.take(LINES)
-		.map(|line| line.chars().take(COLUMNS).collect::<String>())
-		.collect();
+	let lines: Vec<String> =
+		text.lines().take(LINES).map(|line| line.chars().take(COLUMNS).collect::<String>()).collect();
 	(!lines.iter().all(|line| line.trim().is_empty())).then_some(Made::Lines(lines))
 }
 
@@ -389,7 +386,7 @@ mod tests {
 		let kept = thumbnails.kept_at(&file).expect("a folder was given, so there is a name");
 		assert!(kept.exists(), "and what was made is written to it");
 
-        // A different picture under the same name: whatever comes back next is what was read.
+		// A different picture under the same name: whatever comes back next is what was read.
 		image::RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255])).save(&kept).unwrap();
 		let mut next_run = Thumbnails::keeping_pictures_in(Some(folder));
 		next_run.begin_frame();

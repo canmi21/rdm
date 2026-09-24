@@ -244,9 +244,10 @@ mod tests {
 
 	#[test]
 	fn both_icons_decode_to_square_rgba() {
-		for bytes in
-			[&include_bytes!("../assets/tray/glyph-44.png")[..], include_bytes!("../assets/tray/icon-64.png")]
-		{
+		for bytes in [
+			&include_bytes!("../assets/tray/glyph-44.png")[..],
+			include_bytes!("../assets/tray/icon-64.png"),
+		] {
 			let art = decode(bytes).unwrap();
 			assert_eq!(art.width, art.height, "the tray's artwork is square");
 			assert_eq!(art.rgba.len(), (art.width * art.height * 4) as usize, "four bytes a pixel");

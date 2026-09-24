@@ -51,7 +51,8 @@ impl Paths {
 	pub fn resolve() -> Option<Paths> {
 		// The third word carries the suffix, so a development build's state, config and database
 		// sit beside the installed application's rather than in them. See src/identity.rs.
-		let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, &crate::identity::instance())?;
+		let dirs =
+			directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, &crate::identity::instance())?;
 		// Linux has a directory for state as distinct from data; the others fold them together.
 		let root = dirs.state_dir().unwrap_or_else(|| dirs.data_local_dir()).to_path_buf();
 		let user = directories::UserDirs::new()?;

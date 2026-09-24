@@ -6,8 +6,7 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-	Bounds, Context, IntoElement, Role, WindowBounds, WindowOptions, div, point, prelude::*, px,
-	size,
+	Bounds, Context, IntoElement, Role, WindowBounds, WindowOptions, div, point, prelude::*, px, size,
 };
 
 use crate::app::Rdm;

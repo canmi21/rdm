@@ -725,7 +725,8 @@ mod tests {
 			parse(r#"{ "version": 1, "categories": [], "settings": { "language": "ja" } }"#).unwrap();
 		assert_eq!(chosen.settings.language, crate::i18n::Language::Ja);
 		// And one written by this build reads back as itself.
-		let now = parse(r#"{ "version": 2, "categories": [], "settings": { "language": "zh" } }"#).unwrap();
+		let now =
+			parse(r#"{ "version": 2, "categories": [], "settings": { "language": "zh" } }"#).unwrap();
 		assert_eq!(now.settings.language, crate::i18n::Language::Zh);
 	}
 

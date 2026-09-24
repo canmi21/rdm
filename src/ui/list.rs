@@ -90,9 +90,9 @@ impl Rdm {
 								View::Detailed => {
 									range.map(|at| this.table_row(shown[at], cx).into_any_element()).collect()
 								}
-								View::Thumbnails => range
-									.map(|at| this.thumbnail_row(shown[at], cx).into_any_element())
-									.collect(),
+								View::Thumbnails => {
+									range.map(|at| this.thumbnail_row(shown[at], cx).into_any_element()).collect()
+								}
 								View::Grid => range
 									.map(|row| {
 										let from = row * across;
@@ -101,9 +101,7 @@ impl Rdm {
 											.flex()
 											.flex_row()
 											.gap(px(gap))
-											.children(
-												shown[from..to].iter().map(|d| this.card(d, cx).into_any_element()),
-											)
+											.children(shown[from..to].iter().map(|d| this.card(d, cx).into_any_element()))
 											.into_any_element()
 									})
 									.collect(),
@@ -188,9 +186,7 @@ impl Rdm {
 			.cursor_pointer()
 			.tooltip(tooltip(if everything { "Downloads only" } else { "Include folder files" }))
 			.on_click(cx.listener(|this, _, _, cx| this.toggle_folder_files(cx)))
-			.child(
-				icon(Icon::Funnel, if filtering { p.hue(Tint::Snow.rgb()) } else { p.muted }).size_3(),
-			)
+			.child(icon(Icon::Funnel, if filtering { p.hue(Tint::Snow.rgb()) } else { p.muted }).size_3())
 	}
 
 	/// A title sits over its cells' edge -- the name left, the numbers right -- and the chevron's
@@ -344,9 +340,7 @@ impl Rdm {
 				),
 			)
 			.child(
-				cell(Column::Speed)
-					.text_color(p.muted)
-					.child(div().truncate().child(speed_cell(download))),
+				cell(Column::Speed).text_color(p.muted).child(div().truncate().child(speed_cell(download))),
 			)
 			.child(cell(Column::Status).child(status_label(download, tint)))
 			.child(
@@ -452,13 +446,7 @@ impl Rdm {
 			.child(self.folder_indent(download))
 			.child(self.thumbnail(download, 20.0))
 			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
-			.child(
-				div()
-					.flex_none()
-					.text_xs()
-					.text_color(p.muted)
-					.child(format_bytes(download.size)),
-			)
+			.child(div().flex_none().text_xs().text_color(p.muted).child(format_bytes(download.size)))
 	}
 
 	/// The picture for a row: the system's own where there is one, the category's glyph where
@@ -502,9 +490,7 @@ impl Rdm {
 				.text_size(px(6.0))
 				.children(lines.into_iter().map(|line| div().truncate().child(line)))
 				.into_any_element(),
-			Some(crate::thumbnail::Preview::Icon(icon)) => {
-				gpui::img(icon).size_10().into_any_element()
-			}
+			Some(crate::thumbnail::Preview::Icon(icon)) => gpui::img(icon).size_10().into_any_element(),
 			None => tinted_icon(self.category_icon(download)).size_8().into_any_element(),
 		}
 	}
@@ -598,7 +584,8 @@ mod tests {
 	/// nothing on the right.
 	#[test]
 	fn what_a_row_cannot_use_is_spread_between_the_cards_it_holds() {
-		let room = |cards: usize, gap: f32| GRID_PADDING + cards as f32 * CARD + (cards - 1) as f32 * gap;
+		let room =
+			|cards: usize, gap: f32| GRID_PADDING + cards as f32 * CARD + (cards - 1) as f32 * gap;
 		// A window that fits three cards exactly keeps the smallest gap.
 		assert_eq!(grid_columns(room(3, CARD_GAP)), (3, CARD_GAP));
 		// Twenty points wider still fits three, and the twenty are shared by the two gaps.

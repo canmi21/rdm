@@ -1725,7 +1725,10 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	// More options: the folder, a limit of its own and a part of the file.
 	click(&mut cx, "button:More options");
 	assert!(cx.debug_bounds("add-more").is_some(), "the fields are shown");
-	assert!(cx.debug_bounds("button:Back").is_some(), "the second screen goes back rather than show the address");
+	assert!(
+		cx.debug_bounds("button:Back").is_some(),
+		"the second screen goes back rather than show the address"
+	);
 	let (start, end, limit) = rdm.read_with(&cx, |rdm, _| {
 		let s = rdm.adding.as_ref().unwrap();
 		(s.range_start.clone(), s.range_end.clone(), s.limit.clone())
@@ -1733,7 +1736,8 @@ fn a_file_is_shown_before_it_is_added_and_its_connections_are_changed_afterwards
 	// The limit is a slider and a field in MB/s, each following the other.
 	cx.update(|_, cx| limit.update(cx, |i, cx| i.set_content("10", cx)));
 	cx.run_until_parked();
-	let at = rdm.read_with(&cx, |rdm, cx| rdm.adding.as_ref().unwrap().limit_slider.read(cx).handles()[0]);
+	let at =
+		rdm.read_with(&cx, |rdm, cx| rdm.adding.as_ref().unwrap().limit_slider.read(cx).handles()[0]);
 	assert!((at - 0.45).abs() < 1e-3, "ten MB/s is halfway along the scale: {at}");
 	rdm.update(&mut cx, |rdm, cx| rdm.slide_limit(1.0, cx));
 	cx.run_until_parked();

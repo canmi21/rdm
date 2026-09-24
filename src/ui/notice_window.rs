@@ -130,9 +130,7 @@ impl Render for NoticeWindow {
 					),
 			)
 			.child(div().text_xs().text_color(p.muted).truncate().child(self.notice.body.clone()))
-			.when_some(detail, |s, detail| {
-				s.child(div().text_xs().text_color(p.muted).child(detail))
-			})
+			.when_some(detail, |s, detail| s.child(div().text_xs().text_color(p.muted).child(detail)))
 			.child(div().flex_1())
 			.child(
 				div()

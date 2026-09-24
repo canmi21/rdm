@@ -13,10 +13,10 @@ use gpui::{Context, IntoElement, Role, Task, Window, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::download::format_bytes;
+use crate::notify::Occasion;
 use crate::ui::icon::{Icon, icon};
 use crate::ui::icon_button;
 use crate::ui::theme::Palette;
-use crate::notify::Occasion;
 use crate::update::{self, Available, Manifest, Policy, Region, install};
 
 /// What the check knows and what it last said.

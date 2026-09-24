@@ -32,12 +32,8 @@ impl Rdm {
 			Shading::One(extension) => !category.shades.contains_key(extension),
 			_ => false,
 		};
-		div()
-			.flex()
-			.items_center()
-			.justify_between()
-			.child(section(p.muted, heading))
-			.child(match shading {
+		div().flex().items_center().justify_between().child(section(p.muted, heading)).child(
+			match shading {
 				// Nothing open: the word that turns the chips into doors, lit while they are.
 				Shading::Off | Shading::Picking => word(
 					p,
@@ -60,7 +56,8 @@ impl Rdm {
 				)
 				.tooltip(tooltip("Use the category's color"))
 				.into_any_element(),
-			})
+			},
+		)
 	}
 
 	/// A preset's list: the built-in extensions and the added ones as chips that switch, a field

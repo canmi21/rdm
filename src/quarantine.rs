@@ -44,10 +44,10 @@ pub fn marked(path: &Path) -> bool {
 /// it; an error names why it still does.
 #[cfg(target_os = "macos")]
 pub fn clear(path: &Path) -> Result<(), String> {
-	let name = c_path(path).ok_or_else(|| "the path is not a name this system can take".to_owned())?;
-	let removed = unsafe {
-		libc::removexattr(name.as_ptr(), ATTRIBUTE.as_ptr().cast(), libc::XATTR_NOFOLLOW)
-	};
+	let name =
+		c_path(path).ok_or_else(|| "the path is not a name this system can take".to_owned())?;
+	let removed =
+		unsafe { libc::removexattr(name.as_ptr(), ATTRIBUTE.as_ptr().cast(), libc::XATTR_NOFOLLOW) };
 	if removed == 0 {
 		return Ok(());
 	}
@@ -82,9 +82,8 @@ pub fn clear(_path: &Path) -> Result<(), String> {
 /// almost none of them matters: the mark only does anything when the file is opened as a program,
 /// so a flag on a `.txt` would be a flag on everything and would mean nothing.
 pub fn worth_flagging(name: &str) -> bool {
-	const KINDS: [&str; 12] = [
-		"app", "dmg", "pkg", "mpkg", "exe", "msi", "appimage", "deb", "rpm", "jar", "run", "sh",
-	];
+	const KINDS: [&str; 12] =
+		["app", "dmg", "pkg", "mpkg", "exe", "msi", "appimage", "deb", "rpm", "jar", "run", "sh"];
 	crate::category::extension_of(name).is_some_and(|e| KINDS.contains(&e.as_str()))
 }
 
