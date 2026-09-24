@@ -940,28 +940,28 @@ to work in, and the precision a level promised was not there to be had.
   take the same second; the swing had a hold of 150 ms of its own at first, and went in before the
   hand had decided anything. Both
   work at every level, the finest stepped one into exact included, and a zoom goes in around the
-  value where the hand is. **Gone in, a hand that stays stays at that level**: nothing goes finer
+  value the handle holds, drawn where the hand is; going in does not change it. **Gone in, a hand that stays stays at that level**: nothing goes finer
   again until it has moved more than a still hand's 3 points from where it went in. It went on at
   first, since a hand still between two places after going in is still between two places of the
   next level, and a hand that only stopped to look went a level deeper every second. A rest followed by a move went a level finer before, and it was the
   wrong signal: a hand rests to read the number, and a hand doing fine work rests often, so each
   rest took it a level deeper than it meant to go.
-- **Coarser, at an end: one visit, one level.** In the 5% at either end of a zoomed track the value
-  stops where it was, and going in goes back out one level after 200 ms, with the value where it was
-  and the zoom it goes back to placed around it at the pointer. However long the hand then stays,
-  that is the one level: the end goes quiet until the hand has been back in the middle, and the next
-  level out is going into an end again. **Gone out, the handle stays in the end under the pointer**,
-  and both ends turn their chevrons to point back in, both since the handle may cover the one it is
-  in; back in the middle they point out again. The zoom gone back to was placed as if the pointer
-  were off the end at first, which drew the handle a few points short of it and read as the handle
-  being pushed back. The end went on counting at first, and a hand that stayed
-  went out a level every 400 ms, down to the whole track -- the ends promise a level back, and gave
-  as many as the hand had patience for. **Out on the whole track a place is its value**, and there
-  is no zoom to place around the pointer, so the value is the pointer's at once: out by the right
-  end is the scale's end, out by the left its start, and the handle is under the hand, from where
-  it adjusts as it likes. The handle waited where its value was at first, until the pointer came to
-  it; that kept the value, and took from the hand the thing it was holding, which is worse. Leaving by
-  crossing the gap's edge on an unzoomed track came before, and fine work near an edge crossed it and
+- **Coarser, by an end and back: one visit, one level.** In the 5% at either end of a zoomed track
+  the value stops where it was. Going in there is the hand saying it means to go back out, not the
+  going: once it has been there 200 ms the handle shows chevrons pointing together and both ends
+  turn theirs to point back in, and it is coming back to the middle that goes out one level. However
+  long the hand stays in the end, it has not gone yet; a brush of an end, straight back, is not a
+  visit. The end went out on its own at first, after a hold, and went on doing so while the hand
+  stayed, a level every 400 ms down to the whole track; then it went once and stopped, which still
+  took the level away while the hand was only looking at where it had got to.
+- **No move between levels changes the value.** Going in, the zoom is placed around the value the
+  handle holds, drawn where the pointer is; going out, the zoom gone back to is placed the same way,
+  and on the whole track, which has no zoom to place, the handle is drawn at its value and follows
+  the pointer's moves from there. The value only ever moves because the hand moved it. Going out to
+  the whole track set the value to where the pointer was for a while, so a value in the forties came
+  back out by the right end as a hundred; before that the handle waited at its value until the
+  pointer reached it, which kept the value and left the hand holding nothing. Leaving by crossing
+  the gap's edge on an unzoomed track came first of all, and fine work near an edge crossed it and
   came back, taking the band away in the middle of the work.
 
 Two versions came before this and each was wrong in a way worth keeping. The first let the pace
@@ -975,15 +975,16 @@ condition is met and is full at the moment it would act. Deeper is two chevrons 
 in inside the held handle, as a hang goes on or the hold after a swing does; the handle keeps its
 size, since a handle that grew drew the eye from the number it sets: the gap it is about to go into will be spread across the track. It is
 full at the moment it goes in, and a hang's shows from a fifth of the way, so passing between two
-places does not flicker it. The same handle, held in an end of a zoomed track that will take it
-back out, shows the chevrons pointing together the same way: the track is about to fold back
-to the level above. The glyphs are Lucide's `chevrons-left-right` and `chevrons-right-left`, a
+places does not flicker it. The same handle, held in an end of a zoomed track, shows the chevrons
+pointing together the same way: coming back to the middle will fold the track back to the level
+above. The glyphs are Lucide's `chevrons-left-right` and `chevrons-right-left`, a
 horizontal pair because both moves are horizontal, and the same chevrons the ends are marked
 with. Three tries came before: a halo round the handle, which read as a selection among the places;
 an accent filling it, which read as a second progress bar; and the handle pressed flat and
 springing back, which said something was coming and not what.
 Back out is the two ends of a zoomed track, each a pale block with a chevron pointing out of the
-track, and the one the hand is in darkening as it stays. Nothing covers them: they are drawn over
+track, the one the hand is in darkening as it stays, and both chevrons turning to point back in
+once coming back would go out. Nothing covers them: they are drawn over
 the fill and the places, the fill stays within the band since the ends stand for no value, and each
 chevron sits on its end's outer side, clear of a handle stopped at the band's edge. The fill ran
 from the track's left end at first and covered the left one whenever it was needed. Both are drawn frame by frame while a
