@@ -6,9 +6,11 @@ use gpui::{
 
 use crate::app::Rdm;
 use crate::download::{Status, format_bytes, format_duration, format_speed};
-use crate::ui::button;
 use crate::ui::icon::Icon;
-use crate::ui::theme;
+use crate::ui::{button, frame, theme, toolbar};
+
+/// What the window is called, in its title strip and to the system.
+const TITLE: &str = "Edit Task";
 
 pub struct DownloadWindow {
 	rdm: Entity<Rdm>,
@@ -62,21 +64,13 @@ impl Render for DownloadWindow {
 		let p = theme::palette(window.is_window_active());
 		let id = self.id;
 		let rdm = self.rdm.clone();
-		let frame = div()
-			.flex()
-			.flex_col()
-			.size_full()
-			.gap_3()
-			.p_4()
-			.text_size(px(13.0))
-			.bg(p.window)
-			.text_color(p.text);
+		let body = div().flex().flex_col().flex_1().min_h_0().gap_3().p_4();
 		let Some(download) = self.rdm.read(cx).download(id).cloned() else {
 			// Removed from the list while this window was open: nothing left to show.
 			window.remove_window();
-			return frame;
+			return chrome(p, window, body);
 		};
-		window.set_window_title("Edit Task");
+		window.set_window_title(TITLE);
 		let tint = p.status(download.status);
 		let mut state = download.status.label().to_owned();
 		if download.speed > 0 {
@@ -105,13 +99,18 @@ impl Render for DownloadWindow {
 		} else {
 			download.url.clone()
 		};
-		frame
+		let body = body
+			// A row around the name, since a truncated line straight in a column drew nothing at all.
 			.child(
-				div()
-					.text_sm()
-					.font_weight(gpui::FontWeight::MEDIUM)
-					.truncate()
-					.child(text!(download.name.clone())),
+				div().flex().child(
+					div()
+						.flex_1()
+						.min_w_0()
+						.text_sm()
+						.font_weight(gpui::FontWeight::MEDIUM)
+						.truncate()
+						.child(text!(download.name.clone())),
+				),
 			)
 			.child(field(p.muted, "From", came_from))
 			.when_some(download.source.clone(), |s, page| {
@@ -198,8 +197,55 @@ impl Render for DownloadWindow {
 					.child(button(p, "remove", Icon::Trash, "Remove", true, move |_, _, cx| {
 						remove.update(cx, |rdm, cx| rdm.remove(id, cx));
 					})),
-			)
+			);
+		chrome(p, window, body)
 	}
+}
+
+/// The window around the body: its own title strip across the top, the toolbar's height, with the
+/// traffic lights in it on macOS and the application's window buttons at its right where the system
+/// draws no frame; the system's radius on the systems that draw none; and a press on the edge
+/// resizing on Linux. The system titlebar is transparent, as the main window's is. See spec/ui.md.
+fn chrome(p: theme::Palette, window: &Window, body: gpui::Div) -> gpui::Div {
+	let title = div()
+		.relative()
+		.flex()
+		.flex_none()
+		.items_center()
+		.h(px(toolbar::HEIGHT))
+		.pl(frame::lights_inset(window))
+		.border_b_1()
+		.border_color(p.border)
+		.bg(p.panel)
+		.child(frame::drag_area())
+		.when(frame::draws_frame(window), |s| s.child(frame::controls(p, window)))
+		// The title across the middle of the whole strip, as the system centres its own; it takes no
+		// press, so the strip under it still drags.
+		.child(
+			div()
+				.absolute()
+				.inset_0()
+				.flex()
+				.items_center()
+				.justify_center()
+				.text_color(p.muted)
+				.font_weight(gpui::FontWeight::MEDIUM)
+				.child(TITLE),
+		);
+	div()
+		.flex()
+		.flex_col()
+		.size_full()
+		.text_size(px(13.0))
+		.bg(p.window)
+		.text_color(p.text)
+		.rounded(frame::radius(window))
+		.overflow_hidden()
+		.on_mouse_down(gpui::MouseButton::Left, |event, window, _| {
+			frame::on_root_mouse_down(event, window)
+		})
+		.child(title)
+		.child(body)
 }
 
 fn field(label: gpui::Hsla, name: &'static str, value: String) -> impl IntoElement {

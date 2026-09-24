@@ -15,6 +15,31 @@ use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
 use crate::ui::toolbar;
 
+/// The traffic lights' diameter, measured from a capture of the window; see spec/ui.md.
+const TRAFFIC_LIGHT: f32 = 14.0;
+
+/// Every window's titlebar: transparent, so the window's own strip -- the toolbar, or a secondary
+/// window's title strip -- runs the full width behind the traffic lights, which are centred in a
+/// strip the toolbar's height. gpui_macos sizes the button strip to `button height + 2 * y` and
+/// hangs it from the top, so `y` is half of what the strip leaves around the buttons. See
+/// spec/ui.md.
+pub fn titlebar(title: impl Into<SharedString>) -> gpui::TitlebarOptions {
+	gpui::TitlebarOptions {
+		title: Some(title.into()),
+		appears_transparent: true,
+		traffic_light_position: Some(gpui::point(
+			px(12.0),
+			px((toolbar::HEIGHT - TRAFFIC_LIGHT) / 2.0),
+		)),
+	}
+}
+
+/// How far a strip's content starts from its left: clear of the traffic lights where the system
+/// draws them, which on macOS is everywhere but full screen.
+pub fn lights_inset(window: &Window) -> Pixels {
+	if cfg!(target_os = "macos") && !window.is_fullscreen() { px(78.0) } else { px(4.0) }
+}
+
 /// How wide the strip's edge is that resizes rather than drags, in points.
 const EDGE: f32 = 6.0;
 

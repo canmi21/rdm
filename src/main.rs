@@ -35,7 +35,7 @@ mod update;
 mod watch;
 
 use gpui::{
-	App, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
+	App, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
 	prelude::*, px, size,
 };
 use gpui_platform::application;
@@ -43,9 +43,6 @@ use gpui_platform::application;
 use crate::app::Rdm;
 use crate::assets::Assets;
 use crate::state::Paths;
-
-/// Measured from a capture of the window; see spec/ui.md.
-const TRAFFIC_LIGHT: f32 = 14.0;
 
 fn main() {
 	// gpui reports what it cannot draw through `log` and nowhere else. See spec/framework.md.
@@ -98,15 +95,7 @@ fn main() {
 					// Every column's floor and what sits around them: past this the table would have
 					// less room than its own floors need. See spec/ui.md.
 					window_min_size: Some(size(px(ui::MIN_WIDTH), px(ui::MIN_HEIGHT))),
-					titlebar: Some(TitlebarOptions {
-						title: Some(identity::DISPLAY_NAME.into()),
-						appears_transparent: true,
-						// y is padding on both sides of the buttons, so this centres them. See spec/ui.md.
-						traffic_light_position: Some(point(
-							px(12.0),
-							px((ui::toolbar::HEIGHT - TRAFFIC_LIGHT) / 2.0),
-						)),
-					}),
+					titlebar: Some(ui::frame::titlebar(identity::DISPLAY_NAME)),
 					..Default::default()
 				},
 				|window, cx| cx.new(|cx| Rdm::new(saved, config, paths, engine, events, window, cx)),

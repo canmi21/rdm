@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui::{
-	App, Bounds, Context, IntoElement, Render, Task, TitlebarOptions, Window, WindowBounds,
+	App, Bounds, Context, IntoElement, Render, Task, Window, WindowBounds,
 	WindowHandle, WindowOptions, div, prelude::*, px, size,
 };
 
@@ -1011,11 +1011,21 @@ impl Rdm {
 		let rdm = cx.entity();
 		cx.defer(move |cx| {
 			// Tall enough for the two live fields, the limit and the connections, and one of the
-			// optional lines -- mirrors, checksum, range, error -- above the buttons.
-			let options = child_window(cx, "Edit Task", size(px(480.0), px(440.0)));
+			// optional lines -- mirrors, checksum, range, error -- above the buttons, under the
+			// window's own title strip.
+			let extent = size(px(480.0), px(440.0 + crate::ui::toolbar::HEIGHT));
+			let options = child_window(cx, "Edit Task", extent);
 			let view = rdm.clone();
 			if let Ok(handle) =
-				cx.open_window(options, |_, cx| cx.new(|cx| DownloadWindow::new(view, id, cx)))
+				cx.open_window(options, |window, cx| {
+					// Linux is asked for client-side decorations, so the title strip is the frame
+					// there too; see src/ui/frame.rs.
+					#[cfg(target_os = "linux")]
+					window.request_decorations(gpui::WindowDecorations::Client);
+					#[cfg(not(target_os = "linux"))]
+					let _ = window;
+					cx.new(|cx| DownloadWindow::new(view, id, cx))
+				})
 			{
 				rdm.update(cx, |this, _| {
 					this.open.insert(id, handle);
@@ -1084,11 +1094,12 @@ impl Render for Rdm {
 	}
 }
 
-/// A secondary window keeps the system titlebar: it is a document, not the application.
+/// A secondary window draws its own title strip, as the main window draws its toolbar, with the
+/// traffic lights in it on macOS. See spec/ui.md.
 fn child_window(cx: &App, title: &str, extent: gpui::Size<gpui::Pixels>) -> WindowOptions {
 	WindowOptions {
 		window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, extent, cx))),
-		titlebar: Some(TitlebarOptions { title: Some(title.to_owned().into()), ..Default::default() }),
+		titlebar: Some(crate::ui::frame::titlebar(title.to_owned())),
 		..Default::default()
 	}
 }

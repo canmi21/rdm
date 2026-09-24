@@ -11,7 +11,8 @@ detail -- so a reader looking for one finds it by name.
 ## The toolbar owns the titlebar
 
 The system titlebar is transparent and the toolbar runs the full width behind the traffic
-lights, one strip instead of two. That makes the traffic lights' vertical position this
+lights, one strip instead of two; a secondary window does the same with a title strip of the same
+height, so `src/ui/frame.rs` holds the titlebar both are opened with. That makes the traffic lights' vertical position this
 application's to get right, and it is derived rather than typed: gpui_macos sizes the button
 strip to `button height + 2 * y` and hangs it from the top, so setting `y` to half of
 `toolbar height - button diameter` centres the buttons for whatever height the toolbar has. The
@@ -612,9 +613,14 @@ A native application opens windows freely, and rdm does: the main window is the 
 else, and anything about one item gets a window of its own. Double-clicking a row, or the name at
 the right of the status bar, opens that download in a window that follows it live -- progress,
 speed, remaining time, and the same pause, resume and remove actions -- and a second double-click
-brings that window forward rather than opening another. Secondary windows keep the system titlebar: they are
-documents, and the main window is the application, so closing the main window quits and closing a
-secondary one closes only itself.
+brings that window forward rather than opening another. The main window is the application and a
+secondary one a document, so closing the main window quits and closing a secondary one closes only
+itself. **A secondary window draws its own title strip**, the toolbar's height, as the main window
+draws its toolbar: the system titlebar is transparent, the traffic lights sit in the strip on macOS,
+the window's title is centred across it, and where the system draws no frame the strip carries the
+same window buttons and drag area the toolbar does. Secondary windows kept the system titlebar at
+first, on the grounds that a document is not the application; the result was two kinds of window
+in one application, one of them a system bar over the application's own palette.
 
 **A field's shortcuts take the system's modifier.** Select all, paste, copy and cut are
 Command on macOS and Control on Windows and Linux, bound once in `text_input.rs` by platform; a

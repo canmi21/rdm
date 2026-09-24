@@ -24,7 +24,6 @@ impl Rdm {
 			Status::Paused | Status::Queued | Status::Failed => (Icon::Play, "Resume"),
 		});
 		let (glyph, label) = next.unwrap_or((Icon::Pause, "Pause"));
-		let lights = cfg!(target_os = "macos") && !window.is_fullscreen();
 		let framed = frame::draws_frame(window);
 		div()
 			.flex()
@@ -32,8 +31,7 @@ impl Rdm {
 			.gap_0p5()
 			.h(px(HEIGHT))
 			// The traffic lights sit in this strip because the system titlebar is transparent.
-			.when(lights, |s| s.pl(px(78.0)))
-			.when(!lights, |s| s.pl_1())
+			.pl(frame::lights_inset(window))
 			.border_b_1()
 			.border_color(p.border)
 			.bg(p.panel)
