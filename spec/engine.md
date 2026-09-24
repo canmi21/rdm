@@ -155,9 +155,13 @@ for each new request, and the ones a download can have of its own -- the folder,
 checksum, the range and a limit -- are New Task's, while the connections and the
 limit are its window's, changed as it runs; all of them are kept on the row. A download asks for connections in one of two shapes, `Connections::auto` or
 `Connections::fixed(n)`, and never more than `Connections::MAX`, 256, whatever it asks. In
-automatic mode a download starts with `min` connections and is allowed one more each time a
-connection delivers its first byte, up to `max`: a server that accepts the first is asked for a
-second, and one that is slow to answer is not flooded. A new connection takes an idle segment if
+automatic mode a download starts with `min` connections, four, and is allowed two more each time
+a connection delivers its first byte, up to `max`, thirty-two: each round of answers doubles the
+count, as TCP's slow start does, so a server that takes many is reached in a few round trips, and
+one that is slow to answer is not flooded, since nothing grows until something answers. A server
+that takes fewer turns the excess away and the count comes down to its limit, below; being
+aggressive first and backing off after is what reaches the speed another downloader gets from the
+same server, where adding one at a time stopped short of it. A new connection takes an idle segment if
 there is one and otherwise cuts the largest remainder, as the planner describes, and it is
 started the moment growth is allowed rather than at the next tick, because a small file is over
 before a tick. Without automatic mode the span is cut into `max` pieces at the start.

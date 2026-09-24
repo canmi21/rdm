@@ -27,12 +27,13 @@ impl Connections {
 	/// The most a download may open, whatever is asked.
 	pub const MAX: u16 = 256;
 
-	/// The engine's own judgement: one connection until the server has answered it, then one
-	/// more each time a connection delivers its first byte, up to sixteen, and never a
-	/// segment shorter than `min_segment`, so a small file stays on one connection and a
-	/// large one grows as far as the server and the file allow. aria2's defaults.
+	/// The engine's own judgement: four connections at once, then two more each time one delivers
+	/// its first byte -- twice as many each round, as TCP's slow start grows -- up to thirty-two,
+	/// and never a segment shorter than `min_segment`, so a small file stays on few and a large
+	/// one grows as far as the server and the file allow. A server that takes fewer turns the
+	/// rest away and the count comes down to what it takes. See spec/engine.md.
 	pub fn auto() -> Connections {
-		Connections { min: 1, max: 16, auto: true }
+		Connections { min: 4, max: 32, auto: true }
 	}
 
 	/// Exactly this many, opened at once when the file can be split.

@@ -423,7 +423,9 @@ async fn schedule(
 				progress: Arc::new(move |n| {
 					if n == 0 {
 						answered.store(true, Ordering::Relaxed);
-						allowed.fetch_add(1, Ordering::Relaxed);
+						// Two more for each that answers: the count doubles each round rather than
+						// climbing by one, and a server that takes fewer says so.
+						allowed.fetch_add(2, Ordering::Relaxed);
 						grew.notify_one();
 					} else {
 						received.fetch_add(n as u64, Ordering::Relaxed);
@@ -871,10 +873,11 @@ mod tests {
 		assert_eq!(std::fs::read(&done.path).unwrap(), data, "every byte, once");
 		// Turned away past the limit, the download holds at what the server takes and waits a
 		// refusal out, rather than opening a new connection into it again and again: before this,
-		// the busy server saw two dozen requests, most of them turned away. A refusal or two more
-		// is a connection of ours the server had not finished closing.
+		// the busy server saw two dozen requests, most of them turned away. The first round asks
+		// for four at once and each answer asks for two more, so a round or so is turned away
+		// before the limit is found, and a refusal more is a connection of ours still closing.
 		let turned = server.turned_away();
-		assert!(turned <= 3, "{name}: turned away {turned} times");
+		assert!(turned <= 8, "{name}: turned away {turned} times");
 		server
 	}
 
