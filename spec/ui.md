@@ -613,7 +613,11 @@ A native application opens windows freely, and rdm does: the main window is the 
 else, and anything about one item gets a window of its own. Double-clicking a row, or the name at
 the right of the status bar, opens that download in a window that follows it live -- progress,
 speed, remaining time, and the same pause, resume and remove actions -- and a second double-click
-brings that window forward rather than opening another. The main window is the application and a
+brings that window forward rather than opening another. **A new download opens its window by
+itself**, as New Task closes: it is where a download is watched and changed, and finding the row
+to double-click was a step every download asked for. Files taken from a page's links do not, since
+the sheet stays up for the next and a window each would bury it. Closing the window leaves the
+download running; it is a view of the download, not the download. The main window is the application and a
 secondary one a document, so closing the main window quits and closing a secondary one closes only
 itself. **A secondary window draws its own title strip**, the toolbar's height, as the main window
 draws its toolbar: the system titlebar is transparent, the traffic lights sit in the strip on macOS,
@@ -771,8 +775,10 @@ serves ranges so the download can be resumed, how many parts it is in and how ma
 open on them, and the folder. Then the two settings. At the bottom, the transfer as **one bar made
 of two**: above, the file as the engine cut it, each part a slot of its own filled from its start
 as far as it has landed, with a hairline where one part ends and the next begins; under it, half
-as high and in green, the whole download's progress. Complete, both are green and the hairlines
-stay, so how many parts it took is still there to see. Last, the state at the left -- with the
+as high and in green, the whole download's progress, a hair below it. They were tried touching,
+with no gap, and read worse: gpui clips a child to its parent's rectangle and not its rounding, so
+the pair lost its round ends. Complete, both are green and the hairlines stay, so how many parts it took is
+still there to see. Last, the state at the left -- with the
 reason while it has failed -- and Pause or Resume, whichever applies, and Remove at the right.
 
 It was three pages at first -- details, parts and settings -- over the transfer, and before that

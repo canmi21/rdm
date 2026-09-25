@@ -292,7 +292,8 @@ impl Rdm {
 	pub(crate) fn add_url(&mut self, url: &str, cx: &mut Context<Self>) {
 		if let Some(parsed) = crate::ui::add_dialog::parse_address(url) {
 			let asked = Asked { connections: self.preferences.connections, ..Asked::default() };
-			self.add_request(parsed, None, None, asked, cx);
+			let id = self.add_request(parsed, None, None, asked, cx);
+			self.open_download(id, cx);
 		}
 	}
 
@@ -411,7 +412,7 @@ impl Rdm {
 		source: Option<String>,
 		asked: Asked,
 		cx: &mut Context<Self>,
-	) {
+	) -> u64 {
 		let id = self
 			.store
 			.as_ref()
@@ -451,6 +452,7 @@ impl Rdm {
 		self.persist(id);
 		self.selected = Some(id);
 		cx.notify();
+		id
 	}
 
 	pub(crate) fn pause_selected(&mut self, cx: &mut Context<Self>) {

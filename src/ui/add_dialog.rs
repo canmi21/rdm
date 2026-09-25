@@ -391,8 +391,11 @@ impl Rdm {
 			let typed = sheet.name.read(cx).content.trim().to_owned();
 			let name = if typed.is_empty() { found.probe.file_name.clone() } else { typed };
 			let url = found.url.clone();
-			self.add_request(url, Some(name), None, asked, cx);
+			let id = self.add_request(url, Some(name), None, asked, cx);
 			self.close_add(cx);
+			// A new download opens its window, as the place to watch it and change it; one taken
+			// from a page's links does not, the sheet staying up for the next. See spec/ui.md.
+			self.open_download(id, cx);
 			return;
 		}
 		let text = sheet.input.read(cx).content.trim().to_owned();
