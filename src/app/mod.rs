@@ -292,6 +292,9 @@ pub struct Rdm {
 	pub(crate) adding: Option<crate::ui::add_dialog::AddSheet>,
 	/// Where state.json lives, if the platform gave us a place; the frame as last observed.
 	pub(crate) paths: Option<Paths>,
+	/// Every layer of the rules merged, read at start and again when a choice is written to the
+	/// custom layer. See spec/rules.md.
+	pub(crate) rules: std::sync::Arc<crate::rules::Compiled>,
 	frame: Option<Frame>,
 	/// And the display that frame is a frame on, by name, since the frame is a place on that
 	/// display and says nothing on its own about which one it is.
@@ -431,6 +434,10 @@ impl Rdm {
 			palette: theme::palette(true),
 			viewport: gpui::Size::default(),
 			open: HashMap::new(),
+			rules: std::sync::Arc::new(match &paths {
+				Some(paths) => crate::rules::load(&paths.rule_places()),
+				None => crate::rules::compile(&[(crate::rules::Layer::BuiltIn, crate::rules::built_in())]),
+			}),
 			settings: None,
 			adding: None,
 			paths,

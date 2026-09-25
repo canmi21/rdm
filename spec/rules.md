@@ -85,6 +85,44 @@ its address -- as a rule written to the custom layer:
 - **Never ask for this source** -- never asked again, and never a mirror for this domain, even when
   a checksum could be found.
 
+## How a rule is written
+
+A template's parts are `{name}`, one path segment; `{name+}`, one or more; and `{name:expression}`,
+whatever the regular expression says, braces inside it counted. Every part matches as little as it
+can, which is what splits `react-dom-19.1.0.tgz` into a name and a version where the version's first
+digit is. The query and fragment are left off before matching -- a signed or tagged address is the
+same file -- and `{url}` fills with the rest. A template that fills a part the match does not have
+is an error rather than an address.
+
+A checksum source is one of three kinds: `json`, a field of a document reached by a path of keys and
+`list[field=value]` filters; `sidecar`, a file holding the sum; `sums`, a list of sums found among a
+JSON document's items by name, as a release's `checksums.txt` is among its assets. Every form a
+checksum arrives in -- `sha256:hex`, npm's `sha512-base64`, bare hex, base64 with `algo` and
+`encoding` beside it -- becomes one checksum, and a source that fails is the next one's turn.
+
+Every entry carries `examples`, real addresses its pattern must match, and a test reads the whole
+`rules/` tree and checks each against its own entry and every template it fills; an ignored test
+asks the real services for each built-in example's checksum.
+
+## How a mirror is found and trusted
+
+When New Task has looked at an address, the rules are worked out on the engine's runtime while the
+second screen is read: the matching entry's checksum and mirror templates, and every family one of
+whose prefixes the address starts with. Each candidate is probed and kept only when it serves a
+file of the source's size with ranges, since the download is split across them. A checksum found is
+written into the checksum field, where it is seen and can be cleared; Download does not wait for an
+answer still being worked out, and goes from the source.
+
+A kept mirror is used only when a checksum holds it, and not by one read from the mirror's own site
+-- a host's last two labels, close enough to tell a mirror from a source -- unless that host is an
+authority. A checksum the user typed holds every mirror: the user is its source. An entry from the
+synced layer may read a checksum only from the source's own site or an authority.
+
+A choice made on the third screen is written to `choices.toml` in the custom layer, which nothing
+else writes, one `[[domain]]` a domain, `www.` left off; a domain covers the hosts under it. The
+merged set is written to `rules.json` beside the state for reading, and rebuilt when a choice is
+written.
+
 ## A window for the rules
 
 A window of its own lists the merged rules with the layer each came from, and is where they are

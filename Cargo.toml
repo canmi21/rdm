@@ -118,6 +118,8 @@ sevenz-rust2 = { version = "0.23", default-features = false }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
+# The rules, which are written by hand and want comments beside them. See spec/rules.md.
+toml = "1.1"
 
 # Installing an update: the Windows executable comes in a zip and a running one can only be
 # renamed, which self-replace knows; the Linux binary comes in a tarball. See spec/release.md.

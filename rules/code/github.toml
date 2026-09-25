@@ -1,0 +1,49 @@
+# GitHub. See spec/rules.md.
+
+# A release asset. Its checksum, in the order it is most often there: the digest GitHub has kept for
+# every asset uploaded since June 2025; a `.sha256` beside the asset; a list of sums among the
+# release's assets.
+[[entry]]
+id = "github-release"
+match = "https://github.com/{owner}/{repo}/releases/download/{tag}/{file}"
+examples = [
+	"https://github.com/cli/cli/releases/download/v2.101.0/gh_2.101.0_linux_amd64.tar.gz",
+	"https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz",
+]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
+pick = "assets[name={file}].digest"
+
+[[entry.checksum]]
+kind = "sidecar"
+url = "{url}.sha256"
+algo = "sha256"
+
+[[entry.checksum]]
+kind = "sums"
+url = "https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
+items = "assets"
+name = "name"
+link = "browser_download_url"
+like = ["*checksums*", "*sha256sum*", "SHA256SUMS*", "*.sha256"]
+algo = "sha256"
+
+# A file of a repository at a tag or a commit, which jsDelivr serves too and answers for. Not a
+# branch, for the reason jsdelivr.toml gives.
+[[entry]]
+id = "github-raw"
+match = "https://raw.githubusercontent.com/{user}/{repo}/{ref:v?[0-9][^/]*|[0-9a-f]{7,40}}/{path+}"
+mirror = [
+	"https://cdn.jsdelivr.net/gh/{user}/{repo}@{ref}/{path}",
+	"https://fastly.jsdelivr.net/gh/{user}/{repo}@{ref}/{path}",
+]
+examples = ["https://raw.githubusercontent.com/BurntSushi/ripgrep/14.1.1/README.md"]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://data.jsdelivr.com/v1/packages/gh/{user}/{repo}@{ref}?structure=flat"
+pick = "files[name=/{path}].hash"
+algo = "sha256"
+encoding = "base64"

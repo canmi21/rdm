@@ -1,0 +1,34 @@
+# npm. See spec/rules.md.
+
+# A package's tarball from the registry; its integrity is in the version's metadata. The package's
+# name is split from its version where the version's first digit is.
+[[entry]]
+id = "npm-tarball"
+match = "https://registry.npmjs.org/{package:(?:@[^/]+/)?[^/]+}/-/{base}-{version:[0-9][^/]*}.tgz"
+examples = [
+	"https://registry.npmjs.org/react/-/react-19.1.0.tgz",
+	"https://registry.npmjs.org/react-dom/-/react-dom-19.1.0.tgz",
+	"https://registry.npmjs.org/@types/node/-/node-22.0.0.tgz",
+]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://registry.npmjs.org/{package}/{version}"
+pick = "dist.integrity"
+
+# A file of a package from unpkg, which jsDelivr serves too and answers for.
+[[entry]]
+id = "unpkg"
+match = "https://unpkg.com/{package:(?:@[^/]+/)?[^/@]+}@{version}/{path+}"
+mirror = [
+	"https://cdn.jsdelivr.net/npm/{package}@{version}/{path}",
+	"https://fastly.jsdelivr.net/npm/{package}@{version}/{path}",
+]
+examples = ["https://unpkg.com/react@19.1.0/cjs/react.production.js"]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://data.jsdelivr.com/v1/packages/npm/{package}@{version}?structure=flat"
+pick = "files[name=/{path}].hash"
+algo = "sha256"
+encoding = "base64"

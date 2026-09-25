@@ -21,6 +21,7 @@ mod notify;
 mod proxy;
 mod quarantine;
 mod reveal;
+mod rules;
 mod screens;
 mod startup;
 mod state;

@@ -1,0 +1,15 @@
+# The GNU project's mirrors: the same tree under each prefix. From nixpkgs'
+# pkgs/build-support/fetchurl/mirrors.nix and Gentoo's profiles/thirdpartymirrors. GNU publishes
+# signatures, not sums, so a download from here has no checksum of its own and New Task asks for
+# one before a mirror is used. See spec/rules.md.
+
+[[family]]
+id = "gnu"
+prefixes = [
+	"https://ftp.gnu.org/gnu/",
+	"https://ftpmirror.gnu.org/",
+	"https://mirrors.kernel.org/gnu/",
+	"https://www.mirrorservice.org/sites/ftp.gnu.org/gnu/",
+	"https://artfiles.org/gnu.org/",
+]
+examples = ["https://ftp.gnu.org/gnu/hello/hello-2.12.1.tar.gz"]

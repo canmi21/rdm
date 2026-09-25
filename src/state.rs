@@ -32,9 +32,23 @@ pub struct Paths {
 	/// user-dirs entry on Linux, the known folder on Windows, `~/Downloads` on macOS, which
 	/// offers no way to move it -- and the home directory if there is no such folder.
 	pub downloads: PathBuf,
+	/// The rules: `rules/`, the synced layer, which the application owns and makes match what was
+	/// published; `custom/`, the user's, which it never deletes from; and `rules.json`, every layer
+	/// merged, written for reading rather than read. See spec/rules.md.
+	pub rules: PathBuf,
+	pub custom_rules: PathBuf,
+	pub compiled_rules: PathBuf,
 }
 
 impl Paths {
+	pub fn rule_places(&self) -> crate::rules::Places {
+		crate::rules::Places {
+			synced: self.rules.clone(),
+			custom: self.custom_rules.clone(),
+			compiled: self.compiled_rules.clone(),
+		}
+	}
+
 	/// Every file under one directory, with the downloads in a folder beside them. What the
 	/// tests use in place of the platform's directories.
 	#[cfg(test)]
@@ -45,6 +59,9 @@ impl Paths {
 			database: dir.join("internal.sqlite"),
 			thumbnails: dir.join("thumbnails"),
 			downloads: dir.join("downloads"),
+			rules: dir.join("rules"),
+			custom_rules: dir.join("custom"),
+			compiled_rules: dir.join("rules.json"),
 		}
 	}
 
@@ -64,6 +81,9 @@ impl Paths {
 			database: root.join("internal.sqlite"),
 			thumbnails: root.join("thumbnails"),
 			downloads,
+			rules: dirs.config_dir().join("rules"),
+			custom_rules: dirs.config_dir().join("custom"),
+			compiled_rules: root.join("rules.json"),
 		})
 	}
 }

@@ -1,0 +1,17 @@
+# PyPI. See spec/rules.md.
+
+# A wheel or a source archive from PyPI's file host. Its path is a hash of the file and says nothing
+# of the project, so the project and version are read from the file's name -- split where the
+# version's first digit is -- and the release's metadata gives every file's SHA-256.
+[[entry]]
+id = "pypi-file"
+match = "https://files.pythonhosted.org/packages/{a}/{b}/{c}/{project:[A-Za-z0-9._]+?}-{version:[0-9][^-/]*}{tail:(?:-[^/]*)?\\.(?:whl|tar\\.gz|zip)}"
+examples = [
+	"https://files.pythonhosted.org/packages/f9/9b/335f9764261e915ed497fcdeb11df5dfd6f7bf257d4a6a2a686d80da4d54/requests-2.32.3-py3-none-any.whl",
+	"https://files.pythonhosted.org/packages/df/db/f35a00659bc03fec321ba8bce9420de607a1d37f8342eee1863174c69557/typing_extensions-4.12.2.tar.gz",
+]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://pypi.org/pypi/{project}/{version}/json"
+pick = "urls[filename={project}-{version}{tail}].digests.sha256"

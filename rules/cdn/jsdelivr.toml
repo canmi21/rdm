@@ -1,0 +1,51 @@
+# jsDelivr serves npm packages and GitHub repositories as the registry and the repository have them,
+# and its data API gives the SHA-256 of every file, so it may answer for either source: it is an
+# authority. Named here, in the built-in layer, because a synced rule cannot name one. See
+# spec/rules.md.
+
+[[authority]]
+host = "data.jsdelivr.com"
+
+[[authority]]
+host = "cdn.jsdelivr.net"
+
+# A file of an npm package. fastly, gcore and testingcf are jsDelivr's own other networks, serving
+# the same paths.
+[[entry]]
+id = "jsdelivr-npm"
+match = "https://cdn.jsdelivr.net/npm/{package:(?:@[^/]+/)?[^/@]+}@{version}/{path+}"
+mirror = [
+	"https://fastly.jsdelivr.net/npm/{package}@{version}/{path}",
+	"https://gcore.jsdelivr.net/npm/{package}@{version}/{path}",
+	"https://testingcf.jsdelivr.net/npm/{package}@{version}/{path}",
+]
+examples = [
+	"https://cdn.jsdelivr.net/npm/react@19.1.0/cjs/react.production.js",
+	"https://cdn.jsdelivr.net/npm/@types/node@22.0.0/package.json",
+]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://data.jsdelivr.com/v1/packages/npm/{package}@{version}?structure=flat"
+pick = "files[name=/{path}].hash"
+algo = "sha256"
+encoding = "base64"
+
+# A file of a GitHub repository at a tag or a commit. Not a branch: jsDelivr keeps a branch's files
+# for hours, and a checksum from its copy would fail the file as the repository has it now.
+[[entry]]
+id = "jsdelivr-gh"
+match = "https://cdn.jsdelivr.net/gh/{user}/{repo}@{ref:v?[0-9][^/]*|[0-9a-f]{7,40}}/{path+}"
+mirror = [
+	"https://fastly.jsdelivr.net/gh/{user}/{repo}@{ref}/{path}",
+	"https://gcore.jsdelivr.net/gh/{user}/{repo}@{ref}/{path}",
+	"https://raw.githubusercontent.com/{user}/{repo}/{ref}/{path}",
+]
+examples = ["https://cdn.jsdelivr.net/gh/BurntSushi/ripgrep@14.1.1/README.md"]
+
+[[entry.checksum]]
+kind = "json"
+url = "https://data.jsdelivr.com/v1/packages/gh/{user}/{repo}@{ref}?structure=flat"
+pick = "files[name=/{path}].hash"
+algo = "sha256"
+encoding = "base64"
