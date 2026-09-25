@@ -7,7 +7,7 @@ vector source it was drawn from and `icon-glyph.svg` the glyph alone, the arrow 
 tile behind it, both committed so the artwork can be redrawn and read by nothing -- 1024 square, the system's
 rounded corners already cut, no margin -- re-encoded from 16 to 8 bits a channel, which halves
 it to under the megabyte jj will snapshot without being asked and loses nothing an icon shows. macOS does not draw an icon that way. Its template is a
-1024 canvas on which the icon *shape* is 824 wide and centred, leaving 100 of transparent margin a
+1024 canvas on which the icon _shape_ is 824 wide and centred, leaving 100 of transparent margin a
 side; every icon in the Dock and Finder is laid out on that grid, and one drawn to the canvas's
 edge sits visibly larger than its neighbours. The corner radius the template expects is 185.4 on
 the 824 shape, which is what the artwork's corners come to once scaled, so the artwork is scaled

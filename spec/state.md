@@ -6,11 +6,11 @@ The application keeps what it owns under the platform's state directory, found w
 `directories` crate from the three words in `src/identity.rs` rather than from paths written by
 hand:
 
-| Platform | Directory                                            |
-| -------- | ---------------------------------------------------- |
-| macOS    | `~/Library/Application Support/app.canmi.rdm/` for both |
-| any, dev | the same with `.dev` after the last word; see below    |
-| Linux    | state in `$XDG_STATE_HOME/rdm/`, config in `$XDG_CONFIG_HOME/rdm/` |
+| Platform | Directory                                                              |
+| -------- | ---------------------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/app.canmi.rdm/` for both                |
+| any, dev | the same with `.dev` after the last word; see below                    |
+| Linux    | state in `$XDG_STATE_HOME/rdm/`, config in `$XDG_CONFIG_HOME/rdm/`     |
 | Windows  | state in `%LOCALAPPDATA%\canmi\rdm\`, config in `%APPDATA%\canmi\rdm\` |
 
 Linux distinguishes state from data and the others do not; the code asks for the state directory
@@ -72,7 +72,7 @@ Three files and a folder, because three kinds of writing and one kind of picture
   a picture that lies. The newest thousand are kept and the rest deleted at launch, off the
   window's thread; one deleted is one made again the next time it is wanted. See
   src/thumbnail.rs.
-- **`config.json`**, in the platform's *configuration* directory rather than its state directory,
+- **`config.json`**, in the platform's _configuration_ directory rather than its state directory,
   is the user's: the categories, and the switches the settings sheet offers, each with a default
   so a file from before a switch reads as if it had been left alone. It is seeded with the built-in
   categories the first time the application starts and finds no file, so a user who wants to
@@ -136,7 +136,7 @@ because a reader fills a missing field with its default and ignores one it does 
 
 Each such change adds one arm to `migrate` in `src/state.rs`, from version `n` to `n + 1`, and
 bumps `VERSION`; a file is brought forward one arm at a time from whatever version it carries.
-The arms are the history of the file's shape and are never removed. A file from a *newer* version
+The arms are the history of the file's shape and are never removed. A file from a _newer_ version
 is refused and left alone, not guessed at: the build that wrote it reads it correctly, and
 overwriting it here with an older shape would lose what that build knew. A file with no integer
 version is refused the same way, since a version that could be missing or fractional is a version
@@ -194,7 +194,6 @@ on the display whose top left is `(-2259, -1440)` was recorded as `(459, 440)` o
 one nearly always -- and came back on the main display at those coordinates. Now that only a
 display's size is wanted, and GPUI reports that correctly, nothing asks the system where a display
 sits and `src/screens.rs` has no platform arm left.
-
 
 ## The identifier
 

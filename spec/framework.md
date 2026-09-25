@@ -108,7 +108,7 @@ a hand-rolled key handler would not get right. Its key bindings are bound once i
 to the `TextInput` key context.
 
 The example carried a bug that only an input method reaches: the selection it computed after
-re-marking a composition added the replaced range's *end* to the new selection's end, which put
+re-marking a composition added the replaced range's _end_ to the new selection's end, which put
 the selection past the content, and the next replacement sliced out of bounds. Latin typing never
 marks text, so the field looked fine until Chinese was typed into it. The arithmetic is corrected
 and every range that slices the content is clamped to it and to character boundaries; the

@@ -63,15 +63,15 @@ stand in for a browser's, each answering one question, and none of them moves th
 pointer or takes the keyboard -- the one afternoon that simulated clicks did, the user lost
 their mouse to it, and that is the rule this section exists to keep.
 
-| Question                                    | Tool                          | Touches the screen |
-| ------------------------------------------- | ----------------------------- | ------------------ |
-| What is the state, and change it            | `mise run ctl <command>`      | no                 |
-| What is drawn, and which code drew it       | `mise run ctl tree [match]`   | no                 |
-| Where is each element, and press it         | `mise run ax tree` / `press`  | no                 |
-| How wide is the window, and resize it       | `mise run ax size <w> <h>`    | no                 |
-| Does a click do the right thing             | `cargo test`, headless        | no window at all   |
-| What does it look like                      | `mise run shot [path] [title]` | reads pixels only |
-| What does a notice window look like         | `mise run shot <path> --floating` | reads pixels only |
+| Question                              | Tool                              | Touches the screen |
+| ------------------------------------- | --------------------------------- | ------------------ |
+| What is the state, and change it      | `mise run ctl <command>`          | no                 |
+| What is drawn, and which code drew it | `mise run ctl tree [match]`       | no                 |
+| Where is each element, and press it   | `mise run ax tree` / `press`      | no                 |
+| How wide is the window, and resize it | `mise run ax size <w> <h>`        | no                 |
+| Does a click do the right thing       | `cargo test`, headless            | no window at all   |
+| What does it look like                | `mise run shot [path] [title]`    | reads pixels only  |
+| What does a notice window look like   | `mise run shot <path> --floating` | reads pixels only  |
 
 **`ctl` is the debug build's control socket.** `src/ctl.rs` listens on a Unix socket under
 `target/` in debug builds only -- on Unix only, since the standard library has no such socket

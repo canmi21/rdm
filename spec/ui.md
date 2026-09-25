@@ -591,7 +591,7 @@ as every system's own do.
 
 **The window is blurred, and only the sidebar lets it show.** `WindowBackgroundAppearance::Blurred`
 asks macOS for the blur behind a native window, but a native window is not transparent: Finder's
-content is opaque and its sidebar is a *material*, mostly opaque with a hint of the desktop's
+content is opaque and its sidebar is a _material_, mostly opaque with a hint of the desktop's
 color bleeding through. So the list and the toolbar are solid Nord and the sidebar carries the
 one alpha in the palette, high enough that what shows through is a tint rather than a picture.
 A first cut with alpha on every surface read as a glass box, which is the look macOS 26 tried
@@ -1094,7 +1094,6 @@ to the wrong question. The platform marks that press, and an element drawn first
 swallows it in the capture phase before anything else sees it. An element, not a listener on
 the root, because a listener fires only while its element is hovered and a sheet's backdrop
 takes that away.
-
 
 A sheet lies over a backdrop that takes every mouse event, so nothing behind it can be pressed
 through it -- the rule above, applied to the whole window at once. Without it, a press on the

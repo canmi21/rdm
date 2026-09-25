@@ -45,12 +45,12 @@ answers with, and that address is the daily channel's.
 
 ## What a build contains
 
-| Target | File | Shape |
-| --- | --- | --- |
-| `macos-arm64` | `rdm-nightly-macos-arm64.dmg` | the installer window: `Downloads.app` beside an Applications shortcut, see spec/packaging.md |
-| `windows-x64` | `rdm-nightly-windows-x64.zip` | `Downloads.exe` alone, the icon inside it |
-| `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.AppImage` | the binary, desktop entry and icon; system libraries left to the system |
-| `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.tar.gz` | the binary, desktop entry, icon and `install.sh` |
+| Target                     | File                                | Shape                                                                                        |
+| -------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| `macos-arm64`              | `rdm-nightly-macos-arm64.dmg`       | the installer window: `Downloads.app` beside an Applications shortcut, see spec/packaging.md |
+| `windows-x64`              | `rdm-nightly-windows-x64.zip`       | `Downloads.exe` alone, the icon inside it                                                    |
+| `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.AppImage` | the binary, desktop entry and icon; system libraries left to the system                      |
+| `linux-x64`, `linux-arm64` | `rdm-nightly-linux-<arch>.tar.gz`   | the binary, desktop entry, icon and `install.sh`                                             |
 
 The names carry no date, so the nightly's links never change; the daily release renames them.
 `latest.json` beside them is what the application reads: the channel, version, build and
@@ -59,11 +59,19 @@ pick its own file and verify it before replacing itself.
 
 ```json
 {
-  "channel": "nightly",
-  "version": "2026.9.5",
-  "build": 42,
-  "sha": "…",
-  "assets": [{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 0, "sha256": "…" }]
+	"channel": "nightly",
+	"version": "2026.9.5",
+	"build": 42,
+	"sha": "…",
+	"assets": [
+		{
+			"target": "macos-arm64",
+			"kind": "dmg",
+			"file": "rdm-nightly-macos-arm64.dmg",
+			"size": 0,
+			"sha256": "…"
+		}
+	]
 }
 ```
 
