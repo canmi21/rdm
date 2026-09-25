@@ -63,6 +63,15 @@ pub enum Icon {
 	ChevronsLeftRight,
 	ChevronsRightLeft,
 	Copy,
+	/// The copy button's answer for a moment after it has copied.
+	Check,
+	/// A download window's actions: back to the queue, started ahead of it, begun over, opened, and
+	/// shown in its folder. See spec/ui.md.
+	ListEnd,
+	ListStart,
+	RotateCcw,
+	ExternalLink,
+	FolderSearch,
 	Palette,
 	Bell,
 	Magnet,
@@ -90,6 +99,12 @@ impl Icon {
 			Icon::ChevronsLeftRight => "lucide/chevrons-left-right.svg",
 			Icon::ChevronsRightLeft => "lucide/chevrons-right-left.svg",
 			Icon::Copy => "lucide/copy.svg",
+			Icon::Check => "lucide/check.svg",
+			Icon::ListEnd => "lucide/list-end.svg",
+			Icon::ListStart => "lucide/list-start.svg",
+			Icon::RotateCcw => "lucide/rotate-ccw.svg",
+			Icon::ExternalLink => "lucide/external-link.svg",
+			Icon::FolderSearch => "lucide/folder-search.svg",
 			Icon::Palette => "lucide/palette.svg",
 			Icon::Bell => "lucide/bell.svg",
 			Icon::Magnet => "lucide/magnet.svg",

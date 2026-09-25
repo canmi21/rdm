@@ -32,7 +32,7 @@ pub use error::{Error, Failure, Result};
 pub use inspect::{Inspection, Link};
 pub use limiter::Limiter;
 pub use probe::{Probe, probe};
-pub use queue::{Engine, EngineSettings, Event, Snapshot, Status, TaskId};
+pub use queue::{Bump, Engine, EngineSettings, Event, Snapshot, Status, TaskId};
 pub use segments::{Plan, Segment, Span};
 pub use settings::{Connections, HttpVersion, Settings};
 pub use task::{Finished, Handle, Progress, Request};

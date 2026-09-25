@@ -272,11 +272,31 @@ its files; discarding it takes the partial file and the plan, found by the name 
 under -- the caller's, else the server's the probe learnt -- and never a finished file. It was one
 `remove(id, delete)`, a flag nobody could read at the call, which found nothing to delete when the
 server had chosen the name. **Events** -- started, progress at
-an interval, completed, failed, paused, removed -- arrive on a standard channel the window
+an interval, completed, failed, paused, queued again, removed -- arrive on a standard channel the window
 reads at its own pace; the sender never blocks, so a slow window costs the engine nothing.
 **Snapshots** answer for any download's state on request, for the frame that needs a number now
 rather than the last one sent. Nothing crosses the boundary as a future, so the window's
 executor is never the engine's concern.
+
+## The queue can be reordered
+
+At most `max_active` downloads run and the rest wait, in the order of a ticket each holds: a new or
+resumed download takes one at the back. Two calls move a download out of its turn, and both go by
+stopping a run the way a pause does -- the plan kept, so nothing is fetched twice -- except that
+the stopped download is sent back to the queue, with `Event::Queued`, rather than paused.
+
+- **`yield_place`** sends a running download to the back, so the next waiting one starts. With
+  nothing else waiting it does nothing, since it would only be started again.
+- **`start_now`** gives a waiting, paused or failed download a ticket ahead of everything waiting.
+  With every place taken, one running download gives way and waits at the front, next after it, so
+  it goes on as soon as a place frees. Which one is `EngineSettings::bump`: **the one that started
+  last**, the default, which has had least time to reach its speed and so loses least by stopping;
+  the one with the most time left at its pace; or the slowest. The user chooses in Settings.
+
+A pause of a download that is giving its place away wins: stopped, it stays stopped. `restart`
+begins a download again from nothing -- the partial file and plan deleted, then a ticket at the
+back -- and refuses while it runs, which would race its own files; a finished file is the caller's
+to move out of the way, which the window does by sending it to the Trash.
 
 Pause cancels the connections and keeps the plan; resume queues the download again and a new
 run continues from the plan. Remove forgets the download and, when asked, discards the partial

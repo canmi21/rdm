@@ -173,6 +173,7 @@ impl Rdm {
 			| Event::Completed(id, _)
 			| Event::Failed(id, _)
 			| Event::Paused(id)
+			| Event::Queued(id)
 			| Event::Removed(id) => id.0,
 			Event::Progress(s) => s.id.0,
 		};
@@ -185,7 +186,10 @@ impl Rdm {
 			_ => None,
 		};
 		// A run that ended may have learnt how many connections its host takes; kept with the rest.
-		let stopped = matches!(event, Event::Completed(..) | Event::Failed(..) | Event::Paused(_));
+		let stopped = matches!(
+			event,
+			Event::Completed(..) | Event::Failed(..) | Event::Paused(_) | Event::Queued(_)
+		);
 		self.apply_event(event);
 		self.persist(touched);
 		if stopped {
@@ -276,6 +280,12 @@ impl Rdm {
 			Event::Paused(id) => {
 				if let Some(d) = row(&mut self.downloads, id) {
 					d.status = Status::Paused;
+					d.speed = 0;
+				}
+			}
+			Event::Queued(id) => {
+				if let Some(d) = row(&mut self.downloads, id) {
+					d.status = Status::Queued;
 					d.speed = 0;
 				}
 			}
@@ -482,6 +492,112 @@ impl Rdm {
 			self.engine.pause(TaskId(id));
 			self.persist(id);
 			cx.notify();
+		}
+	}
+
+	/// Whether a download other than this one is waiting for a place: what giving a place away
+	/// needs, since with nothing waiting it would only be started again.
+	pub(crate) fn others_waiting(&self, id: u64) -> bool {
+		self.downloads.iter().any(|d| d.id != id && d.status == Status::Queued)
+	}
+
+	/// Sends a running download to the back of the queue so the next one waiting starts. See
+	/// spec/engine.md, "The queue can be reordered".
+	pub(crate) fn yield_place(&mut self, id: u64, cx: &mut Context<Self>) {
+		self.engine.yield_place(TaskId(id));
+		cx.notify();
+	}
+
+	/// Starts a waiting, paused or failed download now; with every place taken, one running
+	/// download goes back to the queue to make room, the one the settings name.
+	pub(crate) fn start_now(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(index) = self.downloads.iter().position(|d| d.id == id) else { return };
+		if !matches!(self.downloads[index].status, Status::Queued | Status::Paused | Status::Failed) {
+			return;
+		}
+		self.downloads[index].status = Status::Queued;
+		self.downloads[index].error = None;
+		let row = self.downloads[index].clone();
+		if !self.engine.contains(TaskId(id))
+			&& let Some((request, checksum)) = self.request_for(&row)
+		{
+			self.engine.add_with_id(TaskId(id), request, checksum);
+		}
+		self.engine.start_now(TaskId(id));
+		self.persist(id);
+		cx.notify();
+	}
+
+	/// Downloads the file again from nothing. A finished file goes to the Trash first, where it
+	/// can be had back; if it cannot go, nothing is started, since the new file would land on it.
+	/// Not while it runs or waits: pause it first.
+	pub(crate) fn redownload(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(index) = self.downloads.iter().position(|d| d.id == id) else { return };
+		let row = &self.downloads[index];
+		if matches!(row.status, Status::Downloading | Status::Queued) {
+			return;
+		}
+		if row.status == Status::Completed
+			&& let Some(path) = row.path.as_deref().map(std::path::Path::new)
+			&& path.exists()
+			&& let Err(error) = crate::reveal::trash(path)
+		{
+			eprintln!(
+				"could not move {} to the Trash, so it is not downloaded again: {error}",
+				path.display()
+			);
+			return;
+		}
+		let row = &mut self.downloads[index];
+		row.status = Status::Queued;
+		row.received = 0;
+		row.speed = 0;
+		row.error = None;
+		row.path = None;
+		let row = row.clone();
+		if self.engine.contains(TaskId(id)) {
+			self.engine.restart(TaskId(id));
+		} else if let Some((request, checksum)) = self.request_for(&row) {
+			// Not held by the engine, as a download from an earlier run is not: what it left
+			// unfinished is deleted here, before it is handed over and started.
+			engine::task::discard(&request.directory, &row.name);
+			self.engine.add_with_id(TaskId(id), request, checksum);
+		}
+		self.persist(id);
+		cx.notify();
+	}
+
+	/// Where the download's file is on disk: the finished file, else the partial one beside its
+	/// plan, else nothing yet.
+	pub(crate) fn file_of(&self, id: u64) -> Option<std::path::PathBuf> {
+		let row = self.download(id)?;
+		if let Some(path) = row.path.as_deref().map(std::path::PathBuf::from).filter(|p| p.exists()) {
+			return Some(path);
+		}
+		let directory = row
+			.directory
+			.clone()
+			.map(std::path::PathBuf::from)
+			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))?;
+		let part = engine::control::part_path(&directory.join(&row.name));
+		part.exists().then_some(part)
+	}
+
+	/// Opens the finished file the way the system opens it.
+	pub(crate) fn open_file(&self, id: u64) {
+		if let Some(row) = self.download(id)
+			&& row.status == Status::Completed
+			&& let Some(path) = self.file_of(id)
+		{
+			crate::reveal::open(&path);
+		}
+	}
+
+	/// Shows the file in its folder, selected: the finished one, or the partial one while it is
+	/// not finished.
+	pub(crate) fn reveal_file(&self, id: u64) {
+		if let Some(path) = self.file_of(id) {
+			crate::reveal::show(&path, &self.preferences.file_manager);
 		}
 	}
 

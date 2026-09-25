@@ -768,7 +768,9 @@ measures as they are: its padding, the facts card, the grid's 72-point label col
 thirty, which is what fits. It opened at the main window's proportion first, 680 wide, and the
 extra width was spent on gaps; a user resizing it by eye settled near three by two.
 
-From the top: the address on a line of its own, cut short, with a button that copies it whole --
+From the top: the address on a line of its own, cut short, with a button that copies it whole and
+shows a check for a moment and a half after, since a copy changes nothing on screen and a press
+that shows nothing reads as one that did nothing --
 nothing there is typed, so it is not a field. Then the transfer's facts in a card, two columns as
 New Task shows what it found: how much has landed, the speed, the time left; whether the server
 serves ranges so the download can be resumed, how many parts it is in and how many connections are
@@ -778,8 +780,24 @@ as far as it has landed, with a hairline where one part ends and the next begins
 as high and in green, the whole download's progress, a hair below it. They were tried touching,
 with no gap, and read worse: gpui clips a child to its parent's rectangle and not its rounding, so
 the pair lost its round ends. Complete, both are green and the hairlines stay, so how many parts it took is
-still there to see. Last, the state at the left -- with the
-reason while it has failed -- and Pause or Resume, whichever applies, and Remove at the right.
+still there to see. Last, the state at the left -- with the reason while it has failed -- and the
+actions at the right, as icons, each with its words in a tooltip, in three groups a hairline apart:
+
+- **Pause or Resume**, one button that is whichever applies; a waiting download pauses too.
+- **Its turn.** Running with another waiting, *let the next one go first*: it goes to the back of
+  the queue and the next starts. Waiting, paused or failed, *start now*: it starts ahead of the
+  queue, and with every place taken one running download waits again at the front, which one being
+  Settings' "Making room" -- the one started last, the default, the one with most time left, or the
+  slowest.
+- **Download again**, from nothing; a finished file goes to the Trash first, and if it cannot, nothing
+  starts, since the new file would land on it. Not while it runs or waits.
+- **Open**, the finished file as the system opens it, and **Show in Finder**, the file in its folder
+  and selected -- the finished file, or the partial one while it is not finished.
+- **Remove**, which a running download cannot be: pause it first.
+
+What does not apply is dimmed rather than gone, so no icon moves under the pointer as the download
+changes state. They were two buttons with words, Pause or Resume and Remove, until there were more
+actions than words fit beside the state.
 
 It was three pages at first -- details, parts and settings -- over the transfer, and before that
 everything stacked in one column; the pages hid what a glance at a download is for, and a page

@@ -108,6 +108,10 @@ pub struct Preferences {
 	/// How many downloads run at once; the rest wait their turn.
 	#[serde(default = "three")]
 	pub max_active: usize,
+	/// Which running download goes back to the queue when a waiting one is started now and every
+	/// place is taken. See spec/engine.md, "The queue can be reordered".
+	#[serde(default)]
+	pub bump: crate::engine::Bump,
 	/// The engine's defaults for every new download, each None where the engine's own value
 	/// stands. See spec/engine.md for what each does.
 	#[serde(default)]
@@ -299,6 +303,7 @@ impl Default for Preferences {
 			limit_slider_from: None,
 			limit_slider_to: None,
 			max_active: 3,
+			bump: crate::engine::Bump::default(),
 			min_segment: None,
 			connect_timeout: None,
 			idle_timeout: None,

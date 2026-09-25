@@ -21,7 +21,7 @@ use crate::ui::{LeavesFocus, backdrop, floating, icon_button};
 use std::collections::HashMap;
 
 use crate::download::Folders;
-use crate::engine::HttpVersion;
+use crate::engine::{Bump, HttpVersion};
 use crate::notify::{Occasion, Style};
 use crate::update::Policy;
 
@@ -705,6 +705,31 @@ impl Rdm {
 			self
 				.field_row(Section::Transfers, "settings.label.concurrent_downloads")
 				.under("settings.group.at_once"),
+			Row {
+				section: Section::Transfers,
+				group: "settings.group.at_once",
+				note: "settings.note.make_room",
+				label: "settings.label.make_room",
+				title: None,
+				control: Control::Choice {
+					options: vec![
+						crate::i18n::t("settings.choice.make_room.newest"),
+						crate::i18n::t("settings.choice.make_room.most_left"),
+						crate::i18n::t("settings.choice.make_room.slowest"),
+					],
+					chosen: match self.preferences.bump {
+						Bump::Newest => 0,
+						Bump::MostLeft => 1,
+						Bump::Slowest => 2,
+					},
+					set: |this, index, cx| {
+						this.preferences.bump = [Bump::Newest, Bump::MostLeft, Bump::Slowest][index];
+						this.engine.set_bump(this.preferences.bump);
+						this.save_config();
+						cx.notify();
+					},
+				},
+			},
 			self
 				.field_row(Section::Transfers, "settings.label.speed_limit")
 				.under("settings.group.at_once"),

@@ -74,6 +74,43 @@ pub fn show(path: &Path, command: &str) {
 	spawn(&mut command, "show");
 }
 
+/// Moves the file to the Trash, where it can be had back, rather than deleting it; what could not
+/// be moved is said, so the caller can stop short of whatever the move was making room for.
+#[cfg(target_os = "macos")]
+pub fn trash(path: &Path) -> Result<(), String> {
+	use objc2_foundation::{NSFileManager, NSString, NSURL};
+	let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+	#[allow(unused_unsafe)]
+	let moved =
+		unsafe { NSFileManager::defaultManager().trashItemAtURL_resultingItemURL_error(&url, None) };
+	moved.map_err(|error| error.localizedDescription().to_string())
+}
+
+#[cfg(windows)]
+pub fn trash(path: &Path) -> Result<(), String> {
+	// The Recycle Bin is reached through the shell, and Visual Basic's file system object is the one
+	// thing on every Windows that sends a file there from a command line.
+	let script = format!(
+		"Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('{}', 'OnlyErrorDialogs', 'SendToRecycleBin')",
+		path.display().to_string().replace('\'', "''")
+	);
+	run(Command::new("powershell").args(["-NoProfile", "-Command", &script]))
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn trash(path: &Path) -> Result<(), String> {
+	run(Command::new("gio").arg("trash").arg(path))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run(command: &mut Command) -> Result<(), String> {
+	match command.status() {
+		Ok(status) if status.success() => Ok(()),
+		Ok(status) => Err(format!("the command ended with {status}")),
+		Err(error) => Err(error.to_string()),
+	}
+}
+
 fn spawn(command: &mut Command, what: &str) {
 	if let Err(error) = command.spawn() {
 		eprintln!("could not {what} the file: {error}");

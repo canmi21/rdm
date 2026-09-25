@@ -22,7 +22,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 
 const USAGE: &str = "state | tree | view <detailed|thumbnails|grid> | select <id> | open <id> | settings [section] | menu <label> | fullscreen | update | \
 	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
-	pause <id> | resume <id> | remove <id> | filter <label> | status <label|none> | \
+	pause <id> | resume <id> | remove <id> | yield <id> | now <id> | again <id> | filter <label> | status <label|none> | \
 	sort <added|name|size|progress|speed|status> [desc] | add <url> | look <address> | slide <limit|range> ... | connections <id> <auto|n> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
 	move <id> <onto id>";
@@ -333,7 +333,7 @@ impl Rdm {
 				"grid" => self.set_view(View::Grid, cx),
 				_ => return failure("view takes detailed, thumbnails or grid"),
 			},
-			"select" | "open" | "pause" | "resume" | "remove" => {
+			"select" | "open" | "pause" | "resume" | "remove" | "yield" | "now" | "again" => {
 				let Some(id) = id else { return failure(&format!("{verb} takes a download id")) };
 				if !self.downloads.iter().any(|d| d.id == id) {
 					return failure(&format!("no download {id}"));
@@ -343,6 +343,9 @@ impl Rdm {
 					"open" => self.open_download(id, cx),
 					"pause" => self.pause(id, cx),
 					"resume" => self.resume(id, cx),
+					"yield" => self.yield_place(id, cx),
+					"now" => self.start_now(id, cx),
+					"again" => self.redownload(id, cx),
 					_ => self.remove(id, cx),
 				}
 			}

@@ -16,7 +16,7 @@ use crate::ui::add_dialog::{
 use crate::ui::icon::{Icon, icon};
 use crate::ui::slider::Slider;
 use crate::ui::text_input::TextInput;
-use crate::ui::{button, frame, theme, toolbar};
+use crate::ui::{frame, icon_button, theme, toolbar};
 
 /// A megabyte, as the limit's field counts it.
 const MB: f64 = 1_048_576.0;
@@ -75,8 +75,14 @@ pub struct DownloadWindow {
 	/// The parts as the control file on disk last had them, read once while the engine does not
 	/// hold the download -- paused since a restart, say -- and dropped as soon as it does.
 	saved: Option<Option<Vec<Segment>>>,
+	/// When the address was last copied: the copy button shows a check for a moment after, so a
+	/// press that changes nothing on screen still says it worked.
+	copied: Option<std::time::Instant>,
 	_follow: Subscription,
 }
+
+/// How long the copy button shows its check.
+const COPIED: std::time::Duration = std::time::Duration::from_millis(1500);
 
 impl DownloadWindow {
 	pub fn new(rdm: Entity<Rdm>, id: u64, cx: &mut Context<Self>) -> Self {
@@ -159,6 +165,7 @@ impl DownloadWindow {
 			connections,
 			connections_slider,
 			saved: None,
+			copied: None,
 			_follow: follow,
 		}
 	}
@@ -195,6 +202,7 @@ impl Render for DownloadWindow {
 
 		// The address on a line of its own, cut short, with a button that copies it whole: nothing
 		// here is typed, so it is not a field.
+		let copied = self.copied.is_some_and(|at| at.elapsed() < COPIED);
 		let address = (!download.url.is_empty()).then(|| {
 			let url = download.url.clone();
 			div()
@@ -213,8 +221,22 @@ impl Render for DownloadWindow {
 						.rounded_sm()
 						.cursor_pointer()
 						.hover(move |s| s.bg(p.hover))
-						.on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(url.clone())))
-						.child(icon(Icon::Copy, p.muted).size_3p5()),
+						.on_click(cx.listener(move |this, _, _, cx| {
+							cx.write_to_clipboard(ClipboardItem::new_string(url.clone()));
+							this.copied = Some(std::time::Instant::now());
+							cx.notify();
+							// Drawn again once the check's moment is over, which nothing else would.
+							cx.spawn(async move |this, cx| {
+								cx.background_executor().timer(COPIED).await;
+								let _ = this.update(cx, |_, cx| cx.notify());
+							})
+							.detach();
+						}))
+						.child(if copied {
+							icon(Icon::Check, p.success).size_3p5()
+						} else {
+							icon(Icon::Copy, p.muted).size_3p5()
+						}),
 				)
 		});
 
@@ -301,11 +323,101 @@ impl Render for DownloadWindow {
 				.child(div().w(px(FIELD)).flex_none().child(field))
 		};
 
-		let toggle = match download.status {
-			Status::Downloading => Some((Icon::Pause, "Pause")),
-			Status::Paused | Status::Failed | Status::Queued => Some((Icon::Play, "Resume")),
-			Status::Completed => None,
+		// The actions, icons at the right in a fixed order, each dimmed where it does not apply rather
+		// than gone, so none moves under the pointer as the download changes state. See spec/ui.md.
+		let status = download.status;
+		let rdm = self.rdm.read(cx);
+		let waiting = rdm.others_waiting(id);
+		let on_disk = rdm.file_of(id).is_some();
+		let show_in = match crate::reveal::manager_name() {
+			"Finder" => "Show in Finder",
+			"File Explorer" => "Show in File Explorer",
+			_ => "Show in the file manager",
 		};
+		let action = |f: fn(&mut Rdm, u64, &mut Context<Rdm>)| {
+			let rdm = self.rdm.clone();
+			move |_: &gpui::ClickEvent, _: &mut Window, cx: &mut gpui::App| {
+				rdm.update(cx, |rdm, cx| f(rdm, id, cx))
+			}
+		};
+		let run = match status {
+			Status::Downloading | Status::Queued => {
+				icon_button(p, "pause", Icon::Pause, "Pause", true, action(Rdm::pause))
+			}
+			Status::Paused | Status::Failed => {
+				icon_button(p, "resume", Icon::Play, "Resume", true, action(Rdm::resume))
+			}
+			Status::Completed => {
+				icon_button(p, "resume", Icon::Play, "Resume", false, action(Rdm::resume))
+			}
+		};
+		let turn = match status {
+			Status::Downloading => icon_button(
+				p,
+				"yield",
+				Icon::ListEnd,
+				if waiting {
+					"Let the next one go first"
+				} else {
+					"Let the next one go first (none is waiting)"
+				},
+				waiting,
+				action(Rdm::yield_place),
+			),
+			Status::Queued | Status::Paused | Status::Failed => icon_button(
+				p,
+				"now",
+				Icon::ListStart,
+				"Start now, ahead of the queue",
+				true,
+				action(Rdm::start_now),
+			),
+			Status::Completed => icon_button(
+				p,
+				"now",
+				Icon::ListStart,
+				"Start now, ahead of the queue",
+				false,
+				action(Rdm::start_now),
+			),
+		};
+		let again = icon_button(
+			p,
+			"again",
+			Icon::RotateCcw,
+			if status == Status::Completed {
+				"Download again (the file goes to the Trash)"
+			} else {
+				"Download again from the start"
+			},
+			matches!(status, Status::Completed | Status::Paused | Status::Failed),
+			action(Rdm::redownload),
+		);
+		let open = {
+			let rdm = self.rdm.clone();
+			icon_button(
+				p,
+				"open",
+				Icon::ExternalLink,
+				"Open",
+				status == Status::Completed && on_disk,
+				move |_, _, cx| rdm.read(cx).open_file(id),
+			)
+		};
+		let reveal = {
+			let rdm = self.rdm.clone();
+			icon_button(p, "reveal", Icon::FolderSearch, show_in, on_disk, move |_, _, cx| {
+				rdm.read(cx).reveal_file(id)
+			})
+		};
+		let remove = icon_button(
+			p,
+			"remove",
+			Icon::Trash,
+			if status == Status::Downloading { "Remove (pause it first)" } else { "Remove" },
+			status != Status::Downloading,
+			action(Rdm::remove),
+		);
 		// The state at the left, the reason with it while it has failed.
 		let state = match &download.error {
 			Some(error) if download.status == Status::Failed => {
@@ -313,7 +425,6 @@ impl Render for DownloadWindow {
 			}
 			_ => download.status.label().to_owned(),
 		};
-		let (act, remove) = (self.rdm.clone(), self.rdm.clone());
 		let body = body
 			.when_some(address, |s, address| s.child(address))
 			.child(facts)
@@ -338,17 +449,16 @@ impl Render for DownloadWindow {
 						div()
 							.flex()
 							.flex_none()
-							.gap_1()
-							.when_some(toggle, |s, (glyph, label)| {
-								s.child(button(p, "toggle", glyph, label, true, move |_, _, cx| {
-									act.update(cx, |rdm, cx| {
-										if label == "Pause" { rdm.pause(id, cx) } else { rdm.resume(id, cx) }
-									});
-								}))
-							})
-							.child(button(p, "remove", Icon::Trash, "Remove", true, move |_, _, cx| {
-								remove.update(cx, |rdm, cx| rdm.remove(id, cx));
-							})),
+							.items_center()
+							.gap_0p5()
+							.child(run)
+							.child(turn)
+							.child(again)
+							.child(div().w(px(1.0)).h(px(14.0)).mx_1().bg(p.border))
+							.child(open)
+							.child(reveal)
+							.child(div().w(px(1.0)).h(px(14.0)).mx_1().bg(p.border))
+							.child(remove),
 					),
 			);
 		chrome(p, window, title, body)

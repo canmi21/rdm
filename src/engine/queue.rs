@@ -30,12 +30,52 @@ pub struct EngineSettings {
 	pub speed_limit: Option<u64>,
 	/// How often a Progress event is sent for each running download.
 	pub progress_every: Duration,
+	/// Which running download goes back to the queue when a waiting one is started now and every
+	/// place is taken.
+	pub bump: Bump,
 }
 
 impl Default for EngineSettings {
 	fn default() -> Self {
-		EngineSettings { max_active: 3, speed_limit: None, progress_every: Duration::from_millis(500) }
+		EngineSettings {
+			max_active: 3,
+			speed_limit: None,
+			progress_every: Duration::from_millis(500),
+			bump: Bump::default(),
+		}
 	}
+}
+
+/// Which running download gives up its place to one started out of turn. See spec/engine.md,
+/// "The queue can be reordered".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Bump {
+	/// The one that started last: it has had the least time to reach its speed, so stopping it
+	/// throws away the least.
+	#[default]
+	Newest,
+	/// The one furthest from done at the pace it is going.
+	MostLeft,
+	/// The one going slowest.
+	Slowest,
+}
+
+/// One running download as the choice of which gives way sees it.
+struct Candidate {
+	id: TaskId,
+	started: std::time::Instant,
+	left: f64,
+	speed: u64,
+}
+
+/// The running download that gives way, by `bump`; None when nothing is running.
+fn give_way(bump: Bump, candidates: &[Candidate]) -> Option<TaskId> {
+	let pick = match bump {
+		Bump::Newest => candidates.iter().max_by_key(|c| c.started),
+		Bump::MostLeft => candidates.iter().max_by(|a, b| a.left.total_cmp(&b.left)),
+		Bump::Slowest => candidates.iter().min_by_key(|c| c.speed),
+	};
+	pick.map(|c| c.id)
 }
 
 /// Where a download stands. `Failed` keeps the message, since the error itself is not Clone;
@@ -91,6 +131,8 @@ pub enum Event {
 	Completed(TaskId, Finished),
 	Failed(TaskId, String),
 	Paused(TaskId),
+	/// Stopped to wait in the queue again rather than paused: it gave its place away.
+	Queued(TaskId),
 	Removed(TaskId),
 }
 
@@ -101,6 +143,14 @@ struct Entry {
 	status: Status,
 	kind: Option<&'static str>,
 	running: Option<tokio::task::JoinHandle<()>>,
+	/// Its place in the queue: the lowest waiting is started first. New and resumed downloads go
+	/// to the back; one started out of turn, and the one it displaced, to the front.
+	ticket: i64,
+	/// When it last started, for choosing which gives way.
+	started: Option<std::time::Instant>,
+	/// Set on a running download that is being stopped to wait again: where it goes in the queue
+	/// once it has stopped, instead of being paused.
+	requeue: Option<i64>,
 }
 
 struct Inner {
@@ -113,6 +163,27 @@ struct Inner {
 	/// next download from a host starts there rather than finding out again. A host not here has
 	/// shown no limit. See spec/engine.md, "The server decides how many connections it takes".
 	hosts: HashMap<String, u16>,
+	/// The next ticket at the back of the queue.
+	back: i64,
+}
+
+impl Inner {
+	fn take_back(&mut self) -> i64 {
+		self.back += 1;
+		self.back
+	}
+
+	/// A ticket ahead of everything waiting.
+	fn front(&self) -> i64 {
+		self
+			.entries
+			.values()
+			.filter(|e| e.status == Status::Queued)
+			.map(|e| e.ticket)
+			.min()
+			.unwrap_or(self.back)
+			- 2
+	}
 }
 
 /// The host a download's connections go to, as `hosts` keys it.
@@ -144,6 +215,7 @@ impl Engine {
 			settings,
 			events,
 			hosts: HashMap::new(),
+			back: 0,
 		};
 		Ok((Engine { runtime: Arc::new(runtime), inner: Arc::new(Mutex::new(inner)) }, receiver))
 	}
@@ -161,6 +233,7 @@ impl Engine {
 		{
 			let mut inner = self.inner.lock().unwrap();
 			inner.next = inner.next.max(id.0 + 1);
+			let ticket = inner.take_back();
 			inner.entries.insert(
 				id,
 				Entry {
@@ -170,6 +243,9 @@ impl Engine {
 					status: Status::Queued,
 					kind: None,
 					running: None,
+					ticket,
+					started: None,
+					requeue: None,
 				},
 			);
 		}
@@ -184,6 +260,8 @@ impl Engine {
 	pub fn pause(&self, id: TaskId) {
 		let mut inner = self.inner.lock().unwrap();
 		let Some(entry) = inner.entries.get_mut(&id) else { return };
+		// A pause wins over a place given away: stopped, it stays stopped.
+		entry.requeue = None;
 		match entry.status {
 			Status::Running => entry.handle.cancel.cancel(),
 			Status::Queued => {
@@ -198,13 +276,110 @@ impl Engine {
 	pub fn resume(&self, id: TaskId) {
 		{
 			let mut inner = self.inner.lock().unwrap();
+			let ticket = inner.take_back();
 			let Some(entry) = inner.entries.get_mut(&id) else { return };
 			if matches!(entry.status, Status::Paused | Status::Failed(_)) {
 				entry.status = Status::Queued;
 				entry.handle = Arc::new(Handle::new());
+				entry.ticket = ticket;
 			}
 		}
 		self.pump();
+	}
+
+	/// Gives a running download's place to the next one waiting, and sends it to the back of the
+	/// queue; its plan is kept, so it goes on from where it was when its turn comes. Nothing
+	/// happens while nothing else is waiting, since it would only be started again.
+	pub fn yield_place(&self, id: TaskId) {
+		let mut inner = self.inner.lock().unwrap();
+		let waiting = inner.entries.iter().any(|(other, e)| *other != id && e.status == Status::Queued);
+		let ticket = inner.take_back();
+		let Some(entry) = inner.entries.get_mut(&id) else { return };
+		if entry.status == Status::Running && waiting {
+			entry.requeue = Some(ticket);
+			entry.handle.cancel.cancel();
+		}
+	}
+
+	/// Starts a waiting, paused or failed download now, ahead of the queue. With every place taken,
+	/// one running download gives way -- which one is `EngineSettings::bump` -- and waits at the
+	/// front of the queue, next after this one, so it goes on as soon as a place comes free.
+	pub fn start_now(&self, id: TaskId) {
+		{
+			let mut inner = self.inner.lock().unwrap();
+			let front = inner.front();
+			let Some(entry) = inner.entries.get_mut(&id) else { return };
+			match entry.status {
+				Status::Queued => {}
+				Status::Paused | Status::Failed(_) => {
+					entry.status = Status::Queued;
+					entry.handle = Arc::new(Handle::new());
+				}
+				_ => return,
+			}
+			entry.ticket = front;
+			let running: Vec<Candidate> = inner
+				.entries
+				.iter()
+				.filter(|(_, e)| e.status == Status::Running && e.requeue.is_none())
+				.map(|(other, e)| {
+					let p = &e.handle.progress;
+					let (done, total) = (p.done.load(Ordering::Relaxed), p.total.load(Ordering::Relaxed));
+					let speed = p.speed.load(Ordering::Relaxed);
+					let left = if total == 0 || speed == 0 {
+						f64::INFINITY
+					} else {
+						total.saturating_sub(done) as f64 / speed as f64
+					};
+					Candidate {
+						id: *other,
+						started: e.started.unwrap_or_else(std::time::Instant::now),
+						left,
+						speed,
+					}
+				})
+				.collect();
+			// Only the ones staying count: one already giving its place away frees it for this.
+			if running.len() >= inner.settings.max_active
+				&& let Some(victim) = give_way(inner.settings.bump, &running)
+				&& let Some(entry) = inner.entries.get_mut(&victim)
+			{
+				entry.requeue = Some(front + 1);
+				entry.handle.cancel.cancel();
+			}
+		}
+		self.pump();
+	}
+
+	/// Starts a download over from nothing: what it left unfinished is deleted, and it waits at the
+	/// back of the queue. Not while it runs, which would race its own files. A finished file is
+	/// the caller's to move out of the way first; this does not touch it.
+	pub fn restart(&self, id: TaskId) {
+		{
+			let mut inner = self.inner.lock().unwrap();
+			let ticket = inner.take_back();
+			let Some(entry) = inner.entries.get_mut(&id) else { return };
+			if entry.status == Status::Running {
+				return;
+			}
+			let name = entry
+				.request
+				.file_name
+				.clone()
+				.or_else(|| entry.handle.probed.lock().unwrap().as_ref().map(|p| p.file_name.clone()));
+			if let Some(name) = name {
+				task::discard(&entry.request.directory, &name);
+			}
+			entry.status = Status::Queued;
+			entry.handle = Arc::new(Handle::new());
+			entry.kind = None;
+			entry.ticket = ticket;
+		}
+		self.pump();
+	}
+
+	pub fn set_bump(&self, bump: Bump) {
+		self.inner.lock().unwrap().settings.bump = bump;
 	}
 
 	/// Forgets the download and leaves its files where they are: a partial file with its plan
@@ -352,9 +527,14 @@ impl Engine {
 		let mut inner = self.inner.lock().unwrap();
 		let running = inner.entries.values().filter(|e| e.status == Status::Running).count();
 		let room = inner.settings.max_active.saturating_sub(running);
-		let mut queued: Vec<TaskId> =
-			inner.entries.iter().filter(|(_, e)| e.status == Status::Queued).map(|(id, _)| *id).collect();
+		let mut queued: Vec<(i64, TaskId)> = inner
+			.entries
+			.iter()
+			.filter(|(_, e)| e.status == Status::Queued)
+			.map(|(id, e)| (e.ticket, *id))
+			.collect();
 		queued.sort();
+		let queued: Vec<TaskId> = queued.into_iter().map(|(_, id)| id).collect();
 		for id in queued.into_iter().take(room) {
 			let global = inner.global.clone();
 			let every = inner.settings.progress_every;
@@ -365,6 +545,7 @@ impl Engine {
 			entry.handle.learned.store(learned.map_or(0, u64::from), Ordering::Relaxed);
 			entry.handle.crowded.store(false, Ordering::Relaxed);
 			entry.status = Status::Running;
+			entry.started = Some(std::time::Instant::now());
 			let _ = events.send(Event::Started(id));
 			let job = self.clone();
 			let request = entry.request.clone();
@@ -445,6 +626,14 @@ impl Engine {
 					entry.kind = verify::kind(&finished.path);
 					entry.status = Status::Completed(Box::new(finished.clone()));
 					Event::Completed(id, finished)
+				}
+				// Stopped to give its place away: back in the queue where it was sent, with a fresh
+				// handle as a resume gives it, rather than paused.
+				Err(Error::Cancelled) if entry.requeue.is_some() => {
+					entry.ticket = entry.requeue.take().unwrap_or_default();
+					entry.status = Status::Queued;
+					entry.handle = Arc::new(Handle::new());
+					Event::Queued(id)
 				}
 				Err(Error::Cancelled) => {
 					entry.status = Status::Paused;
@@ -593,6 +782,132 @@ mod tests {
 		assert!(snapshots.iter().all(|s| matches!(s.status, Status::Completed(_))));
 		assert_eq!(snapshots[0].file_name.as_deref(), Some("a.bin"));
 		assert_eq!(snapshots[0].done, 60_000);
+	}
+
+	/// The queue's story until every one of `ids` has completed: who started, who went back to
+	/// wait, who finished, in order, by the names given.
+	fn story(receiver: &mpsc::Receiver<Event>, ids: &[(TaskId, &str)]) -> Vec<String> {
+		let name = |id: &TaskId| ids.iter().find(|(i, _)| i == id).map(|(_, n)| *n).unwrap_or("?");
+		let mut told = Vec::new();
+		let mut done = 0;
+		while done < ids.len() {
+			let event = wait_for(receiver, "the queue to move", |e| {
+				matches!(e, Event::Started(_) | Event::Queued(_) | Event::Completed(..) | Event::Failed(..))
+			});
+			match &event {
+				Event::Started(id) => told.push(format!("start {}", name(id))),
+				Event::Queued(id) => told.push(format!("wait {}", name(id))),
+				Event::Completed(id, _) => {
+					told.push(format!("done {}", name(id)));
+					done += 1;
+				}
+				Event::Failed(id, message) => panic!("{} failed: {message}", name(id)),
+				_ => {}
+			}
+		}
+		told
+	}
+
+	/// One place, and downloads slow enough to be caught running.
+	fn one_at_a_time(label: &str) -> (TestServer, PathBuf, Engine, mpsc::Receiver<Event>, Request) {
+		let server = TestServer::start(
+			body(400_000),
+			Options { delay_per_chunk: Duration::from_millis(4), ..Options::default() },
+		);
+		let dir = scratch(label);
+		let (engine, events) = Engine::new(EngineSettings {
+			max_active: 1,
+			progress_every: Duration::from_millis(20),
+			..EngineSettings::default()
+		})
+		.unwrap();
+		let mut request = Request::new(server.url("/a.bin"), &dir);
+		request.settings.connections = Connections::fixed(1);
+		(server, dir, engine, events, request)
+	}
+
+	fn named(request: &Request, server: &TestServer, name: &str) -> Request {
+		let mut request = request.clone();
+		request.url = server.url(&format!("/{name}.bin"));
+		request
+	}
+
+	#[test]
+	fn a_running_download_gives_its_place_to_the_next_and_waits_again() {
+		let (server, dir, engine, events, request) = one_at_a_time("yield");
+		let a = engine.add(named(&request, &server, "a"), None);
+		let b = engine.add(named(&request, &server, "b"), None);
+		wait_for(&events, "a moving", |e| matches!(e, Event::Progress(s) if s.id == a && s.done > 0));
+		engine.yield_place(a);
+		let told = story(&events, &[(a, "a"), (b, "b")]);
+		assert_eq!(told, ["wait a", "start b", "done b", "start a", "done a"], "{told:?}");
+		assert_eq!(
+			std::fs::read(dir.join("a.bin")).unwrap(),
+			server.body(),
+			"a went on from where it was"
+		);
+		// With nothing waiting, giving the place away would only start it again, so nothing happens.
+		let c = engine.add(named(&request, &server, "c"), None);
+		wait_for(&events, "c moving", |e| matches!(e, Event::Progress(s) if s.id == c && s.done > 0));
+		engine.yield_place(c);
+		assert_eq!(story(&events, &[(c, "c")]), ["done c"]);
+	}
+
+	#[test]
+	fn a_download_started_now_takes_a_place_and_the_one_it_displaced_goes_next() {
+		let (server, _dir, engine, events, request) = one_at_a_time("now");
+		let a = engine.add(named(&request, &server, "a"), None);
+		let b = engine.add(named(&request, &server, "b"), None);
+		let c = engine.add(named(&request, &server, "c"), None);
+		wait_for(&events, "a moving", |e| matches!(e, Event::Progress(s) if s.id == a && s.done > 0));
+		engine.start_now(c);
+		let told = story(&events, &[(a, "a"), (b, "b"), (c, "c")]);
+		assert_eq!(
+			told,
+			["wait a", "start c", "done c", "start a", "done a", "start b", "done b"],
+			"c first, then a, which it displaced, before b, which had been waiting: {told:?}"
+		);
+	}
+
+	#[test]
+	fn the_one_that_gives_way_is_the_newest_the_furthest_from_done_or_the_slowest() {
+		let now = std::time::Instant::now();
+		let running = [
+			Candidate { id: TaskId(1), started: now, left: 10.0, speed: 500 },
+			Candidate { id: TaskId(2), started: now + Duration::from_secs(5), left: 2.0, speed: 900 },
+			Candidate {
+				id: TaskId(3),
+				started: now + Duration::from_secs(1),
+				left: f64::INFINITY,
+				speed: 100,
+			},
+		];
+		assert_eq!(give_way(Bump::Newest, &running), Some(TaskId(2)));
+		assert_eq!(
+			give_way(Bump::MostLeft, &running),
+			Some(TaskId(3)),
+			"no pace yet is furthest of all"
+		);
+		assert_eq!(give_way(Bump::Slowest, &running), Some(TaskId(3)));
+		assert_eq!(give_way(Bump::Newest, &[]), None);
+	}
+
+	#[test]
+	fn a_restart_downloads_a_finished_file_again_from_nothing() {
+		let (server, dir, engine, events, request) = one_at_a_time("restart");
+		let a = engine.add(named(&request, &server, "a"), None);
+		wait_for(&events, "a done", |e| matches!(e, Event::Completed(id, _) if *id == a));
+		let asked = server.requests().len();
+		// The finished file is the caller's to move; here it is simply deleted.
+		std::fs::remove_file(dir.join("a.bin")).unwrap();
+		engine.restart(a);
+		wait_for(&events, "a done again", |e| matches!(e, Event::Completed(id, _) if *id == a));
+		assert_eq!(std::fs::read(dir.join("a.bin")).unwrap(), server.body());
+		let again: Vec<_> = server.requests().into_iter().skip(asked).collect();
+		assert!(
+			again.iter().any(|r| r.range.is_some_and(|(start, _)| start == 0)),
+			"from the first byte: {again:?}"
+		);
 	}
 
 	#[test]

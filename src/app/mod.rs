@@ -456,6 +456,7 @@ impl Rdm {
 		};
 		this.engine.set_speed_limit(this.preferences.speed_limit);
 		this.engine.set_max_active(this.preferences.max_active);
+		this.engine.set_bump(this.preferences.bump);
 		// The machine is asked what proxy it is running, once, off this thread.
 		if this.preferences.proxy_source == crate::proxy::Source::Found {
 			this.look_for_proxy(cx);
