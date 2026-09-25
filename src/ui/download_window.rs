@@ -605,8 +605,15 @@ fn chrome(p: theme::Palette, window: &Window, title: Title, body: gpui::Div) -> 
 		.text_color(p.text)
 		.rounded(frame::radius(window))
 		.overflow_hidden()
-		.on_mouse_down(gpui::MouseButton::Left, |event, window, _| {
-			frame::on_root_mouse_down(event, window)
+		// A press on nothing that takes the keyboard -- the card, the bar, the empty space -- takes it
+		// away from whichever field had it, as the main window's backdrop does; without this the two
+		// fields only ever handed it to each other. A field pressed claims the press first, which is
+		// what `default_prevented` says. See src/ui/mod.rs, `backdrop`.
+		.on_mouse_down(gpui::MouseButton::Left, |event, window, cx| {
+			frame::on_root_mouse_down(event, window);
+			if !window.default_prevented() {
+				window.blur(cx);
+			}
 		})
 		.child(strip)
 		.child(body)
