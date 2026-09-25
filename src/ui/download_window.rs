@@ -174,7 +174,9 @@ impl Render for DownloadWindow {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let p = theme::palette(window.is_window_active());
 		let id = self.id;
-		let body = div().flex().flex_col().flex_1().min_h_0().gap_2p5().p_4().text_xs();
+		// A little less above than at the sides and below: the address is the first line, a single
+		// line of small text, and the full padding over it read as a gap under the title strip.
+		let body = div().flex().flex_col().flex_1().min_h_0().gap_2p5().px_4().pt_3().pb_4().text_xs();
 		let Some(download) = self.rdm.read(cx).download(id).cloned() else {
 			// Removed from the list while this window was open: nothing left to show.
 			window.remove_window();
@@ -217,7 +219,7 @@ impl Render for DownloadWindow {
 						.aria_label("Copy address")
 						.debug_selector(|| "button:Copy address".to_owned())
 						.flex_none()
-						.p_1()
+						.p_0p5()
 						.rounded_sm()
 						.cursor_pointer()
 						.hover(move |s| s.bg(p.hover))
