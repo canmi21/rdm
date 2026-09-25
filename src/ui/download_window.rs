@@ -398,7 +398,7 @@ impl Render for DownloadWindow {
 			icon_button(
 				p,
 				"open",
-				Icon::ExternalLink,
+				Icon::SquareArrowOutUpRight,
 				"Open",
 				status == Status::Completed && on_disk,
 				move |_, _, cx| rdm.read(cx).open_file(id),
