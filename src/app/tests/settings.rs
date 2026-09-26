@@ -128,20 +128,21 @@ fn settings_has_sections_and_a_search_that_cuts_across_them(cx: &mut TestAppCont
 	rdm.read_with(&cx, |rdm, _| assert!(!rdm.settings_open(), "escape in the field closes"));
 }
 
+/// A nightly newer than any build the tests are, with a file for every published target.
+const NIGHTLY_99: &str = r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
+	{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
+	{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
+	{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
+	{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
+] }"#;
+
 /// A development build runs the check and keeps its answer -- which is what makes a broken
 /// manifest or an unreachable route visible in Settings -- and offers nothing: no card, no
 /// notification, no install started on its own.
 #[gpui::test]
 fn a_development_build_checks_and_says_nothing(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
-	let manifest: crate::update::Manifest = serde_json::from_str(
-		r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
-			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
-			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
-			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
-			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
-		] }"#,
-	)
+	let manifest: crate::update::Manifest = serde_json::from_str(NIGHTLY_99)
 	.unwrap();
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(!rdm.updates.announces, "which is what a build from the working tree is");
@@ -165,14 +166,7 @@ fn a_development_build_checks_and_says_nothing(cx: &mut TestAppContext) {
 #[gpui::test]
 fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
-	let manifest = crate::update::Manifest::parse(
-		r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
-			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
-			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
-			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
-			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
-		] }"#,
-	)
+	let manifest = crate::update::Manifest::parse(NIGHTLY_99)
 	.unwrap();
 	assert!(cx.debug_bounds("toast:update").is_none(), "nothing known, nothing shown");
 	// A hand build is shown a newer build only when it asked. The test binary made in CI
@@ -445,14 +439,7 @@ fn the_two_user_agent_rows_are_named_apart_and_both_are_searchable(cx: &mut Test
 #[gpui::test]
 fn the_update_card_keeps_to_the_corner_however_the_window_is_sized(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
-	let manifest = crate::update::Manifest::parse(
-		r#"{ "channel": "nightly", "version": "2026.9.5", "build": 99, "sha": "abc", "assets": [
-			{ "target": "macos-arm64", "kind": "dmg", "file": "rdm-nightly-macos-arm64.dmg", "size": 1, "sha256": "aa" },
-			{ "target": "windows-x64", "kind": "zip", "file": "rdm-nightly-windows-x64.zip", "size": 1, "sha256": "bb" },
-			{ "target": "linux-x64", "kind": "AppImage", "file": "rdm-nightly-linux-x64.AppImage", "size": 1, "sha256": "cc" },
-			{ "target": "linux-arm64", "kind": "AppImage", "file": "rdm-nightly-linux-arm64.AppImage", "size": 1, "sha256": "dd" }
-		] }"#,
-	)
+	let manifest = crate::update::Manifest::parse(NIGHTLY_99)
 	.unwrap();
 	rdm.update(&mut cx, |rdm, _| {
 		rdm.updates.this = None;
