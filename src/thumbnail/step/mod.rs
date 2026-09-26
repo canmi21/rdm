@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 mod faces;
+mod spline;
 
 type Vec3 = [f64; 3];
 
@@ -87,11 +88,25 @@ fn entities(text: &str) -> HashMap<u64, (String, Vec<Value>)> {
 			if let (Some(curve), Some(knots)) =
 				(find("B_SPLINE_CURVE"), find("B_SPLINE_CURVE_WITH_KNOTS"))
 			{
-				// The curve's degree and points, then the knots, as the simple entity lays them out.
+				// The curve's degree and points, then the knots, as the simple entity lays them out,
+				// and a rational one's weights after them.
 				let mut values = vec![Value::Other(String::new())];
 				values.extend(curve);
 				values.extend(knots);
+				if let Some(weights) = find("RATIONAL_B_SPLINE_CURVE") {
+					values.extend(weights);
+				}
 				out.insert(id, ("B_SPLINE_CURVE_WITH_KNOTS".to_owned(), values));
+			} else if let (Some(surface), Some(knots)) =
+				(find("B_SPLINE_SURFACE"), find("B_SPLINE_SURFACE_WITH_KNOTS"))
+			{
+				let mut values = vec![Value::Other(String::new())];
+				values.extend(surface);
+				values.extend(knots);
+				if let Some(weights) = find("RATIONAL_B_SPLINE_SURFACE") {
+					values.extend(weights);
+				}
+				out.insert(id, ("B_SPLINE_SURFACE_WITH_KNOTS".to_owned(), values));
 			}
 			continue;
 		}
@@ -243,27 +258,19 @@ impl Model {
 			}
 			"B_SPLINE_CURVE_WITH_KNOTS" => {
 				let degree = values.get(1)?.num()? as usize;
-				let points: Vec<Vec3> =
-					values.get(2)?.list().iter().filter_map(|v| self.point(v.id()?)).collect();
-				let multiplicities = values.get(6)?.list();
-				let knot_values = values.get(7)?.list();
-				let mut knots = Vec::new();
-				for (m, k) in multiplicities.iter().zip(knot_values) {
-					for _ in 0..m.num()? as usize {
-						knots.push(k.num()?);
-					}
-				}
-				if points.len() <= degree || knots.len() != points.len() + degree + 1 {
-					return None;
-				}
-				let (low, high) = (knots[degree], knots[points.len()]);
-				Some(
-					(0..=SAMPLES)
-						.map(|i| {
-							de_boor(degree, &points, &knots, low + (high - low) * i as f64 / SAMPLES as f64)
-						})
-						.collect(),
-				)
+				let weights = values.get(9).map(Value::list).unwrap_or_default();
+				let points: Vec<[f64; 4]> = values
+					.get(2)?
+					.list()
+					.iter()
+					.enumerate()
+					.map(|(i, v)| {
+						let w = weights.get(i).and_then(Value::num).unwrap_or(1.0);
+						Some(spline::weighted(self.point(v.id()?)?, w))
+					})
+					.collect::<Option<_>>()?;
+				let knots = spline::knots(values.get(6)?.list(), values.get(7)?.list())?;
+				spline::curve(degree, &points, &knots, SAMPLES)
 			}
 			// A curve lying on a surface keeps its 3D curve first.
 			"SURFACE_CURVE" | "SEAM_CURVE" => self.curve(values.get(1)?.id()?, start, end, forward),
@@ -271,24 +278,6 @@ impl Model {
 			_ => None,
 		}
 	}
-}
-
-fn de_boor(degree: usize, points: &[Vec3], knots: &[f64], t: f64) -> Vec3 {
-	// The span holding `t`, the last one at the curve's end.
-	let mut span = degree;
-	while span + 1 < points.len() && knots[span + 1] <= t {
-		span += 1;
-	}
-	let mut d: Vec<Vec3> = (0..=degree).map(|j| points[j + span - degree]).collect();
-	for r in 1..=degree {
-		for j in (r..=degree).rev() {
-			let i = j + span - degree;
-			let denominator = knots[i + degree + 1 - r] - knots[i];
-			let alpha = if denominator.abs() < 1e-12 { 0.0 } else { (t - knots[i]) / denominator };
-			d[j] = add(scale(d[j - 1], 1.0 - alpha), scale(d[j], alpha));
-		}
-	}
-	d[degree]
 }
 
 fn triple(value: &Value) -> Option<Vec3> {
@@ -339,11 +328,12 @@ fn edges(text: &str) -> Vec<Vec<Vec3>> {
 pub fn render(path: &Path) -> Option<image::RgbaImage> {
 	let text = String::from_utf8_lossy(&std::fs::read(path).ok()?).into_owned();
 	let model = Model { entities: entities(&text) };
-	let triangles = faces::triangles(&model);
-	if !triangles.is_empty() {
-		let mesh: Vec<[[f32; 3]; 3]> =
-			triangles.iter().map(|t| t.map(|p| p.map(|c| c as f32))).collect();
-		return super::model::draw(&mesh);
+	let shaded = faces::triangles(&model);
+	if !shaded.triangles.is_empty() {
+		let narrow = |t: &[Vec3; 3]| t.map(|p| p.map(|c| c as f32));
+		let mesh: Vec<[[f32; 3]; 3]> = shaded.triangles.iter().map(narrow).collect();
+		let normals: Vec<[[f32; 3]; 3]> = shaded.normals.iter().map(narrow).collect();
+		return super::model::draw_smooth(&mesh, &normals);
 	}
 	draw(&edges(&text))
 }

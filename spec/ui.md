@@ -147,17 +147,25 @@ src/ui/list/row.rs.
   surfaces bounded by edges rather than a mesh, and a CAD kernel -- OpenCascade, a C++ build the
   size of the rest of the application, or truck, whose STEP covers part of what CAD programs
   write -- was more than a card needs. The edges are written out whole, lines, circles, ellipses
-  and B-splines between their vertices, and are parsed by hand and sampled; each face's loops are
-  laid flat in its surface's own parameters -- a plane's axes, a cylinder's or cone's angle and
-  height, a sphere's or torus's two angles -- triangulated there with earcut, split until no edge
-  turns more than a sixth of a radian, and put back on the surface, so a cylinder is round. A band
-  round a cylinder bounded by two circles lays flat as two lines and is drawn as the strip between
-  them. The loop enclosing the most is the outline, since not every file marks it. A surface with
-  no parameters worked out here, a B-spline patch among them, is its loops on the plane that fits
-  them best. The triangles go to the mesh's rasterizer; a file with no face that could be filled
-  is drawn as its edges, stroked with tiny-skia, nearer lines brighter. A part takes up to a tenth
-  of a second. An assembly's bodies are drawn where each was modeled rather than where the
-  assembly places it, and IGES keeps the system's icon. See src/thumbnail/step/.
+  and B-splines between their vertices, rational or not, and are parsed by hand and sampled; each
+  face's loops are laid flat in its surface's own parameters -- a plane's axes, a cylinder's or
+  cone's angle and height, a sphere's or torus's two angles, a B-spline patch's own, found for each
+  point by a coarse search and Newton's steps from the point before -- triangulated there with
+  earcut, and put back on the surface. A triangle is split only while the surface stands more than
+  a three-hundredth of the part's size off the middle of one of its edges, so a flat face stays two
+  triangles and a fillet is cut fine: splitting to a fixed depth made a million and a half triangles
+  and three seconds of a reel. A band round a cylinder bounded by two circles lays flat as two
+  lines and is drawn as the strip between them, and the loop enclosing the most is the outline,
+  since not every file marks it. Each corner carries the surface's own normal and the light is
+  blended across the triangle, so however earcut cut a face it reads smooth; lit flat, the long
+  thin triangles it makes of a cylinder showed as rings like a thread. A surface of no kind read
+  here is its loops on the plane that fits them best. A part with no face that could be filled is
+  drawn as its edges, stroked with tiny-skia, nearer lines brighter. An assembly's bodies are drawn
+  where each was modeled rather than where the assembly places it, and IGES keeps the system's
+  icon. See src/thumbnail/step/.
+- **Drawn off the window.** A STEP part or a large mesh takes up to half a second, so both are
+  drawn on one worker thread, a file at a time, and arrive at the next tick as QuickLook's pages
+  do; the card shows its glyph meanwhile. See src/thumbnail/.
 - **A text file's first six lines** as they are, the best icon a text file has.
 - **An archive's contents**, once the index has read it: how many names at the top and their total
   size, then the names, folders first and marked as folders, each with its size, and how many more.

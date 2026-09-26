@@ -294,6 +294,16 @@ fn cross(a: Vec3, b: Vec3) -> Vec3 {
 /// The triangles seen from the front right and above, Z up, fitted to the picture and lit from the
 /// upper left. Both sides of a face are lit, since a mesh's winding is not to be trusted.
 pub(super) fn draw(triangles: &[[Vec3; 3]]) -> Option<image::RgbaImage> {
+	draw_smooth(triangles, &[])
+}
+
+/// The same, with the surface's own normal at each corner where it is known, one entry a triangle:
+/// the light is then worked out at the corners and blended across, so a surface cut into triangles
+/// any which way still reads smooth. With no normals each triangle is lit flat, as a mesh is.
+pub(super) fn draw_smooth(
+	triangles: &[[Vec3; 3]],
+	normals: &[[Vec3; 3]],
+) -> Option<image::RgbaImage> {
 	let step = triangles.len().div_ceil(MOST_TRIANGLES).max(1);
 	let (azimuth, elevation) = (-35f32.to_radians(), 28f32.to_radians());
 	let view = |[x, y, z]: Vec3| -> Vec3 {
@@ -303,17 +313,18 @@ pub(super) fn draw(triangles: &[[Vec3; 3]]) -> Option<image::RgbaImage> {
 		// Screen right, screen up, and toward the viewer.
 		[rx, z * ce - ry * se, z * se + ry * ce]
 	};
-	let viewed: Vec<[Vec3; 3]> = triangles
+	let viewed: Vec<([Vec3; 3], Option<[Vec3; 3]>)> = triangles
 		.iter()
+		.enumerate()
 		.step_by(step)
-		.filter(|t| t.iter().flatten().all(|c| c.is_finite()))
-		.map(|t| [view(t[0]), view(t[1]), view(t[2])])
+		.filter(|(_, t)| t.iter().flatten().all(|c| c.is_finite()))
+		.map(|(i, t)| ([view(t[0]), view(t[1]), view(t[2])], normals.get(i).map(|n| n.map(view))))
 		.collect();
 	if viewed.is_empty() {
 		return None;
 	}
 	let (mut low, mut high) = ([f32::MAX; 3], [f32::MIN; 3]);
-	for corner in viewed.iter().flatten() {
+	for corner in viewed.iter().flat_map(|(t, _)| t) {
 		for k in 0..3 {
 			low[k] = low[k].min(corner[k]);
 			high[k] = high[k].max(corner[k]);
@@ -335,14 +346,17 @@ pub(super) fn draw(triangles: &[[Vec3; 3]]) -> Option<image::RgbaImage> {
 	};
 	let mut depth = vec![f32::MIN; w * h];
 	let mut shade = vec![0f32; w * h];
-	for t in &viewed {
-		let normal = cross(sub(t[1], t[0]), sub(t[2], t[0]));
-		let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-		if length == 0.0 {
-			continue;
-		}
-		let lit = ((normal[0] * light[0] + normal[1] * light[1] + normal[2] * light[2]) / length).abs();
-		let brightness = 0.28 + 0.72 * lit;
+	let brightness = |n: Vec3| -> Option<f32> {
+		let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+		(length > 0.0)
+			.then(|| 0.28 + 0.72 * ((n[0] * light[0] + n[1] * light[1] + n[2] * light[2]) / length).abs())
+	};
+	for (t, corners) in &viewed {
+		let Some(flat) = brightness(cross(sub(t[1], t[0]), sub(t[2], t[0]))) else { continue };
+		let lit = match corners {
+			Some(n) => [n[0], n[1], n[2]].map(|n| brightness(n).unwrap_or(flat)),
+			None => [flat; 3],
+		};
 		let [a, b, c] = [screen(t[0]), screen(t[1]), screen(t[2])];
 		let area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
 		if area.abs() < f32::EPSILON {
@@ -366,7 +380,7 @@ pub(super) fn draw(triangles: &[[Vec3; 3]]) -> Option<image::RgbaImage> {
 				let at = y * w + x;
 				if z > depth[at] {
 					depth[at] = z;
-					shade[at] = brightness;
+					shade[at] = wa * lit[0] + wb * lit[1] + wc * lit[2];
 				}
 			}
 		}

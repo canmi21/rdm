@@ -81,7 +81,7 @@ const KEPT: usize = 1000;
 /// its file, which says nothing of how it was drawn: raise this whenever a kind of file comes to
 /// be drawn differently, or the old picture stands in for the new one until the file changes. The
 /// old ones are left for `trim` to take, oldest first.
-const DRAWN_BY: u32 = 2;
+const DRAWN_BY: u32 = 4;
 
 #[derive(Default)]
 pub struct Thumbnails {
@@ -95,11 +95,27 @@ pub struct Thumbnails {
 	/// what asks for another frame: the rest of the pictures are waiting in it.
 	budget: u32,
 	starved: bool,
-	/// Files whose first page the system has been asked for and has not answered, and where its
-	/// answers wait. See first_page.rs.
-	asking: std::collections::HashSet<PathBuf>,
+	/// Files whose picture is being made away from the window -- a first page asked of the system,
+	/// or a model drawn on the worker -- and where the pictures wait. See first_page.rs.
+	asking: HashMap<PathBuf, Maker>,
 	answers: first_page::Answers,
+	/// The thread that draws what takes too long to draw inside a frame, started the first time
+	/// one is wanted.
+	worker: Option<std::sync::mpsc::Sender<PathBuf>>,
 }
+
+/// Who is making a picture that has not arrived.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Maker {
+	/// QuickLook, which may have no page to give; the file is then read here.
+	System,
+	/// The worker, drawing a model; one it could not draw shows the system's icon.
+	Worker,
+}
+
+/// The kinds drawn on the worker: a STEP part or a large mesh takes a tenth of a second or more,
+/// which is a stall inside a frame.
+const ON_THE_WORKER: [&str; 7] = ["step", "stp", "p21", "stl", "obj", "off", "3mf"];
 
 impl Thumbnails {
 	/// Pictures made from files are kept in this folder between runs. Without one -- a platform
@@ -146,7 +162,7 @@ impl Thumbnails {
 		if let Some(known) = self.previews.get(path) {
 			return known.clone();
 		}
-		if self.asking.contains(path) {
+		if self.asking.contains_key(path) {
 			return None;
 		}
 		if self.budget == 0 {
@@ -156,13 +172,22 @@ impl Thumbnails {
 		self.budget -= 1;
 		let extension =
 			path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
-		if first_page::asked(&extension) && self.remembered(path).is_none() {
-			// The answer arrives later and `collect` takes it; until then the card shows its glyph.
-			self.asking.insert(path.to_path_buf());
+		let remembered = self.remembered(path);
+		// Made away from the window, arriving later for `collect` to take; the card shows its glyph
+		// meanwhile.
+		if remembered.is_none() && first_page::asked(&extension) {
+			self.asking.insert(path.to_path_buf(), Maker::System);
 			first_page::ask(path, &self.answers);
 			return None;
 		}
-		let made = match self.remembered(path) {
+		if remembered.is_none() && ON_THE_WORKER.contains(&extension.as_str()) {
+			self.asking.insert(path.to_path_buf(), Maker::Worker);
+			if self.worker().send(path.to_path_buf()).is_err() {
+				self.worker = None;
+			}
+			return None;
+		}
+		let made = match remembered {
 			Some(picture) => Some(Preview::Picture(picture)),
 			None => match read_preview(path) {
 				Some(Made::Picture(rgba)) => {
@@ -187,11 +212,14 @@ impl Thumbnails {
 			std::mem::take(&mut *self.answers.lock().unwrap_or_else(|held| held.into_inner()));
 		let any = !arrived.is_empty();
 		for (path, page) in arrived {
-			self.asking.remove(&path);
+			let maker = self.asking.remove(&path);
 			let made = match page {
 				Some(rgba) => {
 					self.keep(&path, &rgba);
 					drawable(rgba).map(Preview::Picture)
+				}
+				None if maker == Some(Maker::Worker) => {
+					read(&path).map(|image| Preview::Icon(Arc::new(image)))
 				}
 				None => match read_preview(&path) {
 					Some(Made::Picture(rgba)) => drawable(rgba).map(Preview::Picture),
@@ -204,6 +232,25 @@ impl Thumbnails {
 			self.previews.insert(path, made);
 		}
 		any
+	}
+
+	/// The worker's queue, the thread started if it is not running: one thread, taking one file at
+	/// a time, so a folder of models is drawn in turn rather than all at once.
+	fn worker(&mut self) -> &std::sync::mpsc::Sender<PathBuf> {
+		let answers = self.answers.clone();
+		self.worker.get_or_insert_with(|| {
+			let (sender, receiver) = std::sync::mpsc::channel::<PathBuf>();
+			std::thread::spawn(move || {
+				for path in receiver {
+					let page = match read_preview(&path) {
+						Some(Made::Picture(rgba)) => Some(rgba),
+						_ => None,
+					};
+					answers.lock().unwrap_or_else(|held| held.into_inner()).push((path, page));
+				}
+			});
+			sender
+		})
 	}
 
 	/// The picture kept for this file, if one was made before and the file has not changed since.

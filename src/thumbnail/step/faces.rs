@@ -1,18 +1,19 @@
 //! A STEP part's faces as triangles. Each face is its surface bounded by loops of edges; the loops
 //! are laid flat in the surface's own parameters -- a plane's two axes, a cylinder's or cone's angle
-//! and height, a sphere's or torus's two angles -- triangulated there with earcut, subdivided, and
-//! each corner put back on the surface, so a cylinder is round and not a fan of chords. A surface
-//! with no parameters worked out here, a B-spline patch among them, is laid flat on the plane that
-//! fits its loops best and drawn as that flat patch. A face that cannot be laid flat is passed
-//! over; the card is a glance, not a measurement.
+//! and height, a sphere's or torus's two angles, a B-spline patch's own two found by searching it
+//! -- triangulated there with earcut, subdivided, and each corner put back on the surface, so a
+//! cylinder is round and a fillet curves rather than a fan of chords crossing it. A surface of no
+//! kind read here is laid flat on the plane that fits its loops best and drawn as that flat patch.
+//! A face that cannot be laid flat is passed over; the card is a glance, not a measurement.
 
 use super::{Model, Value, Vec3, add, cross, dot, scale, sub, unit};
 
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::TAU;
 
-/// The most a parameter triangle's edge may turn, in radians, before it is split: fine enough that
-/// a cylinder reads round at a card's size.
-const TURN: f64 = 0.3;
+/// How far a triangle's edge may stand off the surface, as a share of the whole part's size, before
+/// it is split: a card is a few hundred pixels across, and the light is blended across a triangle
+/// from the surface's own normals, so a coarse cut still reads smooth.
+const SAG: f64 = 1.0 / 300.0;
 /// How many times a triangle is split at most.
 const DEPTH: usize = 4;
 /// The most faces filled; a part past it is thinned.
@@ -50,6 +51,8 @@ enum Surface {
 		major: f64,
 		minor: f64,
 	},
+	/// A B-spline patch, its own parameters found for each point by searching it.
+	Patch(super::spline::Patch),
 }
 
 impl Surface {
@@ -85,16 +88,22 @@ impl Surface {
 				let (origin, axis, x) = frame()?;
 				Surface::Torus { origin, axis, x, y: cross(axis, x), major: number(2)?, minor: number(3)? }
 			}
+			"B_SPLINE_SURFACE_WITH_KNOTS" => Surface::Patch(super::spline::Patch::of(model, values)?),
 			_ => return None,
 		})
 	}
 
-	/// Which of the two parameters are angles, and so wrap.
-	fn wraps(&self) -> [bool; 2] {
+	/// How far each parameter runs before it comes round to where it started: a turn for an angle,
+	/// the domain for a closed patch, and nothing for a parameter that does not wrap.
+	fn periods(&self) -> [Option<f64>; 2] {
 		match self {
-			Surface::Plane { .. } => [false, false],
-			Surface::Cone { .. } => [true, false],
-			Surface::Sphere { .. } | Surface::Torus { .. } => [true, true],
+			Surface::Plane { .. } => [None, None],
+			Surface::Cone { .. } => [Some(TAU), None],
+			Surface::Sphere { .. } | Surface::Torus { .. } => [Some(TAU), Some(TAU)],
+			Surface::Patch(patch) => {
+				let period = |k: usize| patch.closed[k].then(|| patch.domain[k].1 - patch.domain[k].0);
+				[period(0), period(1)]
+			}
 		}
 	}
 
@@ -118,6 +127,7 @@ impl Surface {
 				let across = (dot(d, *x).powi(2) + dot(d, *y).powi(2)).sqrt();
 				[dot(d, *y).atan2(dot(d, *x)), dot(d, *axis).atan2(across - major)]
 			}
+			Surface::Patch(patch) => patch.find(p, None),
 		}
 	}
 
@@ -135,7 +145,42 @@ impl Surface {
 				*origin,
 				add(scale(around(*x, *y), major + minor * v.cos()), scale(*axis, minor * v.sin())),
 			),
+			Surface::Patch(patch) => patch.at([u, v]),
 		}
+	}
+
+	/// The surface's normal at a point of its parameters, either way out; the light is two-sided.
+	fn normal(&self, [u, v]: [f64; 2]) -> Vec3 {
+		let out = |x: Vec3, y: Vec3| add(scale(x, u.cos()), scale(y, u.sin()));
+		match self {
+			Surface::Plane { x, y, .. } => cross(*x, *y),
+			Surface::Cone { axis, x, y, slope, .. } => sub(out(*x, *y), scale(*axis, *slope)),
+			Surface::Sphere { origin, .. } => sub(self.place([u, v]), *origin),
+			Surface::Torus { origin, x, y, major, .. } => {
+				sub(self.place([u, v]), add(*origin, scale(out(*x, *y), *major)))
+			}
+			Surface::Patch(patch) => {
+				let [(u0, u1), (v0, v1)] = patch.domain;
+				let (hu, hv) = ((u1 - u0) * 1e-3, (v1 - v0) * 1e-3);
+				let du = sub(patch.at([u + hu, v]), patch.at([u - hu, v]));
+				let dv = sub(patch.at([u, v + hv]), patch.at([u, v - hv]));
+				cross(du, dv)
+			}
+		}
+	}
+}
+
+/// Triangles with the surface's normal at each corner, which the rasterizer lights smooth.
+#[derive(Default)]
+pub struct Shaded {
+	pub triangles: Vec<[Vec3; 3]>,
+	pub normals: Vec<[Vec3; 3]>,
+}
+
+impl Shaded {
+	fn push(&mut self, surface: &Surface, t: [[f64; 2]; 3]) {
+		self.triangles.push(t.map(|p| surface.place(p)));
+		self.normals.push(t.map(|p| surface.normal(p)));
 	}
 }
 
@@ -174,12 +219,12 @@ fn loops(model: &Model, bounds: &[Value]) -> Vec<Vec<Vec3>> {
 	outer
 }
 
-/// Angles made continuous along a loop, so a loop around a cylinder runs a whole turn rather than
-/// jumping back at the seam.
-fn unwrap(points: &mut [[f64; 2]], k: usize) {
+/// A wrapping parameter made continuous along a loop, so a loop around a cylinder runs a whole turn
+/// rather than jumping back at the seam.
+fn unwrap(points: &mut [[f64; 2]], k: usize, period: f64) {
 	for i in 1..points.len() {
 		let step = points[i][k] - points[i - 1][k];
-		points[i][k] -= TAU * (step / TAU).round();
+		points[i][k] -= period * (step / period).round();
 	}
 }
 
@@ -208,7 +253,7 @@ fn span(points: &[[f64; 2]], k: usize) -> (f64, f64) {
 }
 
 /// Every face of the part as triangles in space.
-pub fn triangles(model: &Model) -> Vec<[Vec3; 3]> {
+pub fn triangles(model: &Model) -> Shaded {
 	let mut ids: Vec<u64> = model
 		.entities
 		.iter()
@@ -217,7 +262,8 @@ pub fn triangles(model: &Model) -> Vec<[Vec3; 3]> {
 		.collect();
 	ids.sort_unstable();
 	let step = ids.len().div_ceil(MOST_FACES).max(1);
-	let mut out = Vec::new();
+	let mut out = Shaded::default();
+	let tolerance = SAG * size(model);
 	for id in ids.into_iter().step_by(step) {
 		let Some((_, values)) = model.entities.get(&id) else { continue };
 		let (Some(bounds), Some(surface)) = (values.get(1), values.get(2).and_then(Value::id)) else {
@@ -228,7 +274,7 @@ pub fn triangles(model: &Model) -> Vec<[Vec3; 3]> {
 			continue;
 		}
 		match Surface::of(model, surface) {
-			Some(surface) => face(&surface, &rings, &mut out),
+			Some(surface) => face(&surface, &rings, tolerance, &mut out),
 			None => flat(&rings, &mut out),
 		}
 	}
@@ -236,83 +282,111 @@ pub fn triangles(model: &Model) -> Vec<[Vec3; 3]> {
 }
 
 /// A face on a surface this file can lay flat.
-fn face(surface: &Surface, rings: &[Vec<Vec3>], out: &mut Vec<[Vec3; 3]>) {
-	let wraps = surface.wraps();
-	let mut flat: Vec<Vec<[f64; 2]>> =
-		rings.iter().map(|r| r.iter().map(|p| surface.flatten(*p)).collect()).collect();
+fn face(surface: &Surface, rings: &[Vec<Vec3>], tolerance: f64, out: &mut Shaded) {
+	let periods = surface.periods();
+	let mut flat: Vec<Vec<[f64; 2]>> = rings
+		.iter()
+		.map(|ring| match surface {
+			// A patch is searched along the loop, each point from the last.
+			Surface::Patch(patch) => {
+				let mut last = None;
+				ring
+					.iter()
+					.map(|p| {
+						let at = patch.find(*p, last);
+						last = Some(at);
+						at
+					})
+					.collect()
+			}
+			_ => ring.iter().map(|p| surface.flatten(*p)).collect(),
+		})
+		.collect();
 	for ring in &mut flat {
-		for (k, wrap) in wraps.iter().enumerate() {
-			if *wrap {
-				unwrap(ring, k);
+		for (k, period) in periods.iter().enumerate() {
+			if let Some(period) = period {
+				unwrap(ring, k, *period);
 			}
 		}
 	}
 	// A band round a cylinder, bounded by two circles and no seam: each circle lays flat as a line,
 	// with nothing between them to triangulate, so the band is a strip from one to the next.
-	if wraps[0]
+	if let Some(period) = periods[0]
 		&& flat.len() >= 2
 		&& flat.iter().all(|r| {
 			let (low, high) = span(r, 0);
-			high - low > 1.9 * PI
+			high - low > 0.95 * period
 		}) {
-		let mut bands: Vec<(f64, f64)> =
-			flat.iter().map(|r| span(r, 1)).map(|(l, h)| (l + h) / 2.0).map(|v| (v, v)).collect();
-		bands.sort_by(|a, b| a.0.total_cmp(&b.0));
-		for pair in bands.windows(2) {
-			let (v0, v1) = (pair[0].0, pair[1].0);
+		let start = span(&flat[0], 0).0;
+		let mut heights: Vec<f64> =
+			flat.iter().map(|r| span(r, 1)).map(|(l, h)| (l + h) / 2.0).collect();
+		heights.sort_by(f64::total_cmp);
+		for pair in heights.windows(2) {
+			let (v0, v1) = (pair[0], pair[1]);
 			let steps = 48;
 			for i in 0..steps {
-				let (u0, u1) = (TAU * i as f64 / steps as f64, TAU * (i + 1) as f64 / steps as f64);
-				let corner = |u: f64, v: f64| surface.place([u, v]);
-				out.push([corner(u0, v0), corner(u1, v0), corner(u1, v1)]);
-				out.push([corner(u0, v0), corner(u1, v1), corner(u0, v1)]);
+				let u0 = start + period * i as f64 / steps as f64;
+				let u1 = start + period * (i + 1) as f64 / steps as f64;
+				out.push(surface, [[u0, v0], [u1, v0], [u1, v1]]);
+				out.push(surface, [[u0, v0], [u1, v1], [u0, v1]]);
 			}
 		}
 		return;
 	}
 	outline_first(&mut flat);
-	// A hole that came out a turn away from the outer loop is brought back beside it.
+	// A hole that came out a period away from the outer loop is brought back beside it.
 	if let Some(outer) = flat.first().cloned() {
 		for ring in flat.iter_mut().skip(1) {
-			for (k, wrap) in wraps.iter().enumerate() {
-				if !*wrap {
-					continue;
-				}
+			for (k, period) in periods.iter().enumerate() {
+				let Some(period) = period else { continue };
 				let (low, high) = span(&outer, k);
 				let (l, h) = span(ring, k);
-				let shift = TAU * (((low + high) / 2.0 - (l + h) / 2.0) / TAU).round();
+				let shift = period * (((low + high) / 2.0 - (l + h) / 2.0) / period).round();
 				for p in ring.iter_mut() {
 					p[k] += shift;
 				}
 			}
 		}
 	}
-	for [a, b, c] in cut(&flat) {
-		split(surface, wraps, [a, b, c], 0, out);
+	for triangle in cut(&flat) {
+		split(surface, tolerance, triangle, 0, out);
 	}
 }
 
-/// A triangle in parameters, split while any edge turns further than `TURN`, then put on the surface.
-fn split(
-	surface: &Surface,
-	wraps: [bool; 2],
-	t: [[f64; 2]; 3],
-	depth: usize,
-	out: &mut Vec<[Vec3; 3]>,
-) {
-	let turn = |a: [f64; 2], b: [f64; 2]| {
-		(0..2).filter(|k| wraps[*k]).map(|k| (a[k] - b[k]).abs()).fold(0.0, f64::max)
+/// A triangle in parameters, split while the surface stands further than `tolerance` off the
+/// middle of any of its edges, then put on the surface. A flat face is never split; a tight fillet
+/// is split to `DEPTH`.
+fn split(surface: &Surface, tolerance: f64, t: [[f64; 2]; 3], depth: usize, out: &mut Shaded) {
+	let mid = |a: [f64; 2], b: [f64; 2]| [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+	let placed = t.map(|p| surface.place(p));
+	let sags = |i: usize, j: usize| {
+		let chord = scale(add(placed[i], placed[j]), 0.5);
+		super::dist(surface.place(mid(t[i], t[j])), chord) > tolerance
 	};
-	let widest = turn(t[0], t[1]).max(turn(t[1], t[2])).max(turn(t[2], t[0]));
-	if depth >= DEPTH || widest <= TURN {
-		out.push(t.map(|p| surface.place(p)));
+	if depth >= DEPTH || !(sags(0, 1) || sags(1, 2) || sags(2, 0)) {
+		out.push(surface, t);
 		return;
 	}
-	let mid = |a: [f64; 2], b: [f64; 2]| [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
 	let (ab, bc, ca) = (mid(t[0], t[1]), mid(t[1], t[2]), mid(t[2], t[0]));
 	for piece in [[t[0], ab, ca], [ab, t[1], bc], [ca, bc, t[2]], [ab, bc, ca]] {
-		split(surface, wraps, piece, depth + 1, out);
+		split(surface, tolerance, piece, depth + 1, out);
 	}
+}
+
+/// How big the part is: the diagonal of the box around its points.
+fn size(model: &Model) -> f64 {
+	let (mut low, mut high) = ([f64::MAX; 3], [f64::MIN; 3]);
+	for (name, values) in model.entities.values() {
+		if name != "CARTESIAN_POINT" {
+			continue;
+		}
+		let Some(p) = values.get(1).and_then(super::triple) else { continue };
+		for k in 0..3 {
+			low[k] = low[k].min(p[k]);
+			high[k] = high[k].max(p[k]);
+		}
+	}
+	if low[0] > high[0] { 1.0 } else { super::dist(low, high).max(f64::EPSILON) }
 }
 
 /// Rings in the plane, the first the outline and the rest holes, as triangles.
@@ -343,7 +417,7 @@ fn cut(rings: &[Vec<[f64; 2]>]) -> Vec<[[f64; 2]; 3]> {
 
 /// A face on a surface not laid flat here: its loops on the plane that fits them best -- Newell's
 /// normal -- triangulated there and drawn flat, the chord of whatever curve it has.
-fn flat(rings: &[Vec<Vec3>], out: &mut Vec<[Vec3; 3]>) {
+fn flat(rings: &[Vec<Vec3>], out: &mut Shaded) {
 	let Some(outline) = rings.first() else { return };
 	let mut normal = [0.0; 3];
 	for (i, a) in outline.iter().enumerate() {
@@ -374,7 +448,8 @@ fn flat(rings: &[Vec<Vec3>], out: &mut Vec<[Vec3; 3]>) {
 		let back = |q: [f64; 2]| {
 			lookup.iter().find(|(p, _)| *p == q).map_or_else(|| plane.place(q), |(_, s)| *s)
 		};
-		out.push(t.map(back));
+		out.triangles.push(t.map(back));
+		out.normals.push([axis; 3]);
 	}
 }
 
@@ -401,10 +476,10 @@ mod tests {
 		};
 		let circle =
 			|z: f64| (0..24).map(|i| surface.place([TAU * f64::from(i) / 24.0, z])).collect::<Vec<_>>();
-		let mut out = Vec::new();
-		face(&surface, &[circle(0.0), circle(3.0)], &mut out);
-		assert!(!out.is_empty());
-		for p in out.iter().flatten() {
+		let mut out = Shaded::default();
+		face(&surface, &[circle(0.0), circle(3.0)], 0.01, &mut out);
+		assert!(!out.triangles.is_empty());
+		for p in out.triangles.iter().flatten() {
 			assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - 2.0).abs() < 1e-9, "on the cylinder: {p:?}");
 		}
 	}
