@@ -11,6 +11,7 @@ use reqwest::Url;
 
 use crate::app::Rdm;
 use crate::engine::{Failure, Inspection, Link};
+use crate::rules::resolve::Resolution;
 use crate::ui::backdrop;
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::slider::Slider;
@@ -50,6 +51,25 @@ pub struct AddSheet {
 	pub range_start: Entity<TextInput>,
 	pub range_end: Entity<TextInput>,
 	pub range_slider: Entity<Slider>,
+	/// What the rules say about the file on the second screen: being worked out, then the answer.
+	/// See spec/rules.md.
+	pub resolving: Option<Receiver<Resolution>>,
+	pub resolved: Option<Resolution>,
+	/// The checksum the rules filled in, so one the user typed over it is told apart: a typed
+	/// checksum is the user's word and vouches for every mirror.
+	pub filled_checksum: Option<String>,
+	/// The third screen: a mirror was found and no checksum, and the user is asked.
+	pub asking: bool,
+}
+
+/// A checksum as the field shows it, `sha256:` and the hex.
+fn checksum_text(checksum: &crate::engine::Checksum) -> String {
+	let algo = match checksum {
+		crate::engine::Checksum::Sha256(_) => "sha256",
+		crate::engine::Checksum::Sha512(_) => "sha512",
+		crate::engine::Checksum::Md5(_) => "md5",
+	};
+	format!("{algo}:{}", checksum.expected())
 }
 
 pub struct Problem {
@@ -338,6 +358,10 @@ impl Rdm {
 					range_start,
 					range_end,
 					range_slider,
+					resolving: None,
+					resolved: None,
+					filled_checksum: None,
+					asking: false,
 				});
 				input
 			}
@@ -386,16 +410,16 @@ impl Rdm {
 					return;
 				}
 			};
-			let Some(sheet) = &self.adding else { return };
-			let Some(found) = &sheet.found else { return };
-			let typed = sheet.name.read(cx).content.trim().to_owned();
-			let name = if typed.is_empty() { found.probe.file_name.clone() } else { typed };
-			let url = found.url.clone();
-			let id = self.add_request(url, Some(name), None, asked, cx);
-			self.close_add(cx);
-			// A new download opens its window, as the place to watch it and change it; one taken
-			// from a page's links does not, the sheet staying up for the next. See spec/ui.md.
-			self.open_download(id, cx);
+			match self.mirrors_for(&asked, cx) {
+				Some(mirrors) => self.download_found(asked, mirrors, cx),
+				None => {
+					if let Some(sheet) = &mut self.adding {
+						sheet.asking = true;
+						sheet.problem = None;
+					}
+					cx.notify();
+				}
+			}
 			return;
 		}
 		let text = sheet.input.read(cx).content.trim().to_owned();
@@ -412,6 +436,88 @@ impl Rdm {
 		};
 		sheet.problem = None;
 		sheet.checking = Some((url.clone(), self.engine.inspect(url)));
+		cx.notify();
+	}
+
+	/// The download the sheet is about, added with these mirrors, and the sheet closed.
+	fn download_found(
+		&mut self,
+		mut asked: crate::app::Asked,
+		mirrors: Vec<String>,
+		cx: &mut Context<Self>,
+	) {
+		let Some(sheet) = &self.adding else { return };
+		let Some(found) = &sheet.found else { return };
+		let typed = sheet.name.read(cx).content.trim().to_owned();
+		let name = if typed.is_empty() { found.probe.file_name.clone() } else { typed };
+		let url = found.url.clone();
+		asked.mirrors = mirrors;
+		let id = self.add_request(url, Some(name), None, asked, cx);
+		self.close_add(cx);
+		// A new download opens its window, as the place to watch it and change it; one taken
+		// from a page's links does not, the sheet staying up for the next. See spec/ui.md.
+		self.open_download(id, cx);
+	}
+
+	/// The mirrors this download goes to as well as its source, or None when the user has to be
+	/// asked first: a mirror was found, there is no checksum to hold it to, and nothing was chosen
+	/// for this source's domain. A mirror is only ever used with a checksum from the source, or one
+	/// the user typed. See spec/rules.md.
+	fn mirrors_for(&self, asked: &crate::app::Asked, cx: &Context<Self>) -> Option<Vec<String>> {
+		let Some(sheet) = &self.adding else { return Some(Vec::new()) };
+		// Not answered yet: the download goes from the source, rather than waiting on the rules.
+		let Some(resolved) = &sheet.resolved else { return Some(Vec::new()) };
+		if resolved.choice == Some(crate::rules::Choice::Never) {
+			return Some(Vec::new());
+		}
+		let strings = |urls: Vec<Url>| urls.into_iter().map(|u| u.to_string()).collect();
+		if asked.checksum.is_some() {
+			let written = sheet.checksum.read(cx).content.trim().to_owned();
+			let typed = sheet.filled_checksum.as_deref() != Some(written.as_str());
+			return Some(strings(resolved.usable(&self.rules, typed)));
+		}
+		if resolved.mirrors.is_empty() || resolved.choice == Some(crate::rules::Choice::Auto) {
+			return Some(Vec::new());
+		}
+		None
+	}
+
+	/// One of the third screen's ways out: this download from the source alone, and, with a choice,
+	/// that remembered for the source's domain in the custom layer.
+	pub(crate) fn decline_mirror(
+		&mut self,
+		choice: Option<crate::rules::Choice>,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(choice) = choice
+			&& let Some(found) = self.adding.as_ref().and_then(|s| s.found.as_ref())
+			&& let Some(host) = found.url.host_str()
+			&& let Some(paths) = &self.paths
+		{
+			let domain = crate::rules::domain_of(host);
+			match crate::rules::remember(&paths.custom_rules, &domain, choice) {
+				Ok(()) => self.rules = std::sync::Arc::new(crate::rules::load(&paths.rule_places())),
+				Err(error) => eprintln!("could not remember the choice for {domain}: {error}"),
+			}
+		}
+		let connections = self.preferences.connections;
+		match self.asked(connections, cx) {
+			Ok(asked) => self.download_found(asked, Vec::new(), cx),
+			Err(message) => {
+				if let Some(sheet) = &mut self.adding {
+					sheet.problem = Some(Problem { summary: message, detail: None });
+				}
+				cx.notify();
+			}
+		}
+	}
+
+	/// Back from the third screen to the second.
+	fn stop_asking(&mut self, cx: &mut Context<Self>) {
+		if let Some(sheet) = &mut self.adding {
+			sheet.asking = false;
+			sheet.problem = None;
+		}
 		cx.notify();
 	}
 
@@ -454,9 +560,27 @@ impl Rdm {
 	/// name the server gives, and the whole file as the range, so a part is asked for by moving an
 	/// end rather than by working out a number.
 	fn accept(&mut self, found: Found, cx: &mut Context<Self>) {
-		let Some(sheet) = &mut self.adding else { return };
+		if self.adding.is_none() {
+			return;
+		}
 		let name = found.probe.file_name.clone();
 		let whole = found.probe.size.filter(|_| found.probe.ranges);
+		// What the rules say about it, worked out while the second screen is read: with the settings'
+		// proxy and resolver, as the download itself will go.
+		let settings = self.preferences.engine_settings(self.proxy_in_use().as_deref());
+		let receiver = crate::engine::client::build(&settings, false).ok().map(|client| {
+			let job = crate::rules::resolve::resolve(
+				self.rules.clone(),
+				client,
+				found.url.clone(),
+				found.probe.clone(),
+			);
+			self.engine.run(job)
+		});
+		let Some(sheet) = &mut self.adding else { return };
+		sheet.resolving = receiver;
+		sheet.resolved = None;
+		sheet.asking = false;
 		sheet.found = Some(found);
 		sheet.confirm = None;
 		sheet.problem = None;
@@ -621,6 +745,7 @@ impl Rdm {
 	/// moves on to the second screen; a page, a script or a stylesheet is asked about; a failure
 	/// stays on the first screen, said in a line.
 	pub(crate) fn poll_add(&mut self, cx: &mut Context<Self>) {
+		self.poll_rules(cx);
 		let Some(sheet) = &mut self.adding else { return };
 		let Some((url, receiver)) = &sheet.checking else { return };
 		let Ok(answer) = receiver.try_recv() else { return };
@@ -640,6 +765,29 @@ impl Rdm {
 			Err(failure) => {
 				sheet.problem = Some(Problem { summary: failure.summary, detail: Some(failure.detail) })
 			}
+		}
+		cx.notify();
+	}
+
+	/// The rules' answer about the file, if it has arrived: kept for Download, and the checksum it
+	/// found written into the checksum field when that is empty, so it is seen and can be cleared.
+	fn poll_rules(&mut self, cx: &mut Context<Self>) {
+		let Some(sheet) = &mut self.adding else { return };
+		let Some(receiver) = &sheet.resolving else { return };
+		let Ok(resolved) = receiver.try_recv() else { return };
+		sheet.resolving = None;
+		if let Some((checksum, _)) = &resolved.checksum {
+			let text = checksum_text(checksum);
+			let field = sheet.checksum.clone();
+			if field.read(cx).content.trim().is_empty() {
+				field.update(cx, |input, cx| input.set_content(&text, cx));
+				if let Some(sheet) = &mut self.adding {
+					sheet.filled_checksum = Some(text);
+				}
+			}
+		}
+		if let Some(sheet) = &mut self.adding {
+			sheet.resolved = Some(resolved);
 		}
 		cx.notify();
 	}
@@ -665,6 +813,8 @@ impl Rdm {
 		let checking = sheet.checking.is_some();
 		let typed = !sheet.input.read(cx).content.trim().is_empty();
 		let second = sheet.found.is_some();
+		let asking = sheet.asking;
+		let checksum_typed = !sheet.checksum.read(cx).content.trim().is_empty();
 		deferred(
 			// The backdrop takes every mouse event, so nothing behind the sheet can be pressed through it.
 			backdrop(p).child(
@@ -701,7 +851,9 @@ impl Rdm {
 											Icon::ArrowLeft,
 											"Back",
 											true,
-											cx.listener(|this, _, window, cx| this.back_to_address(window, cx)),
+											cx.listener(move |this, _, window, cx| {
+												if asking { this.stop_asking(cx) } else { this.back_to_address(window, cx) }
+											}),
 										))
 									})
 									.child(
@@ -719,6 +871,7 @@ impl Rdm {
 					)
 					// The second screen does not show the address: arriving there means it was right.
 					.map(|s| match &sheet.found {
+						Some(_) if asking => s.child(self.mirror_notice(sheet, cx)),
 						Some(found) => s.child(self.found_notice(found, sheet, cx)),
 						None => s.child(sheet.input.clone()).when_some(sheet.confirm.as_ref(), |s, confirm| {
 							s.child(self.confirm_notice(confirm, cx))
@@ -742,7 +895,7 @@ impl Rdm {
 									.text_xs()
 									.text_color(p.muted)
 									.when(checking, |s| s.child(text!("Looking at the address")))
-									.when(second, |s| {
+									.when(second && !asking, |s| {
 										s.child(disclosure(
 											p,
 											"add-more",
@@ -759,7 +912,7 @@ impl Rdm {
 										"add-confirm",
 										Icon::CornerDownLeft,
 										"Download",
-										true,
+										!asking || checksum_typed,
 										cx.listener(|this, _, _, cx| this.submit_add(cx)),
 									))
 								} else {
@@ -777,6 +930,98 @@ impl Rdm {
 			),
 		)
 		.priority(2)
+	}
+
+	/// The third screen: other servers have the file and there is no checksum to hold them to. The
+	/// checksum field again, with what it is for behind a `?`, and three ways to go on without it.
+	/// See spec/rules.md.
+	fn mirror_notice(&self, sheet: &AddSheet, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let p = self.palette;
+		let mirrors = sheet.resolved.as_ref().map(|r| r.mirrors.clone()).unwrap_or_default();
+		let heading = match mirrors.len() {
+			1 => "Another server has this file".to_owned(),
+			n => format!("{n} other servers have this file"),
+		};
+		let mut hosts: Vec<String> =
+			mirrors.iter().filter_map(|m| m.host_str().map(str::to_owned)).collect();
+		hosts.dedup();
+		let why = "rdm downloads from other servers alongside the source only when the finished file \
+			can be checked against a checksum, since a mirror could send anything. With the file's \
+			checksum it uses them all; without one it goes to the source alone.";
+		let choice = |id: &'static str, label: &'static str, choice: Option<crate::rules::Choice>| {
+			div()
+				.id(id)
+				.role(gpui::Role::Button)
+				.aria_label(label)
+				.debug_selector(move || format!("button:{label}"))
+				.px_2()
+				.py_0p5()
+				.rounded_sm()
+				.text_xs()
+				.text_color(p.muted)
+				.cursor_pointer()
+				.hover(move |s| s.bg(p.hover).text_color(p.text))
+				.on_click(cx.listener(move |this, _, _, cx| this.decline_mirror(choice, cx)))
+				.child(text!(id = (id, 0usize), label))
+		};
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.child(
+				div()
+					.debug_selector(|| "add-mirrors".to_owned())
+					.flex()
+					.flex_col()
+					.gap_1()
+					.p_3()
+					.rounded_md()
+					.bg(p.hover)
+					.text_xs()
+					.child(div().font_weight(gpui::FontWeight::MEDIUM).child(heading))
+					.child(div().text_color(p.muted).truncate().child(hosts.join(", "))),
+			)
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					.gap_1()
+					.child(
+						div()
+							.flex()
+							.items_center()
+							.gap_1()
+							.text_xs()
+							.text_color(p.muted)
+							.child(text!("Checksum"))
+							.child(
+								div()
+									.id("mirror-why")
+									.role(gpui::Role::Button)
+									.aria_label("Why a checksum")
+									.tooltip(crate::ui::tooltip::tooltip(why))
+									.child(icon(Icon::CircleQuestion, p.muted).size_3p5()),
+							),
+					)
+					.child(sheet.checksum.clone()),
+			)
+			.child(
+				div()
+					.flex()
+					.flex_wrap()
+					.gap_1()
+					.child(choice("mirror-no", "No thanks", None))
+					.child(choice(
+						"mirror-auto",
+						"Use mirror when possible",
+						Some(crate::rules::Choice::Auto),
+					))
+					.child(choice(
+						"mirror-never",
+						"Never ask for this source",
+						Some(crate::rules::Choice::Never),
+					)),
+			)
 	}
 
 	/// What went wrong in a line, and behind Details the whole text: an error is long enough to push

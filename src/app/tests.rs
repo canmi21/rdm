@@ -2099,3 +2099,150 @@ fn the_update_card_keeps_to_the_corner_however_the_window_is_sized(cx: &mut Test
 	assert_eq!(cx.debug_bounds("toast:update"), Some(card), "the card did not move");
 	assert!(notice.bottom() <= card.origin.y, "and the notice sits above it");
 }
+
+/// New Task looked at `address` and the rules answered; the sheet on its second screen.
+fn look_until_resolved(rdm: &Entity<Rdm>, cx: &mut VisualTestContext, address: &str) {
+	click(cx, "button:Add Task");
+	let input = rdm.read_with(cx, |rdm, _| rdm.adding.as_ref().unwrap().input.clone());
+	let address = address.to_owned();
+	cx.update(|_, cx| input.update(cx, |i, cx| i.set_content(&address, cx)));
+	click(cx, "button:Continue");
+	for _ in 0..500 {
+		std::thread::sleep(Duration::from_millis(10));
+		rdm.update(cx, |rdm, cx| rdm.poll_add(cx));
+		cx.run_until_parked();
+		if rdm.read_with(cx, |rdm, _| {
+			rdm.adding.as_ref().is_some_and(|s| s.found.is_some() && s.resolved.is_some())
+		}) {
+			return;
+		}
+	}
+	panic!("the rules did not answer in time");
+}
+
+/// An origin and a mirror serving the same file, a family rule naming both in the synced layer,
+/// and the rules reloaded; `custom` goes in the custom layer as it is.
+fn mirrored(
+	rdm: &Entity<Rdm>,
+	cx: &mut VisualTestContext,
+	custom: &str,
+) -> (TestServerHold, String) {
+	use crate::engine::testing::{Options, TestServer, body};
+	let data = body(60_000);
+	let origin = TestServer::start(data.clone(), Options::default());
+	let mirror = TestServer::start(data, Options::default());
+	let family = format!(
+		"[[family]]\nid = \"t\"\nprefixes = [\"{}\", \"{}\"]\n",
+		origin.url("/"),
+		mirror.url("/")
+	);
+	let mirror_address = mirror.url("/f.bin").to_string();
+	let address = origin.url("/f.bin").to_string();
+	rdm.update(cx, |rdm, _| {
+		let places = rdm.paths.as_ref().unwrap().rule_places();
+		std::fs::create_dir_all(&places.synced).unwrap();
+		std::fs::write(places.synced.join("t.toml"), family).unwrap();
+		std::fs::create_dir_all(&places.custom).unwrap();
+		std::fs::write(places.custom.join("test.toml"), custom).unwrap();
+		rdm.rules = std::sync::Arc::new(crate::rules::load(&places));
+	});
+	(TestServerHold(vec![origin, mirror]), format!("{address}\n{mirror_address}"))
+}
+
+struct TestServerHold(#[allow(dead_code)] Vec<crate::engine::testing::TestServer>);
+
+#[gpui::test]
+fn a_mirror_without_a_checksum_is_asked_about_and_never_is_remembered(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open_in(cx, "mirror-ask");
+	let (_servers, addresses) = mirrored(&rdm, &mut cx, "");
+	let (address, _) = addresses.split_once('\n').unwrap();
+	look_until_resolved(&rdm, &mut cx, address);
+	rdm.read_with(&cx, |rdm, _| {
+		assert_eq!(
+			rdm.adding.as_ref().unwrap().resolved.as_ref().unwrap().mirrors.len(),
+			1,
+			"the mirror was found"
+		);
+	});
+	click(&mut cx, "button:Download");
+	assert!(cx.debug_bounds("add-mirrors").is_some(), "no checksum, so the user is asked");
+	let before = rdm.read_with(&cx, |rdm, _| rdm.downloads.len());
+	click(&mut cx, "button:Never ask for this source");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.adding.is_none(), "the sheet closed and the download went");
+		assert_eq!(rdm.downloads.len(), before + 1);
+		assert!(rdm.downloads.last().unwrap().mirrors.is_empty(), "from the source alone");
+		assert_eq!(rdm.rules.choice_for("127.0.0.1"), Some(crate::rules::Choice::Never), "remembered");
+		let written =
+			std::fs::read_to_string(rdm.paths.as_ref().unwrap().custom_rules.join("choices.toml"))
+				.unwrap();
+		assert!(written.contains("never"), "{written}");
+	});
+	// And not asked again: the next download from there goes straight to the source.
+	look_until_resolved(&rdm, &mut cx, address);
+	click(&mut cx, "button:Download");
+	rdm.read_with(&cx, |rdm, _| assert!(rdm.adding.is_none(), "not asked a second time"));
+}
+
+#[gpui::test]
+fn a_checksum_typed_on_the_question_sends_the_download_to_the_mirror_too(cx: &mut TestAppContext) {
+	let (rdm, mut cx) = open_in(cx, "mirror-typed");
+	let (_servers, addresses) = mirrored(&rdm, &mut cx, "");
+	let (address, mirror) = addresses.split_once('\n').unwrap();
+	look_until_resolved(&rdm, &mut cx, address);
+	click(&mut cx, "button:Download");
+	assert!(cx.debug_bounds("add-mirrors").is_some());
+	let field = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().checksum.clone());
+	cx.update(|_, cx| {
+		field.update(cx, |i, cx| i.set_content(&format!("md5:{}", "0".repeat(32)), cx))
+	});
+	click(&mut cx, "button:Download");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.adding.is_none());
+		let row = rdm.downloads.last().unwrap();
+		assert_eq!(
+			row.mirrors,
+			vec![mirror.to_owned()],
+			"a checksum the user typed vouches for the mirror"
+		);
+		assert!(row.checksum.is_some());
+	});
+}
+
+#[gpui::test]
+fn a_checksum_the_rules_find_is_filled_in_and_the_mirror_used_without_asking(
+	cx: &mut TestAppContext,
+) {
+	use crate::engine::testing::{Options, TestServer};
+	use sha2::Digest;
+	let (rdm, mut cx) = open_in(cx, "mirror-found");
+	let data = crate::engine::testing::body(60_000);
+	let hex: String = sha2::Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect();
+	let api = TestServer::start(format!(r#"{{"sha256":"{hex}"}}"#).into_bytes(), Options::default());
+	// An entry for the origin reading its checksum from the API, and the API's host an authority in
+	// the custom layer: everything here is 127.0.0.1, and a mirror on the checksum's own host would
+	// otherwise not be trusted with it.
+	let (_servers, addresses) = mirrored(
+		&rdm,
+		&mut cx,
+		&format!(
+			"[[authority]]\nhost = \"127.0.0.1\"\n\n[[entry]]\nid = \"t\"\nmatch = \"http://127.0.0.1:{{port}}/{{file}}\"\n\n[[entry.checksum]]\nkind = \"json\"\nurl = \"{}\"\npick = \"sha256\"\n",
+			api.url("/sum")
+		),
+	);
+	let (address, mirror) = addresses.split_once('\n').unwrap();
+	look_until_resolved(&rdm, &mut cx, address);
+	let field = rdm.read_with(&cx, |rdm, _| rdm.adding.as_ref().unwrap().checksum.clone());
+	assert_eq!(
+		field.read_with(&cx, |i, _| i.content.to_string()),
+		format!("sha256:{hex}"),
+		"filled in where it can be seen"
+	);
+	click(&mut cx, "button:Download");
+	rdm.read_with(&cx, |rdm, _| {
+		assert!(rdm.adding.is_none(), "not asked: the checksum is the source's");
+		let row = rdm.downloads.last().unwrap();
+		assert_eq!(row.mirrors, vec![mirror.to_owned()]);
+		assert_eq!(row.checksum.as_deref(), Some(format!("sha256:{hex}").as_str()));
+	});
+}
