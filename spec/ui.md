@@ -737,7 +737,7 @@ first, on the grounds that a document is not the application; the result was two
 in one application, one of them a system bar over the application's own palette.
 
 **A field's shortcuts take the system's modifier.** Select all, paste, copy and cut are
-Command on macOS and Control on Windows and Linux, bound once in `text_input.rs` by platform; a
+Command on macOS and Control on Windows and Linux, bound once in `text_input/mod.rs` by platform; a
 field bound to Command alone could not be pasted into anywhere else, which is how it shipped
 first.
 

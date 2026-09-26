@@ -101,7 +101,7 @@ else:
 ## The text field is Zed's example, kept
 
 GPUI ships no text input; Zed's editor is its own crate and far more than a field. The one-line
-field in `src/ui/text_input.rs` is the framework's `examples/input.rs` (Apache-2.0), trimmed to one
+field in `src/ui/text_input/` is the framework's `examples/input.rs` (Apache-2.0), trimmed to one
 line, drawn in this palette, and given a confirm callback for Enter. It implements
 `EntityInputHandler` so the system's input method, dead keys and the character palette work, which
 a hand-rolled key handler would not get right. Its key bindings are bound once in `main`, scoped
