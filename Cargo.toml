@@ -113,6 +113,8 @@ resvg = { version = "0.46", default-features = false, features = ["text", "syste
 # The version is gpui's own: a RenderImage is built from this crate's Frame, so the two have to
 # agree on what a Frame is. See src/thumbnail/.
 image = { version = "0.25", default-features = false, features = ["tiff", "png", "jpeg", "gif", "webp", "bmp"] }
+# The faces of a STEP part triangulated with their holes, for its card. See src/thumbnail/step/.
+earcut = "0.4"
 # A Markdown file's first blocks, for its card in the grid. See src/thumbnail/document.rs.
 pulldown-cmark = { version = "0.13", default-features = false }
 # A Word or OpenDocument file's first paragraphs, read out of the XML inside it for its card. The

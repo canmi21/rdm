@@ -293,7 +293,7 @@ fn cross(a: Vec3, b: Vec3) -> Vec3 {
 
 /// The triangles seen from the front right and above, Z up, fitted to the picture and lit from the
 /// upper left. Both sides of a face are lit, since a mesh's winding is not to be trusted.
-fn draw(triangles: &[[Vec3; 3]]) -> Option<image::RgbaImage> {
+pub(super) fn draw(triangles: &[[Vec3; 3]]) -> Option<image::RgbaImage> {
 	let step = triangles.len().div_ceil(MOST_TRIANGLES).max(1);
 	let (azimuth, elevation) = (-35f32.to_radians(), 28f32.to_radians());
 	let view = |[x, y, z]: Vec3| -> Vec3 {

@@ -143,15 +143,21 @@ src/ui/list/row.rs.
   small z-buffer rasterizer at twice the size averaged down: tiny-skia was the first thought, and
   painting sorted triangles as paths is both the slow way to draw a few hundred thousand of them
   and the wrong way where two surfaces cross. See src/thumbnail/model.rs.
-- **A STEP part as a wireframe.** STEP is surfaces rather than a mesh, and turning its surfaces
-  into triangles is a CAD kernel's work -- OpenCascade, a C++ build of its own the size of the
-  rest of the application, or truck, whose STEP support covers part of what CAD programs write.
-  Its edges, though, are written out whole between their vertices: lines, circles, ellipses and
-  B-splines. They are parsed by hand, sampled, seen from the same angle as a mesh, and stroked with
-  tiny-skia in pale blue whose strength follows depth, far first, so the part reads as a CAD
-  program's wireframe view without anything hidden. A part takes milliseconds. An assembly's
-  bodies are drawn where each was modeled, not where the assembly places it, and IGES keeps the
-  system's icon. See src/thumbnail/step.rs.
+- **A STEP part, solid**, drawn like a mesh so the two kinds of model read the same. STEP is
+  surfaces bounded by edges rather than a mesh, and a CAD kernel -- OpenCascade, a C++ build the
+  size of the rest of the application, or truck, whose STEP covers part of what CAD programs
+  write -- was more than a card needs. The edges are written out whole, lines, circles, ellipses
+  and B-splines between their vertices, and are parsed by hand and sampled; each face's loops are
+  laid flat in its surface's own parameters -- a plane's axes, a cylinder's or cone's angle and
+  height, a sphere's or torus's two angles -- triangulated there with earcut, split until no edge
+  turns more than a sixth of a radian, and put back on the surface, so a cylinder is round. A band
+  round a cylinder bounded by two circles lays flat as two lines and is drawn as the strip between
+  them. The loop enclosing the most is the outline, since not every file marks it. A surface with
+  no parameters worked out here, a B-spline patch among them, is its loops on the plane that fits
+  them best. The triangles go to the mesh's rasterizer; a file with no face that could be filled
+  is drawn as its edges, stroked with tiny-skia, nearer lines brighter. A part takes up to a tenth
+  of a second. An assembly's bodies are drawn where each was modeled rather than where the
+  assembly places it, and IGES keeps the system's icon. See src/thumbnail/step/.
 - **A text file's first six lines** as they are, the best icon a text file has.
 - **An archive's contents**, once the index has read it: how many names at the top and their total
   size, then the names, folders first and marked as folders, each with its size, and how many more.

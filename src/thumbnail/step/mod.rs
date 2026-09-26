@@ -1,12 +1,14 @@
-//! A STEP file's card: its edges drawn as a wireframe. A STEP part is
-//! surfaces bounded by edges, and turning the surfaces into triangles is a CAD kernel's work; the
-//! edges, though, are written out whole -- lines, circles, ellipses and B-splines between two
-//! vertices -- and drawn in depth they are the part as a CAD program's wireframe view shows it.
-//! Parsed by hand, sampled, projected as a model's card is, and stroked with tiny-skia, nearer
-//! lines brighter. See spec/ui.md, "A card shows the file".
+//! A STEP file's card: the part drawn solid, as a mesh's card is. A STEP part is surfaces bounded
+//! by edges, written out whole -- lines, circles, ellipses and B-splines between two vertices. The
+//! edges are parsed by hand and sampled; each face is laid flat in its surface's own parameters,
+//! triangulated there and put back on the surface (faces.rs), and the triangles go to the same
+//! rasterizer a mesh does. A file whose faces cannot be filled is drawn as its edges instead,
+//! stroked with tiny-skia, nearer lines brighter. See spec/ui.md, "A card shows the file".
 
 use std::collections::HashMap;
 use std::path::Path;
+
+mod faces;
 
 type Vec3 = [f64; 3];
 
@@ -200,7 +202,12 @@ impl Model {
 		let end = self.vertex(values.get(2)?.id()?)?;
 		let curve = values.get(3)?.id()?;
 		let forward = !matches!(values.get(4), Some(Value::Other(flag)) if flag == ".F.");
-		Some(self.curve(curve, start, end, forward).unwrap_or_else(|| vec![start, end]))
+		let mut points = self.curve(curve, start, end, forward).unwrap_or_else(|| vec![start, end]);
+		// A curve drawn against the edge's sense runs end to start; the edge is start to end.
+		if points.first().is_some_and(|first| dist(*first, end) < dist(*first, start)) {
+			points.reverse();
+		}
+		Some(points)
 	}
 
 	fn curve(&self, id: u64, start: Vec3, end: Vec3, forward: bool) -> Option<Vec<Vec3>> {
@@ -304,6 +311,10 @@ fn dot(a: Vec3, b: Vec3) -> f64 {
 fn cross(a: Vec3, b: Vec3) -> Vec3 {
 	[a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
+fn dist(a: Vec3, b: Vec3) -> f64 {
+	let d = sub(a, b);
+	dot(d, d).sqrt()
+}
 fn unit(a: Vec3) -> Vec3 {
 	let length = dot(a, a).sqrt();
 	if length == 0.0 { a } else { scale(a, 1.0 / length) }
@@ -323,8 +334,17 @@ fn edges(text: &str) -> Vec<Vec<Vec3>> {
 	ids.into_iter().step_by(step).filter_map(|id| model.edge(id)).collect()
 }
 
+/// The part solid, its faces filled as a mesh's card is drawn; its edges as a wireframe where no
+/// face could be filled.
 pub fn render(path: &Path) -> Option<image::RgbaImage> {
 	let text = String::from_utf8_lossy(&std::fs::read(path).ok()?).into_owned();
+	let model = Model { entities: entities(&text) };
+	let triangles = faces::triangles(&model);
+	if !triangles.is_empty() {
+		let mesh: Vec<[[f32; 3]; 3]> =
+			triangles.iter().map(|t| t.map(|p| p.map(|c| c as f32))).collect();
+		return super::model::draw(&mesh);
+	}
 	draw(&edges(&text))
 }
 
