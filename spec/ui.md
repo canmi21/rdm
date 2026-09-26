@@ -1258,7 +1258,7 @@ sidebar that opens with fifteen rows makes that person look for the four they ca
 category is not a thing anybody thinks to remove. So they wait under the plus, one press away,
 and the seed records them as offered so that a later launch does not add them behind the user's
 back -- the same record that lets a preset added in a new release reach an existing file. See
-`Category::COMMON` and src/config.rs.
+`Category::COMMON` and src/config/.
 
 **The categories scroll and the filters above them do not.** There is no ceiling on how many
 categories a user writes, and the presets alone are taller than a short window, so the list has a

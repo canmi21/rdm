@@ -19,7 +19,6 @@ use crate::ui::{LeavesFocus, icon_button};
 mod actions;
 mod custom;
 mod pickers;
-mod preset_editor;
 mod presets;
 
 /// The custom category form while it is up. The pattern field is what runs; until Advanced is
