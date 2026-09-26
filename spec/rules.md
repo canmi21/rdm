@@ -158,7 +158,9 @@ mirror families, the authorities or the choices made in New Task, each with its 
 what could not be read appears only while there is something in it. The tab row is a
 little lower than the status bar under it, starts at the window's left edge, and has a dashed line
 along its top; the tabs are bare words, and the one showing is ruled solid on its sides and over
-its own stretch of the line, with no space added around it. Every tab keeps a clear border on the
+its own stretch of the line, with no space added around it. The line over the status bar runs in
+two stretches with a gap under the tab showing, which opens into the status bar as a browser's tab
+opens into its page; each other tab draws its own stretch. Every tab keeps a clear border on the
 same three sides, so choosing another moves nothing, and the line is an element under the tabs
 rather than the row's border, which gpui paints over its children and which showed through the
 solid top. Filled pills, a solid or dashed frame on every tab, and the showing

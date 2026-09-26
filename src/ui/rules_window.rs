@@ -161,6 +161,13 @@ fn lines(rules: &Compiled) -> Vec<Line> {
 	out
 }
 
+/// The line along the foot of the tab row, over the status bar, drawn a stretch at a time. `out`
+/// reaches it under the clear side borders a tab keeps, which its children are placed inside of, so
+/// the stretches meet.
+fn rule(p: Palette, out: f32) -> impl IntoElement {
+	div().absolute().bottom_0().left(px(-out)).right(px(-out)).h(px(1.0)).bg(p.border)
+}
+
 fn shows(tab: Tab, kind: Kind) -> bool {
 	match tab {
 		Tab::All => kind != Kind::Problem,
@@ -209,9 +216,7 @@ impl RulesWindow {
 			.flex()
 			.flex_none()
 			.items_center()
-			.gap_0p5()
 			.h(px(TABS_H))
-			.pr_3()
 			.text_xs()
 			.child(
 				div()
@@ -232,6 +237,7 @@ impl RulesWindow {
 					.aria_label(title)
 					.aria_selected(on)
 					.debug_selector(move || format!("tab:{title}"))
+					.relative()
 					.flex()
 					.items_center()
 					.gap_1()
@@ -253,7 +259,11 @@ impl RulesWindow {
 					}))
 					.child(title)
 					.child(div().text_color(p.muted).child(count(tab).to_string()))
+					// The line over the status bar runs under every tab but the one showing, which
+					// opens into the status bar as a browser's tab opens into its page.
+					.when(!on, |s| s.child(rule(p, 1.0)))
 			}))
+			.child(div().relative().flex_1().h_full().child(rule(p, 0.0)))
 	}
 
 	fn header(p: Palette) -> impl IntoElement {
@@ -418,8 +428,6 @@ impl Render for RulesWindow {
 			.gap_3()
 			.h(px(crate::ui::status_bar::HEIGHT))
 			.px_3()
-			.border_t_1()
-			.border_color(p.border)
 			.text_xs()
 			.text_color(p.muted)
 			.child(div().min_w_0().truncate().child(said))
