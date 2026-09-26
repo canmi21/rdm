@@ -18,6 +18,7 @@ use gpui::RenderImage;
 
 pub mod document;
 mod markup;
+mod model;
 
 pub use document::{Block, Kind as BlockKind};
 
@@ -282,6 +283,7 @@ fn read_preview(path: &Path) -> Option<Made> {
 	match extension.as_str() {
 		"svg" => return vector(path),
 		"pdf" => return pdf(path).map(Made::Picture),
+		"stl" | "obj" | "off" | "3mf" => return model::render(path, &extension).map(Made::Picture),
 		"bin" | "rom" | "fw" => return dump(path),
 		"md" | "markdown" => return document::markdown(path).map(Made::Document),
 		"docx" | "docm" => return document::word(path).map(Made::Document),

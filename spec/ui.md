@@ -131,6 +131,14 @@ src/ui/list/row.rs.
   of text keeps it on its line. A firmware image -- `.bin`, `.rom`, `.fw` -- is its first bytes as
   a hex dump with offsets, which is what a hex editor would be opened to see; an Intel HEX or
   S-record file is text and shows as it is. See src/thumbnail/markup.rs.
+- **A 3D model**, STL, OBJ, OFF or 3MF -- a 3MF's build followed through its components, which
+  Bambu and Prusa keep in model files of their own -- drawn from the front right and above with Z
+  up, flat-shaded and lit on both sides, in the face's own shape so it fills it. The drawing is a
+  small z-buffer rasterizer at twice the size averaged down: tiny-skia was the first thought, and
+  painting sorted triangles as paths is both the slow way to draw a few hundred thousand of them
+  and the wrong way where two surfaces cross. STEP and IGES are surfaces rather than meshes and
+  need a CAD kernel to become triangles, so they keep the system's icon. See
+  src/thumbnail/model.rs.
 - **A text file's first six lines** as they are, the best icon a text file has.
 - **An archive's contents**, once the index has read it: how many names at the top and their total
   size, then the names, folders first and marked as folders, each with its size, and how many more.
