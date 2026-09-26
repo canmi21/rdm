@@ -73,6 +73,7 @@ Three files and a folder, because three kinds of writing and one kind of picture
   database is for. See [release.md](release.md). The categories judge an archive by what it
   holds as well as by its name, see
   [ui.md](ui.md). See [engine.md](engine.md) and the store.
+
 - **`thumbnails/`** holds one PNG per file a card has shown a picture of, named by a hash of the
   file's path. A picture is a blob and the database is for records, so these are files: one that
   has gone stale is a file to delete, and the folder can be thrown away whole without the

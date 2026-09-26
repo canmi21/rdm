@@ -46,7 +46,7 @@ The list draws three ways and a segmented control at the toolbar's right end pic
 | View       | A row is                                                            | For                       |
 | ---------- | ------------------------------------------------------------------- | ------------------------- |
 | Detailed   | a table row: type, name, size, progress with percent, speed, status | the default; shows it all |
-| Thumbnails | two lines by a picture: name and status, then where it stands        | finding a file by eye     |
+| Thumbnails | two lines by a picture: name and status, then where it stands       | finding a file by eye     |
 | Grid       | a card showing the file: picture, page, source, contents or icon    | scanning by type          |
 
 They are offered in the order a row turns from words into a picture -- the whole table, a row
