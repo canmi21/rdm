@@ -142,9 +142,16 @@ src/ui/list/row.rs.
   up, flat-shaded and lit on both sides, in the face's own shape so it fills it. The drawing is a
   small z-buffer rasterizer at twice the size averaged down: tiny-skia was the first thought, and
   painting sorted triangles as paths is both the slow way to draw a few hundred thousand of them
-  and the wrong way where two surfaces cross. STEP and IGES are surfaces rather than meshes and
-  need a CAD kernel to become triangles, so they keep the system's icon. See
-  src/thumbnail/model.rs.
+  and the wrong way where two surfaces cross. See src/thumbnail/model.rs.
+- **A STEP part as a wireframe.** STEP is surfaces rather than a mesh, and turning its surfaces
+  into triangles is a CAD kernel's work -- OpenCascade, a C++ build of its own the size of the
+  rest of the application, or truck, whose STEP support covers part of what CAD programs write.
+  Its edges, though, are written out whole between their vertices: lines, circles, ellipses and
+  B-splines. They are parsed by hand, sampled, seen from the same angle as a mesh, and stroked with
+  tiny-skia in pale blue whose strength follows depth, far first, so the part reads as a CAD
+  program's wireframe view without anything hidden. A part takes milliseconds. An assembly's
+  bodies are drawn where each was modeled, not where the assembly places it, and IGES keeps the
+  system's icon. See src/thumbnail/step.rs.
 - **A text file's first six lines** as they are, the best icon a text file has.
 - **An archive's contents**, once the index has read it: how many names at the top and their total
   size, then the names, folders first and marked as folders, each with its size, and how many more.
