@@ -197,16 +197,15 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
-		// A browser's tab strip turned over, as tabs at a foot are: a dashed line along its top, bare
-		// tabs hanging from it, and the one showing outlined on its sides and foot and opened into the
-		// table above, its stretch of the line covered.
+		// A dashed line along the top and the tabs bare words under it, the row as high as the status
+		// bar below; the one showing is told by its colour.
 		div()
 			.flex()
 			.flex_none()
-			.items_start()
+			.items_center()
 			.gap_0p5()
+			.h(px(crate::ui::status_bar::HEIGHT))
 			.px_3()
-			.pb_1()
 			.border_t_1()
 			.border_dashed()
 			.border_color(p.border)
@@ -222,22 +221,10 @@ impl RulesWindow {
 					.flex()
 					.items_center()
 					.gap_1()
-					.h(px(23.0))
-					.px_2p5()
+					.h_full()
+					.px_2()
 					.cursor_pointer()
-					// Up over the strip's line by its width, in the window's colour, which is what
-					// opens the tab into the table.
-					.when(on, |s| {
-						s.mt(px(-1.0))
-							.h(px(24.0))
-							.bg(p.window)
-							.border_l_1()
-							.border_r_1()
-							.border_b_1()
-							.border_color(p.muted)
-							.rounded_b_md()
-							.text_color(p.text)
-					})
+					.when(on, |s| s.text_color(p.text))
 					.when(!on, move |s| s.text_color(p.muted).hover(move |s| s.text_color(p.text)))
 					.on_click(cx.listener(move |this, _, _, cx| {
 						this.tab = tab;
