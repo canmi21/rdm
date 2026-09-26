@@ -105,12 +105,8 @@ fn disclosure(
 	open: bool,
 	on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-	div()
-		.id(id)
-		.role(gpui::Role::Button)
-		.aria_label(label)
+	crate::ui::pressable(id, label)
 		.aria_expanded(open)
-		.debug_selector(move || format!("button:{label}"))
 		.group(id)
 		.flex()
 		.flex_none()

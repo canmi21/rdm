@@ -233,16 +233,7 @@ fn render(svg: &str, pixels: u32) -> Result<Artwork> {
 	let mut pixmap = resvg::tiny_skia::Pixmap::new(pixels, pixels).context("a frame's pixels")?;
 	let scale = pixels as f32 / tree.size().width();
 	resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
-	// tiny-skia keeps its pixels premultiplied; every tray wants them straight.
-	let rgba = pixmap
-		.pixels()
-		.iter()
-		.flat_map(|p| {
-			let c = p.demultiply();
-			[c.red(), c.green(), c.blue(), c.alpha()]
-		})
-		.collect();
-	Ok(Artwork { width: pixels, height: pixels, rgba })
+	Ok(Artwork { width: pixels, height: pixels, rgba: crate::thumbnail::straight(&pixmap) })
 }
 
 #[cfg(test)]

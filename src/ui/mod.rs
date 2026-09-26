@@ -22,7 +22,7 @@ pub mod toolbar;
 pub mod tooltip;
 
 use gpui::{
-	ClickEvent, Div, ElementId, MouseButton, Role, SharedString, Stateful, div, prelude::*,
+	ClickEvent, Div, ElementId, MouseButton, Role, SharedString, Stateful, div, prelude::*, px,
 };
 
 use crate::ui::icon::{Icon, hover_icon, icon};
@@ -84,6 +84,22 @@ pub fn floating(p: Palette, id: impl Into<ElementId>) -> Stateful<Div> {
 	div().id(id).occlude().rounded_md().border_1().border_color(p.border).bg(p.panel).shadow_md()
 }
 
+/// The card a form sheet is drawn on, over the backdrop: its rows in a column, on the panel.
+pub fn card(p: Palette, id: impl Into<ElementId>, width: f32) -> Stateful<Div> {
+	div()
+		.id(id)
+		.flex()
+		.flex_col()
+		.gap_3()
+		.w(px(width))
+		.p_4()
+		.rounded_lg()
+		.border_1()
+		.border_color(p.border)
+		.bg(p.panel)
+		.shadow_lg()
+}
+
 /// The wash under every sheet. It takes every mouse event, so nothing behind the sheet can be
 /// pressed through it; and a press that lands on nothing focusable -- the card, a button, a
 /// row -- takes the keyboard away from whatever field had it. GPUI moves focus only onto a
@@ -118,6 +134,16 @@ pub trait LeavesFocus: InteractiveElement + Sized {
 }
 
 impl<E: InteractiveElement> LeavesFocus for E {}
+
+/// What every button is built on: its role and name in the accessibility tree, and the `button:`
+/// selector the headless tests press it by.
+pub fn pressable(id: impl Into<ElementId>, label: &'static str) -> Stateful<Div> {
+	div()
+		.id(id)
+		.role(Role::Button)
+		.aria_label(label)
+		.debug_selector(move || format!("button:{label}"))
+}
 
 /// An icon with its label. Disabled ones stay in the layout but neither react nor invite a click.
 pub fn button(
@@ -154,11 +180,7 @@ fn labelled(
 	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
 	let color = if enabled { p.text } else { p.muted };
-	let base = div()
-		.id(id)
-		.role(Role::Button)
-		.aria_label(label)
-		.debug_selector(|| format!("button:{label}"))
+	let base = pressable(id, label)
 		.flex()
 		.items_center()
 		.gap_1()
@@ -187,11 +209,7 @@ pub fn icon_button(
 	enabled: bool,
 	on_click: impl Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
-	let base = div()
-		.id(id)
-		.role(Role::Button)
-		.aria_label(label)
-		.debug_selector(|| format!("button:{label}"))
+	let base = pressable(id, label)
 		.flex()
 		.items_center()
 		.justify_center()

@@ -43,19 +43,8 @@ impl Rdm {
 		let p = self.palette;
 		deferred(
 			backdrop(p).child(
-				div()
-					.id("guide")
+				crate::ui::card(p, "guide", 440.0)
 					.debug_selector(|| "guide".to_owned())
-					.flex()
-					.flex_col()
-					.gap_3()
-					.w(px(440.0))
-					.p_4()
-					.rounded_lg()
-					.border_1()
-					.border_color(p.border)
-					.bg(p.panel)
-					.shadow_lg()
 					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_guide(cx)))
 					.child(
 						div()

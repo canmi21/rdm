@@ -496,11 +496,7 @@ fn word_button(
 	run: fn(&mut Rdm, &mut Context<Rdm>),
 	cx: &mut Context<Rdm>,
 ) -> impl IntoElement {
-	div()
-		.id(gpui::SharedString::from(format!("update-{word}")))
-		.role(Role::Button)
-		.aria_label(word)
-		.debug_selector(move || format!("button:{word}"))
+	crate::ui::pressable(gpui::SharedString::from(format!("update-{word}")), word)
 		.flex_none()
 		.ml_1()
 		.px_2()

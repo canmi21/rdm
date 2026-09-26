@@ -31,7 +31,8 @@ impl Rdm {
 	/// The id a new row takes: the store's next, so it is never reused while a partial file might
 	/// still carry it, and past every row already listed.
 	fn next_id(&self) -> u64 {
-		self.store
+		self
+			.store
 			.as_ref()
 			.and_then(|s| s.next_id().ok())
 			.unwrap_or(0)

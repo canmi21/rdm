@@ -462,16 +462,20 @@ fn vector(path: &Path) -> Option<Made> {
 		((size.width() * scale).ceil() as u32, (size.height() * scale).ceil() as u32);
 	let mut pixmap = tiny_skia::Pixmap::new(width.max(1), height.max(1))?;
 	resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
-	// tiny-skia keeps its pixels premultiplied, and a picture is straight.
-	let rgba: Vec<u8> = pixmap
+	image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), straight(&pixmap)).map(Made::Picture)
+}
+
+/// A rendered pixmap's pixels as straight RGBA: tiny-skia keeps them premultiplied, and a picture,
+/// like every tray, wants them straight.
+pub fn straight(pixmap: &resvg::tiny_skia::Pixmap) -> Vec<u8> {
+	pixmap
 		.pixels()
 		.iter()
 		.flat_map(|p| {
 			let c = p.demultiply();
 			[c.red(), c.green(), c.blue(), c.alpha()]
 		})
-		.collect();
-	image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), rgba).map(Made::Picture)
+		.collect()
 }
 
 /// A made picture as gpui takes it. The decoder gives RGBA and the renderer wants BGRA, which is

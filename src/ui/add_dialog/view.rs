@@ -15,21 +15,10 @@ impl Rdm {
 		deferred(
 			// The backdrop takes every mouse event, so nothing behind the sheet can be pressed through it.
 			backdrop(p).child(
-				div()
-					.id("add-dialog")
+				crate::ui::card(p, "add-dialog", 480.0)
 					// A node that holds the sheet's own, so `ctl tree "New Task"` finds it whole.
 					.role(gpui::Role::Dialog)
 					.aria_label("New Task")
-					.flex()
-					.flex_col()
-					.gap_3()
-					.w(px(480.0))
-					.p_4()
-					.rounded_lg()
-					.border_1()
-					.border_color(p.border)
-					.bg(p.panel)
-					.shadow_lg()
 					.on_mouse_down_out(cx.listener(|this, _, _, cx| this.dismiss_add(cx)))
 					.child(
 						div()
@@ -150,11 +139,7 @@ impl Rdm {
 			can be checked against a checksum, since a mirror could send anything. With the file's \
 			checksum it uses them all; without one it goes to the source alone.";
 		let choice = |id: &'static str, label: &'static str, choice: Option<crate::rules::Choice>| {
-			div()
-				.id(id)
-				.role(gpui::Role::Button)
-				.aria_label(label)
-				.debug_selector(move || format!("button:{label}"))
+			crate::ui::pressable(id, label)
 				.px_2()
 				.py_0p5()
 				.rounded_sm()

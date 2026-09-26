@@ -6,9 +6,7 @@
 //! own, the moves between them in `actions`, and the pickers two faces share in `pickers`;
 //! this file holds the sheet's state, the card every face sits in, and the small controls.
 
-use gpui::{
-	Context, Entity, IntoElement, Role, SharedString, Window, deferred, div, prelude::*, px,
-};
+use gpui::{Context, Entity, IntoElement, Role, SharedString, Window, deferred, div, prelude::*};
 
 use crate::app::Rdm;
 use crate::category::Combine;
@@ -106,20 +104,8 @@ impl Rdm {
 		dismiss_outside: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
-		let p = self.palette;
-		div()
-			.id(id)
+		crate::ui::card(self.palette, id, width)
 			.debug_selector(move || id.to_owned())
-			.flex()
-			.flex_col()
-			.gap_3()
-			.w(px(width))
-			.p_4()
-			.rounded_lg()
-			.border_1()
-			.border_color(p.border)
-			.bg(p.panel)
-			.shadow_lg()
 			.when(dismiss_outside, |s| {
 				s.on_mouse_down_out(cx.listener(|this, _, _, cx| this.dismiss_category_sheet(cx)))
 			})
@@ -166,11 +152,7 @@ fn word(
 	on: bool,
 	on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
-	div()
-		.id(id)
-		.role(Role::Button)
-		.aria_label(label)
-		.debug_selector(move || format!("button:{label}"))
+	crate::ui::pressable(id, label)
 		.text_xs()
 		.text_color(if on { p.text } else { p.muted })
 		.cursor_pointer()

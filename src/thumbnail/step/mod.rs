@@ -404,15 +404,7 @@ fn draw(edges: &[Vec<Vec3>]) -> Option<image::RgbaImage> {
 		paint.anti_alias = true;
 		pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 	}
-	let rgba: Vec<u8> = pixmap
-		.pixels()
-		.iter()
-		.flat_map(|p| {
-			let c = p.demultiply();
-			[c.red(), c.green(), c.blue(), c.alpha()]
-		})
-		.collect();
-	image::RgbaImage::from_raw(WIDE, HIGH, rgba)
+	image::RgbaImage::from_raw(WIDE, HIGH, crate::thumbnail::straight(&pixmap))
 }
 
 #[cfg(test)]

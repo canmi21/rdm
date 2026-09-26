@@ -134,11 +134,7 @@ impl Rdm {
 					.min_w_0()
 					.child(div().max_w(px(240.0)).text_color(p.muted).child(note.clone()))
 					.child(
-						div()
-							.id(SharedString::from(format!("action:{label}")))
-							.role(Role::Button)
-							.aria_label(word)
-							.debug_selector(move || format!("button:{word}"))
+						crate::ui::pressable(SharedString::from(format!("action:{label}")), word)
 							.flex_none()
 							.px_2()
 							.py_0p5()
