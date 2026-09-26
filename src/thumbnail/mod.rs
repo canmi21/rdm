@@ -281,6 +281,7 @@ fn read_preview(path: &Path) -> Option<Made> {
 	}
 	match extension.as_str() {
 		"svg" => return vector(path),
+		"pdf" => return pdf(path).map(Made::Picture),
 		"bin" | "rom" | "fw" => return dump(path),
 		"md" | "markdown" => return document::markdown(path).map(Made::Document),
 		"docx" | "docm" => return document::word(path).map(Made::Document),
@@ -313,6 +314,61 @@ fn picture(path: &Path) -> Option<Made> {
 	let decoded = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
 	let scaled = decoded.resize(CARD, CARD, image::imageops::FilterType::Triangle).into_rgba8();
 	Some(Made::Picture(scaled))
+}
+
+/// A PDF's first page, white under it as paper is, scaled to fit a card. The system's own renderer
+/// draws it: an NSImage of a PDF is its first page, drawn by CoreGraphics. Elsewhere a PDF shows
+/// the system's icon, until those systems have a renderer of their own here. See spec/ui.md.
+#[cfg(target_os = "macos")]
+fn pdf(path: &Path) -> Option<image::RgbaImage> {
+	use objc2::AllocAnyThread;
+	use objc2_app_kit::{NSBitmapImageRep, NSDeviceRGBColorSpace, NSGraphicsContext, NSImage};
+	use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+
+	let page =
+		NSImage::initWithContentsOfFile(NSImage::alloc(), &NSString::from_str(path.to_str()?))?;
+	let size = page.size();
+	if size.width <= 0.0 || size.height <= 0.0 {
+		return None;
+	}
+	let scale = (f64::from(CARD) / size.width).min(f64::from(CARD) / size.height);
+	let (width, height) =
+		((size.width * scale).round().max(1.0), (size.height * scale).round().max(1.0));
+	let (w, h) = (width as isize, height as isize);
+	let rep = unsafe {
+		NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+			NSBitmapImageRep::alloc(),
+			std::ptr::null_mut(),
+			w,
+			h,
+			8,
+			4,
+			true,
+			false,
+			NSDeviceRGBColorSpace,
+			w * 4,
+			32,
+		)?
+	};
+	let bytes = rep.bitmapData();
+	if bytes.is_null() {
+		return None;
+	}
+	let length = (w * h * 4) as usize;
+	// Paper: a page is transparent where nothing is printed, and a card is dark.
+	unsafe { std::ptr::write_bytes(bytes, 255, length) };
+	let context = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)?;
+	NSGraphicsContext::saveGraphicsState_class();
+	NSGraphicsContext::setCurrentContext(Some(&context));
+	page.drawInRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height)));
+	NSGraphicsContext::restoreGraphicsState_class();
+	let rgba = unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec();
+	image::RgbaImage::from_raw(w as u32, h as u32, rgba)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn pdf(_path: &Path) -> Option<image::RgbaImage> {
+	None
 }
 
 /// A binary's first bytes as a hex dump, eight a line with their offset and what of them is

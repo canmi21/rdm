@@ -117,7 +117,10 @@ src/ui/list/row.rs.
   and a crop cut away the part that said which file it was; fitting against the edges left a
   picture pressed flat to two sides of its frame. The picture is rounded itself, since gpui clips a
   child to a rectangle and the face's corners would not cut it. An SVG is drawn with resvg, with
-  the system's fonts loaded the first time one is.
+  the system's fonts loaded the first time one is. A PDF is its first page on white, drawn on
+  macOS by the system's own renderer -- an NSImage of a PDF is its first page, drawn by
+  CoreGraphics, so the drawing code the icons use serves it and nothing is added; on Windows and
+  Linux a PDF keeps the system's icon, which was chosen over bundling pdfium or a Rust renderer.
 - **A document's opening as a page**: Markdown parsed with pulldown-cmark, a Word or OpenDocument
   file's paragraphs read out of the XML inside its zip -- headings larger and in the text's color,
   paragraphs wrapped, items bulleted, quotes ruled, code fixed-width. Each block is laid at its
