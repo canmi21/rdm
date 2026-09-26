@@ -1,14 +1,18 @@
 //! The rules, merged from every layer, as a table in a window of their own, drawn the way the main
-//! window's detailed list is: a header of column titles, dense rows that select, and a status bar
-//! whose buttons act on the selected row. Tabs narrow it to one kind. Nothing here is typed: a rule
-//! is written in a file, and the custom folder is a press away. See spec/rules.md.
+//! window's detailed list is: a header of column titles whose boundaries drag, dense rows that
+//! select, and a foot of tabs and buttons that act on the selected row. A rule's row names the hosts
+//! its checksum is read from and the hosts that mirror it, an authority marked where it appears;
+//! the row's tooltip says how, step by step. Nothing here is typed: a rule is written in a file, and
+//! the custom folder is a press away. See spec/rules.md.
 
 use gpui::{
-	Animation, AnimationExt, Context, ElementId, Entity, IntoElement, Render, ScrollHandle,
-	SharedString, Subscription, Transformation, Window, div, percentage, prelude::*, px,
+	Animation, AnimationExt, Context, ElementId, Entity, IntoElement, MouseButton, MouseDownEvent,
+	MouseMoveEvent, Render, ScrollHandle, SharedString, Subscription, Transformation, Window, div,
+	percentage, prelude::*, px,
 };
 
 use crate::app::Rdm;
+use crate::rules::checksum::Source;
 use crate::rules::{Choice, Compiled, Layer};
 use crate::ui::download_window::{Title, chrome};
 use crate::ui::icon::{Icon, hover_icon, icon};
@@ -16,11 +20,24 @@ use crate::ui::icon_button;
 use crate::ui::theme::{self, Palette};
 use crate::ui::tooltip::tooltip;
 
-/// The fixed columns' widths; the name's is its own and the match takes the rest.
-const NAME: f32 = 136.0;
-const PROVIDES: f32 = 140.0;
-const LAYER: f32 = 64.0;
-const PRIORITY: f32 = 52.0;
+/// The columns whose width is set, in the order drawn; what a rule matches takes the rest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Column {
+	Name,
+	Checksum,
+	Mirrors,
+	Layer,
+	Priority,
+}
+
+const COLUMNS: [Column; 5] =
+	[Column::Name, Column::Checksum, Column::Mirrors, Column::Layer, Column::Priority];
+const WIDTHS: [f32; 5] = [128.0, 150.0, 150.0, 60.0, 50.0];
+/// A column is never narrower than this, nor wider than the most.
+const NARROWEST: f32 = 40.0;
+const WIDEST: f32 = 480.0;
+/// The space a boundary takes between two columns, as the main list's does.
+const HANDLE: f32 = 12.0;
 /// The main list's measures, so the two tables read alike.
 const HEADER_H: f32 = 24.0;
 const ROW_H: f32 = 26.0;
@@ -44,6 +61,13 @@ enum Kind {
 	Problem,
 }
 
+/// A host a rule reaches, and whether it is an authority -- trusted to answer for what it mirrors.
+#[derive(Clone)]
+struct Host {
+	name: String,
+	authority: bool,
+}
+
 /// One row of the table, whatever kind of thing it stands for.
 struct Line {
 	kind: Kind,
@@ -52,7 +76,11 @@ struct Line {
 	glyph: Icon,
 	name: String,
 	matched: String,
-	provides: String,
+	/// Where the checksum is read from, in the order tried, and where else the file is served.
+	checksum: Vec<Host>,
+	mirrors: Vec<Host>,
+	/// The whole of it, for the tooltip: what the columns cut short, and how each step is taken.
+	detail: String,
 	layer: Option<Layer>,
 	file: Option<String>,
 	priority: Option<i32>,
@@ -71,6 +99,51 @@ fn layer_name(layer: Layer) -> &'static str {
 
 const NONE: &str = "\u{2014}";
 
+/// A template as the match column shows it: without the scheme, which every rule shares and which
+/// took the narrow column's first eight characters.
+fn bare(template: &str) -> String {
+	template.split_once("://").map_or(template, |(_, rest)| rest).to_owned()
+}
+
+/// The host of an address template, or of the address a rule matched when the template starts from
+/// it, as a sum file beside the file does; None where the host is itself a part to fill.
+fn host_of(template: &str, pattern: &str) -> Option<String> {
+	let template = if template.starts_with("{url}") { pattern } else { template };
+	let host = template.split("://").nth(1)?.split('/').next()?;
+	(!host.contains('{') && !host.is_empty()).then(|| host.to_owned())
+}
+
+/// Each host once, in the order first met.
+fn hosts(names: impl IntoIterator<Item = String>, rules: &Compiled) -> Vec<Host> {
+	let mut out: Vec<Host> = Vec::new();
+	for name in names {
+		if !out.iter().any(|h| h.name == name) {
+			out.push(Host { authority: rules.is_authority(&name), name });
+		}
+	}
+	out
+}
+
+/// One checksum source in words, for the tooltip.
+fn step(source: &Source, pattern: &str) -> String {
+	match source {
+		Source::Json { url, pick, .. } => {
+			format!("the field {pick} of {}", host_of(url, pattern).unwrap_or_else(|| url.clone()))
+		}
+		Source::Sidecar { url, .. } => {
+			format!(
+				"a sum file beside it, {}",
+				url.replace("{url}", &host_of(url, pattern).unwrap_or_default())
+			)
+		}
+		Source::Sums { url, like, .. } => format!(
+			"a list of sums named {} among the files {} lists",
+			like.join(" or "),
+			host_of(url, pattern).unwrap_or_else(|| url.clone())
+		),
+	}
+}
+
 /// Every row the rules make, in the order they are tried within each kind.
 fn lines(rules: &Compiled) -> Vec<Line> {
 	let mut out = Vec::new();
@@ -78,62 +151,92 @@ fn lines(rules: &Compiled) -> Vec<Line> {
 		kind,
 		key: key.to_owned(),
 		glyph,
+		detail: format!("{name}\n{matched}"),
 		name,
 		matched,
-		provides: NONE.to_owned(),
+		checksum: Vec::new(),
+		mirrors: Vec::new(),
 		layer: None,
 		file: None,
 		priority: None,
 		place: 0,
 		of: 0,
 	};
+	let trusted = |host: &Host| if host.authority { " (an authority)" } else { "" };
 	for (place, entry) in rules.entries.iter().enumerate() {
-		let mut provides = Vec::new();
-		if !entry.checksum.is_empty() {
-			provides.push("Checksum".to_owned());
+		let checksum = hosts(
+			entry.checksum.iter().filter_map(|s| host_of(s.first_url_template(), &entry.pattern)),
+			rules,
+		);
+		let mirrors = hosts(entry.mirror.iter().filter_map(|m| host_of(m, &entry.pattern)), rules);
+		let mut detail = format!("{}\nMatches {}", entry.id, entry.pattern);
+		if entry.checksum.is_empty() {
+			detail.push_str("\nNo checksum of its own");
+		} else {
+			detail.push_str("\nThe checksum, in the order tried:");
+			for (index, source) in entry.checksum.iter().enumerate() {
+				let host = host_of(source.first_url_template(), &entry.pattern)
+					.and_then(|name| checksum.iter().find(|h| h.name == name))
+					.map(trusted)
+					.unwrap_or("");
+				detail.push_str(&format!("\n  {}. {}{host}", index + 1, step(source, &entry.pattern)));
+			}
 		}
-		match entry.mirror.len() {
-			0 => {}
-			1 => provides.push("1 mirror".to_owned()),
-			n => provides.push(format!("{n} mirrors")),
+		if !entry.mirror.is_empty() {
+			detail.push_str("\nAlso served at:");
+			for mirror in &entry.mirror {
+				detail.push_str(&format!("\n  {mirror}"));
+			}
 		}
 		out.push(Line {
-			provides: if provides.is_empty() { NONE.to_owned() } else { provides.join(", ") },
+			checksum,
+			mirrors,
+			detail,
 			layer: Some(entry.layer),
 			file: Some(entry.file.clone()),
 			priority: Some(entry.priority),
 			place,
 			of: rules.entries.len(),
-			..blank(Kind::Entry, &entry.id, Icon::Globe, entry.id.clone(), entry.pattern.clone())
+			..blank(Kind::Entry, &entry.id, Icon::Globe, entry.id.clone(), bare(&entry.pattern))
 		});
 	}
 	for (place, family) in rules.families.iter().enumerate() {
+		let first = family.prefixes.first().cloned().unwrap_or_default();
+		let mirrors = hosts(family.prefixes.iter().skip(1).filter_map(|p| host_of(p, p)), rules);
 		out.push(Line {
-			provides: format!("{} mirrors", family.prefixes.len()),
+			mirrors,
+			detail: format!(
+				"{}\nThe same tree under every prefix:\n  {}\nNo checksum of its own: New Task asks for one before a mirror is used",
+				family.id,
+				family.prefixes.join("\n  ")
+			),
 			layer: Some(family.layer),
 			file: Some(family.file.clone()),
 			priority: Some(family.priority),
 			place,
 			of: rules.families.len(),
-			..blank(
-				Kind::Family,
-				&family.id,
-				Icon::LayoutList,
-				family.id.clone(),
-				family.prefixes.join("  "),
-			)
+			..blank(Kind::Family, &family.id, Icon::Server, family.id.clone(), format!("{}\u{2026}", bare(&first)))
 		});
 	}
-	for host in &rules.authorities {
+	for authority in &rules.authorities {
+		// What it answers for: the rules that read a checksum from it or send a download to it.
+		let users: Vec<String> = rules
+			.entries
+			.iter()
+			.filter(|e| {
+				e.checksum
+					.iter()
+					.any(|s| host_of(s.first_url_template(), &e.pattern).as_deref() == Some(authority))
+					|| e.mirror.iter().any(|m| host_of(m, &e.pattern).as_deref() == Some(authority))
+			})
+			.map(|e| e.id.clone())
+			.collect();
+		let matched = if users.is_empty() { NONE.to_owned() } else { users.join(", ") };
 		out.push(Line {
-			provides: "Checksum".to_owned(),
-			..blank(
-				Kind::Authority,
-				host,
-				Icon::CircleCheck,
-				host.clone(),
-				"May give the checksum of a source it mirrors".to_owned(),
-			)
+			detail: format!(
+				"{authority}\nMay answer for a source it mirrors: its checksum holds a download from any mirror\nRules that reach it: {matched}"
+			),
+			..blank(Kind::Authority, authority, Icon::CircleCheck, authority.clone(), matched.clone())
 		});
 	}
 	for domain in &rules.domains {
@@ -159,9 +262,11 @@ fn lines(rules: &Compiled) -> Vec<Line> {
 	out
 }
 
+/// Which rows a tab shows. The authorities are not among all of them: each is marked where a rule
+/// reaches it, and has a tab of its own saying which rules do.
 fn shows(tab: Tab, kind: Kind) -> bool {
 	match tab {
-		Tab::All => kind != Kind::Problem,
+		Tab::All => !matches!(kind, Kind::Problem | Kind::Authority),
 		Tab::Rules => kind == Kind::Entry,
 		Tab::Families => kind == Kind::Family,
 		Tab::Authorities => kind == Kind::Authority,
@@ -170,10 +275,20 @@ fn shows(tab: Tab, kind: Kind) -> bool {
 	}
 }
 
+/// A column being dragged: which, where the pointer went down, and how wide it was then.
+#[derive(Clone, Copy)]
+struct Resize {
+	column: usize,
+	from: f32,
+	width: f32,
+}
+
 pub struct RulesWindow {
 	rdm: Entity<Rdm>,
 	tab: Tab,
 	selected: Option<(Kind, String)>,
+	widths: [f32; 5],
+	resizing: Option<Resize>,
 	scroll: ScrollHandle,
 	_follow: Subscription,
 }
@@ -182,7 +297,28 @@ impl RulesWindow {
 	pub fn new(rdm: Entity<Rdm>, cx: &mut Context<Self>) -> Self {
 		// The rules are the main view's; this window redraws when that view changes.
 		let follow = cx.observe(&rdm, |_, _, cx| cx.notify());
-		RulesWindow { rdm, tab: Tab::All, selected: None, scroll: ScrollHandle::new(), _follow: follow }
+		RulesWindow {
+			rdm,
+			tab: Tab::All,
+			selected: None,
+			widths: WIDTHS,
+			resizing: None,
+			scroll: ScrollHandle::new(),
+			_follow: follow,
+		}
+	}
+
+	fn width(&self, column: Column) -> f32 {
+		self.widths[COLUMNS.iter().position(|c| *c == column).unwrap_or(0)]
+	}
+
+	/// Follows the pointer while a boundary is dragged. The name's boundary is at its right and
+	/// widens it to the right; every other column's is at its left and widens it to the left.
+	fn drag(&mut self, x: f32) {
+		let Some(resize) = self.resizing else { return };
+		let moved = x - resize.from;
+		let width = if resize.column == 0 { resize.width + moved } else { resize.width - moved };
+		self.widths[resize.column] = width.clamp(NARROWEST, WIDEST);
 	}
 
 	fn tabs(&self, all: &[Line], p: Palette, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -241,9 +377,32 @@ impl RulesWindow {
 		row
 	}
 
-	fn header(p: Palette) -> impl IntoElement {
-		let cell = |width: f32, title: &'static str| {
-			div().w(px(width)).flex_none().pl(px(12.0)).overflow_hidden().truncate().child(title)
+	/// The boundary a column is dragged by: a line down the header, in the space between columns.
+	fn handle(&self, column: usize, p: Palette, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let dragging = self.resizing.is_some_and(|r| r.column == column);
+		div()
+			.id(("rules-resize", column))
+			.w(px(HANDLE))
+			.h_full()
+			.flex()
+			.flex_none()
+			.justify_center()
+			.cursor_col_resize()
+			.child(div().w_px().h_full().bg(if dragging { p.accent } else { p.border }))
+			.on_mouse_down(
+				MouseButton::Left,
+				cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+					cx.stop_propagation();
+					let width = this.widths[column];
+					this.resizing = Some(Resize { column, from: f32::from(event.position.x), width });
+					cx.notify();
+				}),
+			)
+	}
+
+	fn header(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+		let title = |column: Column, text: &'static str| {
+			div().w(px(self.width(column))).flex_none().overflow_hidden().truncate().child(text)
 		};
 		div()
 			.flex()
@@ -257,11 +416,45 @@ impl RulesWindow {
 			.border_b_1()
 			.border_color(p.border)
 			.child(div().w(px(14.0)).flex_none())
-			.child(cell(NAME, "Name"))
-			.child(div().flex_1().min_w_0().pl(px(12.0)).truncate().child("Matches"))
-			.child(cell(PROVIDES, "Provides"))
-			.child(cell(LAYER, "Layer"))
-			.child(cell(PRIORITY, "Priority").flex().justify_end())
+			.child(title(Column::Name, "Name").pl(px(HANDLE)).w(px(self.width(Column::Name))))
+			.child(self.handle(0, p, cx))
+			.child(div().flex_1().min_w_0().truncate().child("Matches"))
+			.child(self.handle(1, p, cx))
+			.child(title(Column::Checksum, "Checksum from"))
+			.child(self.handle(2, p, cx))
+			.child(title(Column::Mirrors, "Mirrors"))
+			.child(self.handle(3, p, cx))
+			.child(title(Column::Layer, "Layer"))
+			.child(self.handle(4, p, cx))
+			.child(title(Column::Priority, "Priority").flex().justify_end())
+	}
+
+	/// Hosts in a cell, each with a check before it when it is an authority, cut short at the cell's
+	/// end; a dash for none.
+	fn hosts_cell(&self, column: Column, hosts: &[Host], p: Palette) -> impl IntoElement + use<> {
+		let cell = div()
+			.w(px(self.width(column) + HANDLE))
+			.pl(px(HANDLE))
+			.flex_none()
+			.flex()
+			.items_center()
+			.gap_2()
+			.overflow_hidden()
+			.whitespace_nowrap()
+			.text_xs()
+			.text_color(p.muted);
+		if hosts.is_empty() {
+			return cell.child(NONE);
+		}
+		cell.children(hosts.iter().map(|host| {
+			div()
+				.flex()
+				.flex_none()
+				.items_center()
+				.gap_0p5()
+				.when(host.authority, |s| s.child(icon(Icon::CircleCheck, p.muted).size_3()))
+				.child(host.name.clone())
+		}))
 	}
 
 	fn row(&self, line: &Line, p: Palette, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -269,11 +462,16 @@ impl RulesWindow {
 			self.selected.as_ref().is_some_and(|(kind, key)| *kind == line.kind && *key == line.key);
 		let problem = line.kind == Kind::Problem;
 		let tint = if problem { p.status(crate::download::Status::Failed) } else { p.muted };
-		let cell = |width: f32| {
-			div().w(px(width)).flex_none().pl(px(12.0)).overflow_hidden().truncate().text_xs()
+		let cell = |column: Column| {
+			div()
+				.w(px(self.width(column) + HANDLE))
+				.pl(px(HANDLE))
+				.flex_none()
+				.overflow_hidden()
+				.truncate()
+				.text_xs()
 		};
 		let (kind, key) = (line.kind, line.key.clone());
-		let whole = format!("{}\n{}", line.name, line.matched);
 		div()
 			.id(ElementId::Name(SharedString::from(format!("rule:{:?}:{}", line.kind, line.key))))
 			.role(gpui::Role::Row)
@@ -289,27 +487,37 @@ impl RulesWindow {
 			.cursor_pointer()
 			.when(selected, |s| s.bg(p.selection))
 			.when(!selected, move |s| s.hover(move |s| s.bg(p.hover)))
-			.tooltip(tooltip(whole))
+			.tooltip(tooltip(line.detail.clone()))
 			.on_click(cx.listener(move |this, _, _, cx| {
 				this.selected = Some((kind, key.clone()));
 				cx.notify();
 			}))
 			.child(icon(line.glyph, tint).size_3p5())
-			.child(div().w(px(NAME)).flex_none().pl(px(12.0)).truncate().child(line.name.clone()))
+			.child(
+				div()
+					.w(px(self.width(Column::Name)))
+					.pl(px(HANDLE))
+					.flex_none()
+					.truncate()
+					.child(line.name.clone()),
+			)
 			.child(
 				div()
 					.flex_1()
 					.min_w_0()
-					.pl(px(12.0))
+					.pl(px(HANDLE))
 					.truncate()
 					.text_xs()
 					.text_color(tint)
 					.child(line.matched.clone()),
 			)
-			.child(cell(PROVIDES).text_color(p.muted).child(line.provides.clone()))
-			.child(cell(LAYER).text_color(p.muted).child(line.layer.map(layer_name).unwrap_or(NONE)))
+			.child(self.hosts_cell(Column::Checksum, &line.checksum, p))
+			.child(self.hosts_cell(Column::Mirrors, &line.mirrors, p))
 			.child(
-				cell(PRIORITY)
+				cell(Column::Layer).text_color(p.muted).child(line.layer.map(layer_name).unwrap_or(NONE)),
+			)
+			.child(
+				cell(Column::Priority)
 					.flex()
 					.justify_end()
 					.text_color(p.muted)
@@ -440,7 +648,7 @@ impl Render for RulesWindow {
 			.text_xs()
 			.text_color(p.muted)
 			// The dashed line along the top is an element under the tabs rather than the row's border,
-			// which gpui paints over the children, so the showing tab's solid top covers it.
+			// which gpui paints over the children.
 			.child(
 				div()
 					.absolute()
@@ -524,13 +732,33 @@ impl Render for RulesWindow {
 					)),
 			);
 
+		// A drag that began on a boundary is followed across the whole window, and ends where the
+		// button comes up.
 		let body = div()
 			.flex()
 			.flex_col()
 			.flex_1()
 			.min_h_0()
 			.text_size(px(13.0))
-			.child(Self::header(p))
+			.on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+				if this.resizing.is_some() {
+					if event.pressed_button == Some(MouseButton::Left) {
+						this.drag(f32::from(event.position.x));
+					} else {
+						this.resizing = None;
+					}
+					cx.notify();
+				}
+			}))
+			.on_mouse_up(
+				MouseButton::Left,
+				cx.listener(|this, _, _, cx| {
+					if this.resizing.take().is_some() {
+						cx.notify();
+					}
+				}),
+			)
+			.child(self.header(p, cx))
 			.child(table)
 			.child(foot);
 		chrome(p, window, Title { before: None, name: "Rules".to_owned() }, body)

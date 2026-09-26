@@ -152,8 +152,15 @@ written.
 A window of its own, opened from the main window's status bar -- the scroll beside Settings -- or
 from Settings' Transfers under Sources, is **a table drawn as the main
 window's detailed list is**: column titles over dense rows of the same height, and a row selected by
-a press. The columns are the name, what it matches -- the template, or a family's prefixes -- what it
-provides, the layer it came from, and its priority; a row's tooltip holds what the columns cut short.
+a press. The columns are the name; what it matches, the template or a family's first prefix, without the
+scheme every rule shares; the hosts its checksum is read from, in the order tried; the hosts that
+also serve the file; the layer it came from; and its priority. An authority is marked with a check
+wherever it appears among those hosts, and the authorities tab lists each with the rules that reach
+it, rather than a sentence saying what an authority is. A row's tooltip says how: each checksum
+source as a step -- a field of which document, a sum file beside the file, a list of sums among a
+release's files -- and every mirror's template whole. The column boundaries drag, as the main
+list's do. It had a single column saying "Checksum, 3 mirrors", which said that there were sources
+and not which.
 It was a list of cards grouped under headings, with buttons on every row, and read as a settings
 page rather than as the data it is.
 

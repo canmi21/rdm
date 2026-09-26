@@ -76,12 +76,16 @@ impl Source {
 		}
 	}
 
+	/// The address of the document asked first, as written, unfilled.
+	pub fn first_url_template(&self) -> &str {
+		match self {
+			Source::Json { url, .. } | Source::Sidecar { url, .. } | Source::Sums { url, .. } => url,
+		}
+	}
+
 	/// The document asked first, filled: whose host the checksum is from.
 	pub fn first_url(&self, captures: &Captures) -> Option<String> {
-		let url = match self {
-			Source::Json { url, .. } | Source::Sidecar { url, .. } | Source::Sums { url, .. } => url,
-		};
-		template::fill(url, captures).ok()
+		template::fill(self.first_url_template(), captures).ok()
 	}
 }
 
