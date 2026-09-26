@@ -119,8 +119,14 @@ pub fn build(art: Artwork, summary: &Summary) -> Result<System> {
 }
 
 impl System {
+	/// On macOS through the call that names the template every time: tray-icon's plain `set_icon`
+	/// sets the image as not a template there, which draws the black frame black on a dark menu bar.
+	/// The other call does nothing elsewhere.
 	pub fn set_icon(&mut self, art: Artwork) {
 		if let Ok(icon) = tray_icon::Icon::from_rgba(art.rgba, art.width, art.height) {
+			#[cfg(target_os = "macos")]
+			let _ = self.icon.set_icon_with_as_template(Some(icon), true);
+			#[cfg(not(target_os = "macos"))]
 			let _ = self.icon.set_icon(Some(icon));
 		}
 	}
