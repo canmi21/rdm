@@ -74,9 +74,9 @@ fn click(cx: &mut VisualTestContext, selector: &'static str) {
 	cx.simulate_click(bounds.center(), Modifiers::default());
 }
 
-mod table;
-mod folder;
 mod categories;
+mod folder;
 mod settings;
-mod windows;
+mod table;
 mod tasks;
+mod windows;

@@ -10,7 +10,9 @@ use anyhow::{Context as _, Result};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Motion {
 	/// Something is moving: overall progress when every running size is known.
-	Downloading { progress: Option<f32> },
+	Downloading {
+		progress: Option<f32>,
+	},
 	/// The rules are being fetched.
 	Syncing,
 	/// Nothing moves, but something waits for a place.
@@ -214,8 +216,8 @@ fn alert(style: Style) -> (String, String) {
 
 /// SVG to straight RGBA, `pixels` on a side.
 fn render(svg: &str, pixels: u32) -> Result<Artwork> {
-	let tree = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default())
-		.context("read the frame")?;
+	let tree =
+		resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default()).context("read the frame")?;
 	let mut pixmap = resvg::tiny_skia::Pixmap::new(pixels, pixels).context("a frame's pixels")?;
 	let scale = pixels as f32 / tree.size().width();
 	resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
@@ -266,9 +268,7 @@ mod tests {
 	fn the_template_glyph_reaches_the_edges_of_its_frame() {
 		let art = frame(Look::IDLE, 0, Style::Template).unwrap();
 		let rows: Vec<u32> = (0..art.height)
-			.filter(|y| {
-				(0..art.width).any(|x| art.rgba[((y * art.width + x) * 4 + 3) as usize] > 128)
-			})
+			.filter(|y| (0..art.width).any(|x| art.rgba[((y * art.width + x) * 4 + 3) as usize] > 128))
 			.collect();
 		assert!(rows.first().is_some_and(|y| *y <= 3), "the top of the arrow: {rows:?}");
 		assert!(rows.last().is_some_and(|y| *y >= art.height - 4), "the base: {rows:?}");
@@ -280,4 +280,3 @@ mod tests {
 		assert_eq!(art.argb32(), vec![0xff, 0x11, 0x22, 0x33], "alpha leads, then red, green, blue");
 	}
 }
-

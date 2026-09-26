@@ -124,8 +124,8 @@ impl Tray {
 /// without it.
 pub fn install(cx: &mut gpui::App) {
 	let summary = Summary::default();
-	let made = art::frame(summary.look, 0, art::Style::native())
-		.and_then(|art| system::build(art, &summary));
+	let made =
+		art::frame(summary.look, 0, art::Style::native()).and_then(|art| system::build(art, &summary));
 	match made {
 		Ok(system) => {
 			cx.set_global(Tray { system, summary, phase: 0, drawn: Some((Look::IDLE, 0)) });
