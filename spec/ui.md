@@ -347,13 +347,17 @@ bar works. A tray that cannot be made -- a Linux desktop with no host for a Stat
 say, which is a GNOME without the extension for it -- is reported and done without. See
 [framework.md](framework.md) for why Linux speaks the bus directly.
 
-**The icon says what goes on, and moves while something does.** Its frames are drawn by the
-application from the glyph's own geometry as they are needed, a dozen a second while it moves,
-and none while it is still. By what is most pressing: a download moving is the arrow falling into
-its base, one after another, the base filling with the running downloads' progress when every
-one knows its size; the rules syncing is Lucide's two sync arrows, turning; something waiting in
-the queue with nothing moving is the arrow still over a base of three dots lit in turn; nothing is
-the glyph at rest. A dot in the top right corner, cut clear of the glyph, says a download failed
+**The icon says what goes on by what it is, and only its smallest part moves.** Its frames are drawn
+by the application from the glyph's own geometry as they are needed, a dozen a second while a part
+of it moves, and none while nothing does. A state is told by the icon changing shape, never by the
+whole of it moving: arrows falling through the glyph were tried first and were more motion than a
+menu bar should carry. By what is most pressing: a download moving keeps the arrow still and makes
+its base the progress bar, filled as far as the running downloads have come when every one knows
+its size, and for one that does not a short run sliding along the base and back; the rules syncing
+turns the icon into Lucide's cloud-sync, the cloud still and only the small arrows under it
+turning, the cloud cleared in a ring round them so they never cross its line; something waiting
+in the queue with nothing moving is the arrow still over a base of three dots lit in turn; nothing
+is the glyph at rest. A dot in the top right corner, cut clear of the glyph, says a download failed
 since the main window was last in front, or the last rules sync failed; bringing the window
 forward clears the first, and a sync that succeeds the second. On macOS the frame is a template
 image the system tints for a light or dark bar, cropped to the glyph's own extent with a point

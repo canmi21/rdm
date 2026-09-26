@@ -33,7 +33,10 @@ impl Look {
 	/// How many frames the motion takes before it repeats; one for a still one.
 	pub fn frames(self) -> u32 {
 		match self.motion {
-			Motion::Downloading { .. } => FALL_FRAMES,
+			// Known progress moves as the bytes do and is redrawn when it does; unknown progress is
+			// a short run sliding along the base.
+			Motion::Downloading { progress: Some(_) } => 1,
+			Motion::Downloading { progress: None } => SLIDE_FRAMES,
 			Motion::Syncing => TURN_FRAMES,
 			Motion::Queued => 3 * DOT_FRAMES,
 			Motion::Idle => 1,
@@ -109,10 +112,10 @@ impl Style {
 	}
 }
 
-/// The arrow falls one length in this many frames, and the next follows it down.
-const FALL_FRAMES: u32 = 16;
-/// Where the next arrow starts above the one falling.
-const FALL: f32 = 640.0;
+/// How many frames the run of an unknown download takes across the base and back.
+const SLIDE_FRAMES: u32 = 24;
+/// How long that run is, of the base's 424.
+const RUN: f32 = 120.0;
 const TURN_FRAMES: u32 = 12;
 /// How long each of the three waiting dots stays lit.
 pub const DOT_FRAMES: u32 = 4;
@@ -134,9 +137,9 @@ pub fn svg(look: Look, phase: u32, style: Style) -> String {
 	let ink = style.ink();
 	let body = match look.motion {
 		Motion::Idle => format!(r#"{ARROW}<path d="M300 792H724"/>"#),
-		Motion::Downloading { progress } => falling(phase % FALL_FRAMES, progress),
+		Motion::Downloading { progress } => filling(phase % SLIDE_FRAMES, progress),
 		Motion::Queued => waiting(phase / DOT_FRAMES % 3, stroke, ink),
-		Motion::Syncing => turning(phase % TURN_FRAMES),
+		Motion::Syncing => turning(phase % TURN_FRAMES, stroke),
 	};
 	let tile = match style {
 		Style::Template => String::new(),
@@ -149,21 +152,22 @@ pub fn svg(look: Look, phase: u32, style: Style) -> String {
 	)
 }
 
-/// Arrows falling into the base, clipped where the base begins so each goes in rather than through,
-/// and at the glyph's top so the next does not show over the tile's edge; the base fills with the
-/// progress when there is one.
-fn falling(step: u32, progress: Option<f32>) -> String {
-	let fallen = FALL * step as f32 / FALL_FRAMES as f32;
-	let base = match progress {
-		None => r#"<path d="M300 792H724"/>"#.to_owned(),
-		Some(done) => {
-			let end = 300.0 + 424.0 * done.clamp(0.0, 1.0);
-			format!(r#"<path d="M300 792H724" stroke-opacity="{FAINT}"/><path d="M300 792H{end:.0}"/>"#)
+/// The arrow still, and its base the progress bar: filled as far as the download has come, or
+/// for one of no known size a short run sliding along it and back. The icon says what goes on by
+/// what it is, and only the smallest part of it moves. See spec/ui.md.
+fn filling(step: u32, progress: Option<f32>) -> String {
+	let (from, to) = match progress {
+		Some(done) => (300.0, 300.0 + 424.0 * done.clamp(0.0, 1.0)),
+		None => {
+			// There and back: a triangle over the loop.
+			let half = SLIDE_FRAMES as f32 / 2.0;
+			let along = 1.0 - (step as f32 - half).abs() / half;
+			let start = 300.0 + (424.0 - RUN) * along;
+			(start, start + RUN)
 		}
 	};
 	format!(
-		r#"<clipPath id="above"><rect x="0" y="136" width="1024" height="580"/></clipPath><g clip-path="url(#above)"><g transform="translate(0 {fallen:.1})">{ARROW}</g><g transform="translate(0 {:.1})">{ARROW}</g></g>{base}"#,
-		fallen - FALL
+		r#"{ARROW}<path d="M300 792H724" stroke-opacity="{FAINT}"/><path d="M{from:.0} 792H{to:.0}"/>"#
 	)
 }
 
@@ -182,17 +186,25 @@ fn waiting(lit: u32, stroke: f32, ink: &str) -> String {
 	format!(r#"{ARROW}<g fill="{ink}">{dots}</g>"#)
 }
 
-/// Lucide's cloud-sync without its cloud: the two arrows alone, turning. At this size the cloud and
-/// the turning arrows run together whichever weight they are drawn at. Its 24 space is put on the
-/// frame so the arrows' circle fills the glyph's extent; see assets/sync/arrows.svg.
-fn turning(step: u32) -> String {
-	// The arrows span 7 to 17 across and 6 to 18 down, around 12 and 12; 13 units onto 668.
-	let scale = 668.0 / 13.0;
+/// Lucide's cloud-sync: the cloud still, and only the two arrows under it turning. The cloud is
+/// cleared in a ring round the arrows, so they turn in a space of their own rather than across its
+/// line. Its 24 space is put on the glyph's extent at the glyph's weight; see assets/sync/.
+fn turning(step: u32, stroke: f32) -> String {
+	// The icon spans 1 to 23 across and 2 to 22 down, around 12 and 12.
+	let scale = 668.0 / 21.0;
 	// The pair looks the same half a turn on, so a half turn is the whole cycle.
 	let angle = 180.0 * step as f32 / TURN_FRAMES as f32;
+	// The arrows at seven tenths about their own middle, 12 and 16, so they turn clear of the cloud
+	// and inside the frame; the ring cleared round them worked out in the frame's own space, since a
+	// mask in the space of a scaled group is read differently by resvg.
+	let (cx, cy, r) = (512.0, 512.0 + 4.0 * scale, 6.6 * scale);
+	let lucide = format!("translate(512 512) scale({scale:.3}) translate(-12 -12)");
+	// Lucide's own weight: the cloud and the arrows together are more lines than the arrow glyph,
+	// and at its weight they ran into each other.
+	let width = (stroke * 0.75) / scale;
 	format!(
-		r#"<g transform="translate(512 512) scale({scale:.3}) rotate({angle:.0}) translate(-12 -16)" stroke-width="{:.2}"><path d="m17 18-1.535 1.605a5 5 0 0 1-8-1.5"/><path d="M17 22v-4h-4"/><path d="M7 10v4h4"/><path d="m7 14 1.535-1.605a5 5 0 0 1 8 1.5"/></g>"#,
-		84.0 / scale
+		r##"<mask id="gap" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/><circle cx="{cx:.0}" cy="{cy:.0}" r="{r:.0}" fill="#000"/></mask><g stroke-width="{width:.2}"><g mask="url(#gap)"><path transform="{lucide}" d="M20.996 15.251A4.5 4.5 0 0 0 17.495 8h-1.79a7 7 0 1 0-12.709 5.607"/></g><g transform="{lucide} rotate({angle:.0} 12 16) translate(12 16) scale(0.7) translate(-12 -16)" stroke-width="{:.2}"><path d="m17 18-1.535 1.605a5 5 0 0 1-8-1.5"/><path d="M17 22v-4h-4"/><path d="M7 10v4h4"/><path d="m7 14 1.535-1.605a5 5 0 0 1 8 1.5"/></g></g>"##,
+		width / 0.7
 	)
 }
 
