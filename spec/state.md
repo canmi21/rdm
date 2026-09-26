@@ -79,7 +79,10 @@ Three files and a folder, because three kinds of writing and one kind of picture
   application minding. What is kept is the picture the card draws, 256 square at most, not the
   file it came from. A kept picture is used where it is not older than the file it is of, and the
   file is read again where it is: 12 to 20 milliseconds to make one from a photograph against a
-  third of a millisecond to read it back, and the gap only widens with the size of the file. The
+  third of a millisecond to read it back, and the gap only widens with the size of the file. A
+  picture's name hashes a drawing version with the path, raised whenever a kind of file comes to
+  be drawn differently: newer than its file says nothing of how a picture was drawn, and a STEP
+  part went on showing the wireframe it was first drawn as after it came to be drawn solid. The
   system's icons are not kept here and do not need to be -- drawing one costs a quarter of a
   millisecond, and an icon that outlived a system update or an application's new artwork would be
   a picture that lies. The newest thousand are kept and the rest deleted at launch, off the

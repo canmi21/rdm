@@ -77,6 +77,12 @@ const A_FRAME: u32 = 24;
 /// wanted, so the count is a comfort rather than a promise.
 const KEPT: usize = 1000;
 
+/// Which way of drawing a kept picture was made by. A kept picture is used while it is newer than
+/// its file, which says nothing of how it was drawn: raise this whenever a kind of file comes to
+/// be drawn differently, or the old picture stands in for the new one until the file changes. The
+/// old ones are left for `trim` to take, oldest first.
+const DRAWN_BY: u32 = 2;
+
 #[derive(Default)]
 pub struct Thumbnails {
 	cache: HashMap<PathBuf, Option<Arc<RenderImage>>>,
@@ -222,11 +228,15 @@ impl Thumbnails {
 		}
 	}
 
-	/// What this file's picture is called: a hash of the path, so a name of any length or shape
-	/// becomes one a file system will take, and the same file finds the same picture next run.
+	/// What this file's picture is called: a hash of the path and of `DRAWN_BY`, so a name of any
+	/// length or shape becomes one a file system will take, the same file finds the same picture
+	/// next run, and a picture drawn the way an older build drew it is not found at all.
 	fn kept_at(&self, path: &Path) -> Option<PathBuf> {
 		use sha2::Digest;
-		let digest = sha2::Sha256::digest(path.as_os_str().as_encoded_bytes());
+		let mut hasher = sha2::Sha256::new();
+		hasher.update(DRAWN_BY.to_le_bytes());
+		hasher.update(path.as_os_str().as_encoded_bytes());
+		let digest = hasher.finalize();
 		let name: String = digest.iter().take(16).map(|byte| format!("{byte:02x}")).collect();
 		Some(self.kept.as_ref()?.join(format!("{name}.png")))
 	}
