@@ -255,7 +255,7 @@ goes, the way TCP learns a window: additive increase, a drop on a refusal.**
   at that moment -- was turned away one short and learnt a limit of one from a server that takes
   two.
 
-The failures are told apart in `engine/task.rs`, which the tests drive against a server that turns
+The failures are told apart in `engine/task/schedule.rs`, which the tests drive against a server that turns
 away connections past a limit with a 503, a 403, or a close, and which counts what it turned away.
 The same download against the busy server made two dozen requests before this, most of them
 refused. It is AIMD rather than a borrowed library: the concurrency-limit families -- Netflix's

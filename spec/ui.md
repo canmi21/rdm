@@ -1103,7 +1103,7 @@ byte out in whole numbers, which a position cannot hold exactly for a file of gi
 are therefore not round; the size beside the slider is, and it is what is read.
 
 Every number here is a starting point to be tuned by hand, and all of them are at the top of
-`src/ui/slider.rs`. A modifier key held for exact would say the same thing without inference, and
+`src/ui/slider/`. A modifier key held for exact would say the same thing without inference, and
 waits until inference is found wanting.
 
 ## A sheet is modal, and a click outside closes it only while it is clean
