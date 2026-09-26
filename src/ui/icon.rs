@@ -89,6 +89,8 @@ pub enum Icon {
 	Box,
 	Cpu,
 	FolderOpen,
+	/// A folder inside an archive, on its card in the grid.
+	Folder,
 	Table,
 	Flag,
 	FlagOff,
@@ -129,6 +131,7 @@ impl Icon {
 			Icon::Box => "lucide/box.svg",
 			Icon::Cpu => "lucide/cpu.svg",
 			Icon::FolderOpen => "lucide/folder-open.svg",
+			Icon::Folder => "lucide/folder.svg",
 			Icon::Table => "lucide/table.svg",
 			Icon::Flag => "lucide/flag.svg",
 			Icon::FlagOff => "lucide/flag-off.svg",

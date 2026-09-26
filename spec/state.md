@@ -71,7 +71,7 @@ Three files and a folder, because three kinds of writing and one kind of picture
   millisecond, and an icon that outlived a system update or an application's new artwork would be
   a picture that lies. The newest thousand are kept and the rest deleted at launch, off the
   window's thread; one deleted is one made again the next time it is wanted. See
-  src/thumbnail.rs.
+  src/thumbnail/.
 - **`config.json`**, in the platform's _configuration_ directory rather than its state directory,
   is the user's: the categories, and the switches the settings sheet offers, each with a default
   so a file from before a switch reads as if it had been left alone. It is seeded with the built-in

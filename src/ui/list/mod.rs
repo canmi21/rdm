@@ -9,6 +9,9 @@ use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::{Palette, Tint};
 use crate::ui::tooltip::tooltip;
 
+mod card;
+mod row;
+
 /// The name column's floor, the same kind of floor the fixed columns keep: a word and an
 /// ellipsis, not a width anyone would choose. See `Column::MINS`.
 pub const NAME_MIN: f32 = 48.0;
@@ -428,106 +431,6 @@ impl Rdm {
 					.size_3(),
 				)
 			})
-	}
-
-	/// A row with a picture on it: what the system draws for a file of this kind, at the size a
-	/// file manager draws it, and the name beside it. Nothing else -- somebody in this view is
-	/// looking for a file by eye, and columns would be in the way. The system's own icon is not
-	/// always there to be had, and the category's glyph stands in when it is not.
-	fn thumbnail_row(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
-		self
-			.item(download, cx)
-			.flex()
-			.items_center()
-			.gap_2p5()
-			.h(px(36.0))
-			.px_2()
-			.child(self.folder_indent(download))
-			.child(self.thumbnail(download, 20.0))
-			.child(div().flex_1().min_w_0().truncate().child(download.name.clone()))
-			.child(div().flex_none().text_xs().text_color(p.muted).child(format_bytes(download.size)))
-	}
-
-	/// The picture for a row: the system's own where there is one, the category's glyph where
-	/// there is not. See src/thumbnail.rs.
-	fn thumbnail(&self, download: &Download, size: f32) -> gpui::AnyElement {
-		let picture = download
-			.path
-			.as_deref()
-			.map(std::path::Path::new)
-			.and_then(|path| self.thumbnails.borrow_mut().of(path));
-		match picture {
-			Some(picture) => gpui::img(picture).size(px(size)).into_any_element(),
-			None => tinted_icon(self.category_icon(download)).size(px(size)).into_any_element(),
-		}
-	}
-
-	/// What fills a card's picture: the file itself where one can be made of it, the first lines
-	/// where it is text, the system's icon where there is one, and the category's glyph where
-	/// there is not. A file with nothing to show is drawn the way every file used to be.
-	fn card_face(&self, download: &Download) -> gpui::AnyElement {
-		let p = self.palette;
-		let preview = download
-			.path
-			.as_deref()
-			.map(std::path::Path::new)
-			.and_then(|path| self.thumbnails.borrow_mut().preview(path));
-		match preview {
-			Some(crate::thumbnail::Preview::Picture(picture)) => {
-				// Filling the card rather than fitting inside it: a picture with bars around it
-				// reads as a picture of a picture, and the card is a glance rather than a viewer.
-				gpui::img(picture).size_full().object_fit(gpui::ObjectFit::Cover).into_any_element()
-			}
-			Some(crate::thumbnail::Preview::Lines(lines)) => div()
-				.size_full()
-				.flex()
-				.flex_col()
-				.px_1p5()
-				.py_1()
-				.overflow_hidden()
-				.text_color(p.muted)
-				.text_size(px(6.0))
-				.children(lines.into_iter().map(|line| div().truncate().child(line)))
-				.into_any_element(),
-			Some(crate::thumbnail::Preview::Icon(icon)) => gpui::img(icon).size_10().into_any_element(),
-			None => tinted_icon(self.category_icon(download)).size_8().into_any_element(),
-		}
-	}
-
-	fn card(&self, download: &Download, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-		let p = self.palette;
-		let tint = p.status(download.status);
-		self
-			.item(download, cx)
-			.flex()
-			.flex_col()
-			.gap_1p5()
-			.w(px(CARD))
-			.p_2()
-			.child(
-				div()
-					.flex()
-					.h(px(72.0))
-					.justify_center()
-					.items_center()
-					.rounded_sm()
-					.overflow_hidden()
-					.bg(p.panel)
-					.child(self.card_face(download)),
-			)
-			.child(div().truncate().text_xs().child(download.name.clone()))
-			.child(progress_bar(p, download, tint))
-			.child(
-				div()
-					.flex()
-					.justify_between()
-					.items_center()
-					.text_xs()
-					.text_color(p.muted)
-					.child(format_bytes(download.size.max(download.received)))
-					.child(icon(Icon::for_status(download.status), tint).size_3()),
-			)
 	}
 }
 

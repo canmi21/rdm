@@ -182,6 +182,45 @@ pub fn top_level(entries: &[Entry]) -> Vec<String> {
 	top
 }
 
+/// One name at the top of an archive, as a card lists it: whether it is a folder, and the size of
+/// everything under it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Top {
+	pub name: String,
+	pub dir: bool,
+	pub size: u64,
+}
+
+/// The names `top_level` gives, each with what it holds: the archive as somebody opening it would
+/// see it, a single wrapping folder looked through.
+pub fn outline(entries: &[Entry]) -> Vec<Top> {
+	let names = top_level(entries);
+	let parts = |entry: &Entry| -> Vec<String> {
+		entry
+			.name
+			.trim_end_matches('/')
+			.split('/')
+			.filter(|p| !p.is_empty() && *p != ".")
+			.map(str::to_owned)
+			.collect()
+	};
+	// Looked through a wrapper when no entry starts with the first name at the top.
+	let strip = usize::from(
+		names.first().is_some_and(|first| !entries.iter().any(|e| parts(e).first() == Some(first))),
+	);
+	let mut tops: Vec<Top> =
+		names.into_iter().map(|name| Top { name, dir: false, size: 0 }).collect();
+	for entry in entries {
+		let parts = parts(entry);
+		let Some(first) = parts.get(strip) else { continue };
+		if let Some(top) = tops.iter_mut().find(|t| &t.name == first) {
+			top.dir |= entry.dir || parts.len() > strip + 1;
+			top.size += entry.size;
+		}
+	}
+	tops
+}
+
 /// A folder that is itself the thing -- a macOS bundle -- is not looked through.
 fn looks_like_a_bundle(name: &str) -> bool {
 	let lower = name.to_ascii_lowercase();
@@ -273,5 +312,31 @@ mod tests {
 		let tgz_names: Vec<String> = list(&tgz_path).unwrap().into_iter().map(|e| e.name).collect();
 		assert_eq!(tgz_names, ["proj/main.rs"]);
 		assert!(list(&dir.join("none.rar")).is_err());
+	}
+
+	#[test]
+	fn the_outline_looks_through_a_wrapper_and_sums_what_each_name_holds() {
+		let entry = |name: &str, size: u64, dir: bool| Entry { name: name.to_owned(), size, dir };
+		let entries = [
+			entry("pkg/", 0, true),
+			entry("pkg/bin/tool", 100, false),
+			entry("pkg/bin/other", 50, false),
+			entry("pkg/README", 7, false),
+		];
+		assert_eq!(
+			outline(&entries),
+			[
+				Top { name: "bin".to_owned(), dir: true, size: 150 },
+				Top { name: "README".to_owned(), dir: false, size: 7 },
+			]
+		);
+		let flat = [entry("a.txt", 3, false), entry("docs/b.md", 4, false)];
+		assert_eq!(
+			outline(&flat),
+			[
+				Top { name: "a.txt".to_owned(), dir: false, size: 3 },
+				Top { name: "docs".to_owned(), dir: true, size: 4 },
+			]
+		);
 	}
 }

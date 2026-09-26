@@ -105,13 +105,19 @@ sys-locale = "0.3"
 # Reading and taking off the mark a system puts on a downloaded file. One call each way; a crate
 # for two calls would be a crate. See src/quarantine.rs.
 libc = "0.2"
-# Draws the tray's frames from SVG as they are needed; gpui already brings it for its own icons,
-# so the version is gpui's. See src/tray/art.rs.
-resvg = { version = "0.46", default-features = false }
+# Draws the tray's frames from SVG as they are needed, and an SVG file's card in the grid with the
+# system's fonts; gpui already brings it for its own icons, so the version and the text features
+# are gpui's. See src/tray/art.rs and src/thumbnail/.
+resvg = { version = "0.46", default-features = false, features = ["text", "system-fonts"] }
 # The system's own icon for a file, which arrives as TIFF and is drawn as a gpui RenderImage.
 # The version is gpui's own: a RenderImage is built from this crate's Frame, so the two have to
-# agree on what a Frame is. See src/thumbnail.rs.
+# agree on what a Frame is. See src/thumbnail/.
 image = { version = "0.25", default-features = false, features = ["tiff", "png", "jpeg", "gif", "webp", "bmp"] }
+# A Markdown file's first blocks, for its card in the grid. See src/thumbnail/document.rs.
+pulldown-cmark = { version = "0.13", default-features = false }
+# A Word or OpenDocument file's first paragraphs, read out of the XML inside it for its card. The
+# version is the one already in the tree. See src/thumbnail/document.rs.
+quick-xml = "0.41"
 # What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
 # zip is also what the Windows build comes in, and tar with flate2 the Linux one; see
 # src/update/install.rs.
@@ -129,11 +135,11 @@ self-replace = "1"
 
 # What asks macOS for the system's icon for a file. objc2-app-kit's version follows gpui's, which
 # is what draws the result; two versions of one binding in a process is two NSImage types. See
-# src/thumbnail.rs.
+# src/thumbnail/.
 [target.'cfg(target_os = "macos")'.dependencies]
 # The base of the two bindings below -- `alloc` for a class comes from its trait. objc2-app-kit
 # and objc2-foundation both sit on this exact version, and a second copy of it in the tree would
-# be a second set of class types. See src/thumbnail.rs.
+# be a second set of class types. See src/thumbnail/.
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
 	"std",

@@ -46,8 +46,8 @@ The list draws three ways and a segmented control at the toolbar's right end pic
 | View       | A row is                                                            | For                       |
 | ---------- | ------------------------------------------------------------------- | ------------------------- |
 | Detailed   | a table row: type, name, size, progress with percent, speed, status | the default; shows it all |
-| Thumbnails | one 36px line: the system's own icon for the file, name, size       | finding a file by eye     |
-| Grid       | a card with a large type icon, or a picture of the file             | scanning by type          |
+| Thumbnails | two lines by a picture: name and status, then where it stands        | finding a file by eye     |
+| Grid       | a card showing the file: picture, page, source, contents or icon    | scanning by type          |
 
 They are offered in the order a row turns from words into a picture -- the whole table, a row
 with a picture on it, then cards -- and the glyph on each button says which: a table, lines with
@@ -90,18 +90,52 @@ ask: an icon is a set of representations, and the call that hands over all of th
 `TIFFRepresentation` -- encodes thirty-two of them, 16 square to 1024, into one uncompressed
 file of 35 MB, to be decoded again and scaled down to 128. Two hundred rows of that took twelve
 milliseconds and seventy-five megabytes each, and the window's memory went to gigabytes for a
-list of icons that come to 64 KB apiece. See src/thumbnail.rs.
+list of icons that come to 64 KB apiece. See src/thumbnail/.
 Where there is none to be had, and on the systems this is not written for yet, the category's own
 glyph stands in; that is not a failure, since the glyph is what this application draws when it is
 drawing for itself. The pictures are cached by path for the run and asked for again when a
 download finishes, the file on disk no longer being what it was.
 
-**A card in the grid shows the file where it can.** A picture is decoded and drawn filling the
-card, keeping its shape -- a picture with bars around it reads as a picture of a picture, and a
-card is a glance rather than a viewer. A text file shows its first six lines as they are, which
-is the best icon a text file has: a paragraph of real words tells a licence from a changelog
-from a stack trace, and no glyph does. Anything else falls back to the system's icon, and then to
-the category's glyph.
+**The middle view is a row of two lines.** Fifty points high, by a thirty-point square: a
+picture file shows itself cropped to the square, anything else the system's icon, and the
+category's glyph where there is none -- the square is kept whatever fills it, so every row's words
+start at one edge. The first line is the name and the status in its color; the second is what
+matters for where the download stands, with the percentage or the date it was added at its right
+end: received of size, speed and time left while it moves, received of size while paused, waiting
+for a place while queued, the engine's words in the failure color while failed, and once done the
+size and the host it came from -- or, for a file the folder holds with no address, the category it
+is filed under. A download part way has its bar under the two lines. One line of name and size
+was the view before, and it said less than the table beside it while taking the same room. See
+src/ui/list/row.rs.
+
+**A card shows the file.** Its face is 92 points high, and holds:
+
+- **A picture**, decoded and scaled once to 256. A picture of the face's own shape, within six
+  percent, fills it, a crop that small taking nothing anybody would miss; any other shape is drawn
+  whole inside the face less six points all round, so the sides it would touch stand a little off
+  the edge and the other two keep what its shape leaves. Filling every face was the rule before,
+  and a crop cut away the part that said which file it was; fitting against the edges left a
+  picture pressed flat to two sides of its frame. The picture is rounded itself, since gpui clips a
+  child to a rectangle and the face's corners would not cut it. An SVG is drawn with resvg, with
+  the system's fonts loaded the first time one is.
+- **A document's opening as a page**: Markdown parsed with pulldown-cmark, a Word or OpenDocument
+  file's paragraphs read out of the XML inside its zip -- headings larger and in the text's color,
+  paragraphs wrapped, items bulleted, quotes ruled, code fixed-width. Each block is laid at its
+  own height and cut by the face, never squeezed to fit it. See src/thumbnail/document.rs.
+- **Source, fixed-width**, nine lines with their indentation. An HTML page is re-indented by its
+  nesting first, since a page arrives on one line as often as not: tags are re-indented rather
+  than a document parsed, so a head cut anywhere still reads, and an element holding a short run
+  of text keeps it on its line. A firmware image -- `.bin`, `.rom`, `.fw` -- is its first bytes as
+  a hex dump with offsets, which is what a hex editor would be opened to see; an Intel HEX or
+  S-record file is text and shows as it is. See src/thumbnail/markup.rs.
+- **A text file's first six lines** as they are, the best icon a text file has.
+- **An archive's contents**, once the index has read it: how many names at the top and their total
+  size, then the names, folders first and marked as folders, each with its size, and how many more.
+  A single wrapping folder is looked through, as the categories look through it. Nothing is opened
+  for this; the face reads what the index already holds.
+- Otherwise the system's icon, and then the category's glyph.
+
+See src/ui/list/card.rs.
 
 Which is which is decided by the extension rather than by opening the file: opening every file in
 a folder to find out what it is would be the very thing the allowance exists to prevent, and a
@@ -806,8 +840,8 @@ still there to see. Last, the state at the left -- with the reason while it has 
 actions at the right, as icons, each with its words in a tooltip, in three groups a hairline apart:
 
 - **Pause or Resume**, one button that is whichever applies; a waiting download pauses too.
-- **Its turn.** Running with another waiting, *let the next one go first*: it goes to the back of
-  the queue and the next starts. Waiting, paused or failed, *start now*: it starts ahead of the
+- **Its turn.** Running with another waiting, _let the next one go first_: it goes to the back of
+  the queue and the next starts. Waiting, paused or failed, _start now_: it starts ahead of the
   queue, and with every place taken one running download waits again at the front, which one being
   Settings' "Making room" -- the one started last, the default, the one with most time left, or the
   slowest.

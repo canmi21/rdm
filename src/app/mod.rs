@@ -133,7 +133,7 @@ pub struct Rdm {
 	pub(crate) opened: std::collections::HashSet<std::path::PathBuf>,
 	/// The system's picture for each file it has been asked about. Interior mutability because
 	/// drawing is the only thing that asks and drawing has the window by shared reference; the
-	/// alternative is asking the window server once a row a frame. See src/thumbnail.rs.
+	/// alternative is asking the window server once a row a frame. See src/thumbnail/.
 	pub(crate) thumbnails: std::cell::RefCell<crate::thumbnail::Thumbnails>,
 	/// Where the sidebar's categories are scrolled to. Read while drawing, to know whether there
 	/// is anything above or below the fold worth telling the reader about. See src/ui/sidebar.rs.
@@ -493,7 +493,7 @@ impl Render for Rdm {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.palette = theme::palette(window.is_window_active() || !self.preferences.dim_inactive);
 		self.viewport = window.viewport_size();
-		// This frame's allowance of system pictures. See src/thumbnail.rs.
+		// This frame's allowance of system pictures. See src/thumbnail/.
 		self.thumbnails.borrow_mut().begin_frame();
 		// A field that closed took the focus with it; the root takes it back so keys still land.
 		if window.focused(cx).is_none() {

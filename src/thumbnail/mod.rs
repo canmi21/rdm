@@ -16,6 +16,11 @@ use std::sync::Arc;
 
 use gpui::RenderImage;
 
+pub mod document;
+mod markup;
+
+pub use document::{Block, Kind as BlockKind};
+
 /// How big the system is asked to draw. One size for every use: the thumbnails row draws it at
 /// twenty points and the grid at forty-eight, and asking for the larger and letting the smaller
 /// scale down is one trip to the system rather than two.
@@ -33,6 +38,11 @@ pub enum Preview {
 	/// The first few lines of it, as they are. A text file's contents are its own best icon, and
 	/// a page of real words says more about what a file is than any glyph.
 	Lines(Vec<String>),
+	/// The first lines of source, in a fixed-width face with their indentation: an HTML page
+	/// indented by its nesting first.
+	Code(Vec<String>),
+	/// A document's first blocks, drawn as a page: Markdown, Word and OpenDocument.
+	Document(Vec<Block>),
 	/// The system's icon for the kind, which is what everything else falls back to.
 	Icon(Arc<RenderImage>),
 }
@@ -46,6 +56,8 @@ const BIGGEST: u64 = 32 * 1024 * 1024;
 /// to tell a licence from a changelog from a stack trace, and no more than a card can hold.
 const LINES: usize = 6;
 const COLUMNS: usize = 60;
+/// Source is set smaller than prose, so a card holds more of it.
+const CODE_LINES: usize = 9;
 
 /// The pictures asked for so far, by path. `None` is a file the system had no picture for, kept
 /// so it is not asked about again.
@@ -134,6 +146,8 @@ impl Thumbnails {
 					drawable(rgba).map(Preview::Picture)
 				}
 				Some(Made::Lines(lines)) => Some(Preview::Lines(lines)),
+				Some(Made::Code(lines)) => Some(Preview::Code(lines)),
+				Some(Made::Document(blocks)) => Some(Preview::Document(blocks)),
 				None => read(path).map(|image| Preview::Icon(Arc::new(image))),
 			},
 		};
@@ -247,6 +261,8 @@ fn read(path: &Path) -> Option<RenderImage> {
 enum Made {
 	Picture(image::RgbaImage),
 	Lines(Vec<String>),
+	Code(Vec<String>),
+	Document(Vec<Block>),
 }
 
 /// A picture of the file, or the first lines of it, or nothing. Extension-led rather than
@@ -263,12 +279,30 @@ fn read_preview(path: &Path) -> Option<Made> {
 	if PICTURES.contains(&extension.as_str()) {
 		return picture(path);
 	}
-	const TEXT: [&str; 26] = [
-		"txt", "text", "md", "markdown", "rst", "log", "nfo", "json", "toml", "yaml", "yml", "xml",
-		"csv", "tsv", "rs", "py", "js", "ts", "go", "c", "h", "sh", "sql", "html", "css", "ini",
+	match extension.as_str() {
+		"svg" => return vector(path),
+		"bin" | "rom" | "fw" => return dump(path),
+		"md" | "markdown" => return document::markdown(path).map(Made::Document),
+		"docx" | "docm" => return document::word(path).map(Made::Document),
+		"odt" => return document::open_document(path).map(Made::Document),
+		"html" | "htm" | "xhtml" => {
+			let head = head(path, CODE_LINES * COLUMNS * 8)?;
+			let lines = markup::pretty(&head, CODE_LINES);
+			return (!lines.is_empty()).then_some(Made::Code(lines));
+		}
+		_ => {}
+	}
+	const CODE: [&str; 21] = [
+		"json", "toml", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "c", "h", "sh", "sql",
+		"css", "ini", "xsl", "hex", "ihex", "srec", "s19",
 	];
+	if CODE.contains(&extension.as_str()) {
+		return lines(path, CODE_LINES)
+			.map(|lines| Made::Code(lines.into_iter().map(|line| line.replace('\t', "  ")).collect()));
+	}
+	const TEXT: [&str; 9] = ["txt", "text", "rst", "log", "nfo", "csv", "tsv", "srt", "diz"];
 	if TEXT.contains(&extension.as_str()) {
-		return lines(path);
+		return lines(path, LINES).map(Made::Lines);
 	}
 	None
 }
@@ -279,6 +313,60 @@ fn picture(path: &Path) -> Option<Made> {
 	let decoded = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
 	let scaled = decoded.resize(CARD, CARD, image::imageops::FilterType::Triangle).into_rgba8();
 	Some(Made::Picture(scaled))
+}
+
+/// A binary's first bytes as a hex dump, eight a line with their offset and what of them is
+/// printable: firmware and images are recognized by their first bytes, a magic number or a
+/// vector table, which is what somebody would open a hex editor to look at.
+fn dump(path: &Path) -> Option<Made> {
+	use std::io::Read;
+	let mut head = vec![0; CODE_LINES * 8];
+	let read = std::fs::File::open(path).ok()?.read(&mut head).ok()?;
+	head.truncate(read);
+	let lines: Vec<String> = head
+		.chunks(8)
+		.enumerate()
+		.map(|(at, bytes)| {
+			let hex: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
+			let text: String = bytes
+				.iter()
+				.map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' })
+				.collect();
+			format!("{:04X}  {:<23}  {text}", at * 8, hex.join(" "))
+		})
+		.collect();
+	(!lines.is_empty()).then_some(Made::Code(lines))
+}
+
+/// An SVG drawn to fit a card, keeping its shape, with resvg: the picture it describes rather than
+/// the markup that describes it.
+fn vector(path: &Path) -> Option<Made> {
+	use resvg::{tiny_skia, usvg};
+	// The system's fonts, loaded once, for an SVG with text in it: a tenth of a second the first
+	// time a card needs them, and nothing for a run that shows no SVG.
+	static OPTIONS: std::sync::OnceLock<usvg::Options<'static>> = std::sync::OnceLock::new();
+	let options = OPTIONS.get_or_init(|| {
+		let mut options = usvg::Options::default();
+		options.fontdb_mut().load_system_fonts();
+		options
+	});
+	let tree = usvg::Tree::from_data(&std::fs::read(path).ok()?, options).ok()?;
+	let size = tree.size();
+	let scale = (CARD as f32 / size.width()).min(CARD as f32 / size.height());
+	let (width, height) =
+		((size.width() * scale).ceil() as u32, (size.height() * scale).ceil() as u32);
+	let mut pixmap = tiny_skia::Pixmap::new(width.max(1), height.max(1))?;
+	resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+	// tiny-skia keeps its pixels premultiplied, and a picture is straight.
+	let rgba: Vec<u8> = pixmap
+		.pixels()
+		.iter()
+		.flat_map(|p| {
+			let c = p.demultiply();
+			[c.red(), c.green(), c.blue(), c.alpha()]
+		})
+		.collect();
+	image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), rgba).map(Made::Picture)
 }
 
 /// A made picture as gpui takes it. The decoder gives RGBA and the renderer wants BGRA, which is
@@ -309,19 +397,23 @@ pub fn trim(folder: &Path) {
 	}
 }
 
-/// The first lines of a text file, as they are. Read as bytes and lossily converted: a file that
-/// is not UTF-8 still has readable words in it, and a card that showed nothing because of one
-/// stray byte would be a card that lied about the file.
-fn lines(path: &Path) -> Option<Made> {
+/// The first bytes of a file as text. Read as bytes and lossily converted: a file that is not
+/// UTF-8 still has readable words in it, and a card that showed nothing because of one stray byte
+/// would be a card that lied about the file.
+fn head(path: &Path, bytes: usize) -> Option<String> {
 	use std::io::Read;
-	let mut head = vec![0; LINES * COLUMNS * 4];
-	let mut file = std::fs::File::open(path).ok()?;
-	let read = file.read(&mut head).ok()?;
+	let mut head = vec![0; bytes];
+	let read = std::fs::File::open(path).ok()?.read(&mut head).ok()?;
 	head.truncate(read);
-	let text = String::from_utf8_lossy(&head);
+	Some(String::from_utf8_lossy(&head).into_owned())
+}
+
+/// The first `most` lines of a text file, as they are.
+fn lines(path: &Path, most: usize) -> Option<Vec<String>> {
+	let text = head(path, most * COLUMNS * 4)?;
 	let lines: Vec<String> =
-		text.lines().take(LINES).map(|line| line.chars().take(COLUMNS).collect::<String>()).collect();
-	(!lines.iter().all(|line| line.trim().is_empty())).then_some(Made::Lines(lines))
+		text.lines().take(most).map(|line| line.chars().take(COLUMNS).collect::<String>()).collect();
+	(!lines.iter().all(|line| line.trim().is_empty())).then_some(lines)
 }
 
 /// Windows keeps one too, and asking for it is `SHGetFileInfo`; until that is written the

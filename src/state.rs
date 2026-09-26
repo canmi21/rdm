@@ -26,7 +26,7 @@ pub struct Paths {
 	/// `thumbnails/`: one picture per file that had one made, named by a hash of the file's path.
 	/// A picture is a blob and the database is for records, so these are files: a stale one is a
 	/// file to delete, and the folder can be thrown away whole without the application minding.
-	/// See src/thumbnail.rs.
+	/// See src/thumbnail/.
 	pub thumbnails: PathBuf,
 	/// Where downloads land: the platform's Downloads folder as the user has it -- the XDG
 	/// user-dirs entry on Linux, the known folder on Windows, `~/Downloads` on macOS, which
