@@ -74,8 +74,8 @@ one moment.
 
 Nothing partial is kept: the files are written to a folder beside the layer, which then takes the
 layer's place, so a sync that fails half way leaves the last one standing. A listing with no rules,
-more than five hundred, or a path reaching outside `rules/` is refused. The rules are reloaded once
-the new layer is in place, and the rules window says when the last sync was, from where, or why it
+more than five hundred, or a path reaching outside `rules/` is refused. While a sync runs the main window's status bar says so among its other activities. The rules are
+reloaded once the new layer is in place, and the rules window says when the last sync was, from where, or why it
 failed, beside Sync now.
 
 ## A mirror is used only with a checksum from the source
@@ -149,7 +149,8 @@ written.
 
 ## A window for the rules
 
-A window of its own, opened from Settings' Transfers under Sources, is **a table drawn as the main
+A window of its own, opened from the main window's status bar -- the scroll beside Settings -- or
+from Settings' Transfers under Sources, is **a table drawn as the main
 window's detailed list is**: column titles over dense rows of the same height, and a row selected by
 a press. The columns are the name, what it matches -- the template, or a family's prefixes -- what it
 provides, the layer it came from, and its priority; a row's tooltip holds what the columns cut short.

@@ -67,6 +67,8 @@ pub enum Icon {
 	Check,
 	/// The rules' sync: a cloud to fetch from, and while it fetches the cloud with its arrows turning
 	/// inside it, drawn as two files so the arrows turn alone. See spec/icons.md.
+	/// The rules window, from the main window's status bar.
+	ScrollText,
 	CloudDownload,
 	CloudCheck,
 	CloudAlert,
@@ -107,6 +109,7 @@ impl Icon {
 			Icon::ChevronsRightLeft => "lucide/chevrons-right-left.svg",
 			Icon::Copy => "lucide/copy.svg",
 			Icon::Check => "lucide/check.svg",
+			Icon::ScrollText => "lucide/scroll-text.svg",
 			Icon::CloudDownload => "lucide/cloud-download.svg",
 			Icon::CloudCheck => "lucide/cloud-check.svg",
 			Icon::CloudAlert => "lucide/cloud-alert.svg",

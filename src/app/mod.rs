@@ -759,6 +759,9 @@ impl Rdm {
 		if self.updates.checking {
 			list.push("Checking for updates".to_owned());
 		}
+		if self.rules_sync.running {
+			list.push("Syncing the rules".to_owned());
+		}
 		match self.updates.stage {
 			updates::Stage::Downloading { .. } => list.push(format!("Getting build {build}")),
 			updates::Stage::Installing => list.push(format!("Installing build {build}")),

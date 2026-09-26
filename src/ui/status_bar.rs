@@ -127,6 +127,14 @@ impl Rdm {
 					.children(self.view_switch(cx))
 					.child(icon_button(
 						p,
+						"rules",
+						Icon::ScrollText,
+						"Rules",
+						true,
+						cx.listener(|this, _, _, cx| this.open_rules(cx)),
+					))
+					.child(icon_button(
+						p,
 						"settings",
 						Icon::Settings,
 						"Settings",
