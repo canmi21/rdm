@@ -205,7 +205,18 @@ impl Render for RulesWindow {
 				)
 			});
 
-		let (reload, open) = (self.rdm.clone(), self.rdm.clone());
+		let (reload, open, sync) = (self.rdm.clone(), self.rdm.clone(), self.rdm.clone());
+		let (syncing, synced) = {
+			let rdm = self.rdm.read(cx);
+			(rdm.rules_sync.running, rdm.rules_sync.status.clone())
+		};
+		let said = match (syncing, synced) {
+			(true, _) => "Fetching the rules".to_owned(),
+			(false, Some(status)) => status,
+			(false, None) => {
+				"Ordered by priority; a moved rule keeps its place in the custom layer.".to_owned()
+			}
+		};
 		let footer = div()
 			.flex()
 			.flex_none()
@@ -217,16 +228,15 @@ impl Render for RulesWindow {
 			.border_t_1()
 			.border_color(p.border)
 			.text_xs()
-			.child(
-				div()
-					.text_color(p.muted)
-					.child("Ordered by priority; a moved rule keeps its place in the custom layer."),
-			)
+			.child(div().min_w_0().truncate().text_color(p.muted).child(said))
 			.child(
 				div()
 					.flex()
 					.flex_none()
 					.gap_1()
+					.child(button(p, "rules-sync", Icon::Download, "Sync now", !syncing, move |_, _, cx| {
+						sync.update(cx, |rdm, cx| rdm.sync_rules(cx))
+					}))
 					.child(button(p, "rules-reload", Icon::RotateCcw, "Reload", true, move |_, _, cx| {
 						reload.update(cx, |rdm, cx| rdm.reload_rules(cx))
 					}))

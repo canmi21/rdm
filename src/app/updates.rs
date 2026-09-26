@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-use gpui::{Context, IntoElement, Role, Task, Window, div, prelude::*, px};
+use gpui::{Context, IntoElement, Role, Task, div, prelude::*, px};
 
 use crate::app::Rdm;
 use crate::download::format_bytes;
@@ -119,34 +119,6 @@ struct Counted {
 type Action = (&'static str, fn(&mut Rdm, &mut Context<Rdm>));
 
 impl Rdm {
-	/// Starts the loop: a check now, then one every `update::EVERY` for as long as the window
-	/// lives, each skipped while the setting is off. Returned so the caller keeps the task
-	/// alive.
-	pub(crate) fn start_update_checks(
-		&mut self,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) -> Task<()> {
-		self.updates.active = window.is_window_active();
-		cx.observe_window_activation(window, |this, window, _| {
-			this.updates.active = window.is_window_active();
-		})
-		.detach();
-		cx.spawn(async move |this, cx| {
-			loop {
-				let alive = this.update(cx, |this, cx| {
-					if this.preferences.check_updates {
-						this.check_for_updates(false, cx);
-					}
-				});
-				if alive.is_err() {
-					break;
-				}
-				cx.background_executor().timer(update::EVERY).await;
-			}
-		})
-	}
-
 	/// One check, on the engine's runtime; the answer is polled back onto the window. A check
 	/// asked for while one is under way joins it; none is made while a file is on its way.
 	pub(crate) fn check_for_updates(&mut self, by_hand: bool, cx: &mut Context<Self>) {

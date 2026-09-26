@@ -310,3 +310,139 @@ fn the_user_s_order_moves_a_rule_of_any_layer_and_a_sync_s_does_not() {
 	forget(&dir, "example.org").unwrap();
 	assert_eq!(layers(read_tree(&dir)).choice_for("example.org"), None, "forgotten");
 }
+
+fn b64(bytes: &[u8]) -> String {
+	const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	let mut out = String::new();
+	for chunk in bytes.chunks(3) {
+		let n =
+			chunk.iter().enumerate().fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
+		for i in 0..4 {
+			if i <= chunk.len() {
+				out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
+			} else {
+				out.push('=');
+			}
+		}
+	}
+	out
+}
+
+/// A repository of one rule file, `a.toml`, as GitHub and jsDelivr would list and serve it.
+struct Repo {
+	_servers: Vec<TestServer>,
+	sources: super::sync::Sources,
+}
+
+fn repo(github_tree: Options, listed_hash: Option<String>) -> Repo {
+	use sha2::Digest;
+	let file = b"[[entry]]\nid = \"a\"\nmatch = \"https://a.test/{file}\"\n".to_vec();
+	let hash = listed_hash.unwrap_or_else(|| b64(&sha2::Sha256::digest(&file)));
+	// Padded past one chunk, so a slow server is slow before the list is whole.
+	let tree = format!(
+		"{{\"tree\":[{{\"path\":\"rules\",\"type\":\"tree\"}},{{\"path\":\"rules/a.toml\",\"type\":\"blob\"}},{{\"path\":\"README.md\",\"type\":\"blob\"}}]}}{}",
+		" ".repeat(9000)
+	);
+	let list = format!(
+		"{{\"files\":[{{\"name\":\"/rules/a.toml\",\"hash\":\"{hash}\"}},{{\"name\":\"/src/main.rs\",\"hash\":\"x\"}}]}}"
+	);
+	let github = TestServer::start(tree.into_bytes(), github_tree);
+	let raw = TestServer::start(file.clone(), Options::default());
+	let jsdelivr = TestServer::start(list.into_bytes(), Options::default());
+	let cdn = TestServer::start(file, Options::default());
+	let sources = super::sync::Sources {
+		github_tree: github.url("/tree").to_string(),
+		github_raw: raw.url("/").to_string(),
+		jsdelivr_list: jsdelivr.url("/list").to_string(),
+		jsdelivr_raw: cdn.url("/").to_string(),
+		patience: std::time::Duration::from_millis(500),
+	};
+	Repo { _servers: vec![github, raw, jsdelivr, cdn], sources }
+}
+
+#[tokio::test]
+async fn the_rules_come_from_github_when_it_answers_and_from_jsdelivr_when_it_does_not() {
+	let client = reqwest::Client::new();
+	let fine = repo(Options::default(), None);
+	let fetched = super::sync::fetch(client.clone(), fine.sources.clone()).await.unwrap();
+	assert_eq!(fetched.from, "GitHub");
+	assert_eq!(
+		fetched.files.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
+		["a.toml"],
+		"only rules/*.toml"
+	);
+	let down = repo(Options { status: Some(503), ..Options::default() }, None);
+	assert_eq!(
+		super::sync::fetch(client.clone(), down.sources.clone()).await.unwrap().from,
+		"jsDelivr"
+	);
+	let slow = repo(
+		Options { delay_per_chunk: std::time::Duration::from_secs(3), ..Options::default() },
+		None,
+	);
+	let started = std::time::Instant::now();
+	assert_eq!(
+		super::sync::fetch(client.clone(), slow.sources.clone()).await.unwrap().from,
+		"jsDelivr"
+	);
+	assert!(started.elapsed() < std::time::Duration::from_secs(3), "GitHub was not waited out");
+	let wrong = repo(Options { status: Some(503), ..Options::default() }, Some(b64(&[0u8; 32])));
+	let refused = super::sync::fetch(client, wrong.sources.clone()).await.unwrap_err();
+	assert!(refused.contains("not what jsDelivr listed"), "{refused}");
+}
+
+#[test]
+fn a_sync_replaces_the_synced_layer_whole() {
+	let dir = scratch("sync-apply");
+	let synced = dir.join("rules");
+	std::fs::create_dir_all(synced.join("old")).unwrap();
+	std::fs::write(synced.join("old/stale.toml"), "x").unwrap();
+	let fetched = super::sync::Fetched {
+		files: vec![("code/github.toml".into(), b"a".to_vec()), ("npm.toml".into(), b"b".to_vec())],
+		from: "GitHub",
+	};
+	super::sync::apply(&synced, &fetched).unwrap();
+	let names: Vec<String> = read_tree(&synced).into_iter().map(|(p, _)| p).collect();
+	assert_eq!(names, ["code/github.toml", "npm.toml"], "what the repository has, and nothing else");
+	assert!(!dir.join("rules.incoming").exists());
+}
+
+#[tokio::test]
+#[ignore = "reaches GitHub and jsDelivr"]
+async fn the_repository_s_rules_arrive_and_read() {
+	let client = crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap();
+	let fetched = super::sync::fetch(client, super::sync::Sources::repository()).await.unwrap();
+	let texts: Texts = fetched
+		.files
+		.iter()
+		.map(|(p, b)| (p.clone(), String::from_utf8_lossy(b).into_owned()))
+		.collect();
+	let compiled = compile(&[(Layer::Synced, texts)]);
+	assert!(!compiled.entries.is_empty() && !compiled.families.is_empty(), "from {}", fetched.from);
+}
+
+#[test]
+fn a_rule_of_the_same_id_in_a_higher_layer_replaces_the_lower_one() {
+	let rule = |mirror: &str| {
+		format!(
+			"[[entry]]\nid = \"same\"\nmatch = \"https://x.test/{{file}}\"\nmirror = [\"{mirror}\"]\n"
+		)
+	};
+	let compiled = compile(&[
+		(Layer::BuiltIn, vec![("a.toml".into(), rule("https://built-in.test/{file}"))]),
+		(Layer::Synced, vec![("a.toml".into(), rule("https://synced.test/{file}"))]),
+	]);
+	assert_eq!(compiled.entries.len(), 1, "one rule to an id");
+	assert_eq!(compiled.entries[0].layer, Layer::Synced);
+	let built_in_and_repository =
+		compile(&[(Layer::BuiltIn, built_in()), (Layer::Synced, repository_rules())]);
+	let ids: Vec<&str> = built_in_and_repository.entries.iter().map(|e| e.id.as_str()).collect();
+	let mut unique = ids.clone();
+	unique.dedup();
+	assert_eq!(
+		ids.len(),
+		compile(&[(Layer::Synced, repository_rules())]).entries.len(),
+		"the synced copy stands in for the built-in one"
+	);
+	assert_eq!(ids.len(), unique.len());
+}

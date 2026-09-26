@@ -160,6 +160,20 @@ so does any name that is not the old one exactly, and so does Linux, whose deskt
 names the binary and would break with it. The constant is a fact about what was published
 and does not move.
 
+## Background work
+
+What the application does on its own while it runs -- the update check above and the rules sync
+([rules.md](rules.md)) -- runs on one loop, `src/app/background.rs`, which wakes every thirty
+seconds and runs whatever is due: the check every five minutes, the sync at start and every six
+hours after, both due at launch. The update check had a loop of its own until there were two jobs;
+one loop is where the rule below is kept once.
+
+**Nothing runs while a download is crawling**: some download running, and all that are running
+together under a megabyte a second. A request on a connection moving kilobytes a second takes from
+the download sharing it, and the user would see the download slow for a check they did not ask for.
+Work held back is not skipped: it stays due and runs at the first tick the downloads are either done
+or moving at megabytes a second. A check or a sync asked for by hand is not held back.
+
 ## The application replaces itself, by a rename
 
 `Install` fetches the build's file for where this binary runs from -- `update::install::place`

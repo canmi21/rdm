@@ -23,6 +23,7 @@ use crate::ui::icon::Icon;
 use crate::ui::settings_sheet::SettingsSheet;
 use crate::ui::theme::{self, Palette};
 
+mod background;
 mod categories;
 mod indexing;
 mod network;
@@ -338,6 +339,10 @@ pub struct Rdm {
 	pub(crate) notice_windows: Vec<WindowHandle<crate::ui::notice_window::NoticeWindow>>,
 	/// The update check: what it found, and the card and notification that follow.
 	pub(crate) updates: updates::Updates,
+	/// When the update check and the rules sync are next due, and where the last sync stands. See
+	/// src/app/background.rs.
+	pub(crate) schedule: background::Schedule,
+	pub(crate) rules_sync: background::RulesSync,
 	_checks: Option<Task<()>>,
 }
 
@@ -463,6 +468,8 @@ impl Rdm {
 			notices: Vec::new(),
 			notice_windows: Vec::new(),
 			updates: updates::Updates::default(),
+			schedule: background::Schedule::new(std::time::Instant::now()),
+			rules_sync: background::RulesSync::default(),
 			_checks: None,
 		};
 		this.engine.set_speed_limit(this.preferences.speed_limit);
@@ -491,7 +498,7 @@ impl Rdm {
 		// The headless tests have no network to ask and no build number to compare; a test
 		// that wants a manifest hands one in.
 		if !cfg!(test) {
-			this._checks = Some(this.start_update_checks(window, cx));
+			this._checks = Some(this.start_background(window, cx));
 		}
 		// A numbered build that an older one left under the old name takes the new one, once,
 		// and every numbered build records itself so the next knows what it came after.

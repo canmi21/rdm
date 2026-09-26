@@ -5,6 +5,7 @@
 
 pub mod checksum;
 pub mod resolve;
+pub mod sync;
 pub mod template;
 
 use std::path::{Path, PathBuf};
@@ -228,6 +229,10 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 			}
 		}
 	}
+	// One rule to an id: the copy in the highest layer, so a synced rule replaces the built-in one it
+	// was built from, and a user's rule of the same id replaces either.
+	entries = keep_highest(entries, |e| (e.id.clone(), e.layer));
+	families = keep_highest(families, |f| (f.id.clone(), f.layer));
 	for order in &orders {
 		for (_, entry) in entries.iter_mut().filter(|(_, e)| e.id == order.id) {
 			entry.priority = order.priority;
@@ -252,6 +257,23 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 		}
 	}
 	compiled
+}
+
+/// Each id's rule from the highest layer that has one, in the order they came.
+fn keep_highest<T>(rules: Vec<(usize, T)>, key: impl Fn(&T) -> (String, Layer)) -> Vec<(usize, T)> {
+	let mut best: std::collections::HashMap<String, Layer> = std::collections::HashMap::new();
+	for (_, rule) in &rules {
+		let (id, layer) = key(rule);
+		let top = best.entry(id).or_insert(layer);
+		*top = (*top).max(layer);
+	}
+	rules
+		.into_iter()
+		.filter(|(_, rule)| {
+			let (id, layer) = key(rule);
+			best.get(&id) == Some(&layer)
+		})
+		.collect()
 }
 
 /// All three layers read from their places and merged, and the result written out as JSON.

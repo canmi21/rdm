@@ -43,6 +43,12 @@ The application reads three layers and **merges them at start into one compiled 
 3. **Custom.** The user's own, in a `custom` folder beside it, which the application never deletes
    from. It writes there only for something the user did -- "Never ask for this source" below.
 
+**A rule's id is its identity across layers**: where two layers hold a rule of the same id, the
+higher layer's is the one kept -- custom over synced over built in -- so the synced copy of a
+built-in rule replaces it rather than standing beside it, and a user replaces a rule by writing one
+of the same id. The built-in layer is the floor until a sync arrives, and was listed twice beside it
+until this.
+
 Rules carry a priority, and the merge orders every rule of every layer by it, so a user's rule can
 be placed anywhere among the others rather than only before or after all of them. **Where several
 rules match one address, the one with the highest priority is used whole** and the rest not at all:
@@ -53,6 +59,24 @@ The synced layer is not signed, for now. What a tampered rule can do is limited 
 a mirror is only used with a checksum from the source, and the list of mirrors trusted to answer
 for a source cannot be changed by a sync, so the worst a changed rule does is send a download to a
 mirror whose bytes then fail the check.
+
+## The synced layer is fetched whole, from GitHub or jsDelivr
+
+At start and every six hours after -- background work, held back while a download crawls, see
+[release.md](release.md), "Background work" -- the repository's `rules/` is fetched into the synced
+layer. **GitHub and jsDelivr are asked for the list at once**: GitHub's recursive tree of `main`
+and jsDelivr's flat listing of the same branch. GitHub is used when its list arrives within eight
+seconds and every file then comes from `raw.githubusercontent.com`; when its list is late or wrong,
+or any file fails to come, the whole sync goes to jsDelivr instead, whose listing gives each file's
+SHA-256, and a file that does not match it fails the sync. The two are asked together so a slow
+GitHub costs its eight seconds and no more, and one source serves a whole sync so its files are of
+one moment.
+
+Nothing partial is kept: the files are written to a folder beside the layer, which then takes the
+layer's place, so a sync that fails half way leaves the last one standing. A listing with no rules,
+more than five hundred, or a path reaching outside `rules/` is refused. The rules are reloaded once
+the new layer is in place, and the rules window says when the last sync was, from where, or why it
+failed, beside Sync now.
 
 ## A mirror is used only with a checksum from the source
 
