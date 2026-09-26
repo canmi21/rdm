@@ -121,6 +121,12 @@ src/ui/list/row.rs.
   macOS by the system's own renderer -- an NSImage of a PDF is its first page, drawn by
   CoreGraphics, so the drawing code the icons use serves it and nothing is added; on Windows and
   Linux a PDF keeps the system's icon, which was chosen over bundling pdfium or a Rust renderer.
+  A Word, Excel or PowerPoint file, and a Pages, Numbers or Keynote one, is its first page as
+  QuickLook draws it on macOS -- the service Finder's own thumbnails come from, and the one thing
+  that renders those formats faithfully without a copy of the applications. It answers later, on
+  a queue of its own: the card shows its glyph meanwhile, the answer waits until the window's tick
+  collects it and is kept in the folder like any picture, and a file QuickLook has no page for is
+  read here as it was before -- a Word file's paragraphs, or the system's icon.
 - **A document's opening as a page**: Markdown parsed with pulldown-cmark, a Word or OpenDocument
   file's paragraphs read out of the XML inside its zip -- headings larger and in the text's color,
   paragraphs wrapped, items bulleted, quotes ruled, code fixed-width. Each block is laid at its

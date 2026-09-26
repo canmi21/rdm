@@ -90,7 +90,8 @@ impl Rdm {
 
 	/// Every event the engine has sent since the last look, applied to the rows.
 	pub(crate) fn pump_events(&mut self, cx: &mut Context<Self>) {
-		let mut changed = false;
+		// First pages the system has drawn since the last tick. See src/thumbnail/first_page.rs.
+		let mut changed = self.thumbnails.borrow_mut().collect();
 		while let Ok(event) = self.events.try_recv() {
 			self.apply(event, cx);
 			changed = true;

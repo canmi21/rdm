@@ -4352,6 +4352,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-quick-look-thumbnailing"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac8e00da1ca87ffe3ea8d20981026f013df91072a140432f0f88da9a356d9b3c"
+dependencies = [
+ "bitflags 2.13.2",
+ "block2 0.6.2",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
 name = "objc2-screen-capture-kit"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5170,6 +5184,7 @@ name = "rdm"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "block2 0.6.2",
  "bytes",
  "bzip2",
  "chrono",
@@ -5191,7 +5206,9 @@ dependencies = [
  "notify-rust",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
  "objc2-foundation 0.3.2",
+ "objc2-quick-look-thumbnailing",
  "percent-encoding",
  "pulldown-cmark",
  "quick-xml",

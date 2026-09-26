@@ -17,6 +17,7 @@ use std::sync::Arc;
 use gpui::RenderImage;
 
 pub mod document;
+mod first_page;
 mod markup;
 mod model;
 
@@ -87,6 +88,10 @@ pub struct Thumbnails {
 	/// what asks for another frame: the rest of the pictures are waiting in it.
 	budget: u32,
 	starved: bool,
+	/// Files whose first page the system has been asked for and has not answered, and where its
+	/// answers wait. See first_page.rs.
+	asking: std::collections::HashSet<PathBuf>,
+	answers: first_page::Answers,
 }
 
 impl Thumbnails {
@@ -134,11 +139,22 @@ impl Thumbnails {
 		if let Some(known) = self.previews.get(path) {
 			return known.clone();
 		}
+		if self.asking.contains(path) {
+			return None;
+		}
 		if self.budget == 0 {
 			self.starved = true;
 			return None;
 		}
 		self.budget -= 1;
+		let extension =
+			path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+		if first_page::asked(&extension) && self.remembered(path).is_none() {
+			// The answer arrives later and `collect` takes it; until then the card shows its glyph.
+			self.asking.insert(path.to_path_buf());
+			first_page::ask(path, &self.answers);
+			return None;
+		}
 		let made = match self.remembered(path) {
 			Some(picture) => Some(Preview::Picture(picture)),
 			None => match read_preview(path) {
@@ -154,6 +170,33 @@ impl Thumbnails {
 		};
 		self.previews.insert(path.to_path_buf(), made.clone());
 		made
+	}
+
+	/// The first pages the system has answered with since the last look, into the cache and the
+	/// folder; a file it had none for is read here instead, as it was before the system was asked.
+	/// True when any arrived, which is a redraw owed.
+	pub fn collect(&mut self) -> bool {
+		let arrived =
+			std::mem::take(&mut *self.answers.lock().unwrap_or_else(|held| held.into_inner()));
+		let any = !arrived.is_empty();
+		for (path, page) in arrived {
+			self.asking.remove(&path);
+			let made = match page {
+				Some(rgba) => {
+					self.keep(&path, &rgba);
+					drawable(rgba).map(Preview::Picture)
+				}
+				None => match read_preview(&path) {
+					Some(Made::Picture(rgba)) => drawable(rgba).map(Preview::Picture),
+					Some(Made::Lines(lines)) => Some(Preview::Lines(lines)),
+					Some(Made::Code(lines)) => Some(Preview::Code(lines)),
+					Some(Made::Document(blocks)) => Some(Preview::Document(blocks)),
+					None => read(&path).map(|image| Preview::Icon(Arc::new(image))),
+				},
+			};
+			self.previews.insert(path, made);
+		}
+		any
 	}
 
 	/// The picture kept for this file, if one was made before and the file has not changed since.
@@ -282,7 +325,7 @@ fn read_preview(path: &Path) -> Option<Made> {
 	}
 	match extension.as_str() {
 		"svg" => return vector(path),
-		"pdf" => return pdf(path).map(Made::Picture),
+		"pdf" => return first_page::pdf(path).map(Made::Picture),
 		"stl" | "obj" | "off" | "3mf" => return model::render(path, &extension).map(Made::Picture),
 		"bin" | "rom" | "fw" => return dump(path),
 		"md" | "markdown" => return document::markdown(path).map(Made::Document),
@@ -316,61 +359,6 @@ fn picture(path: &Path) -> Option<Made> {
 	let decoded = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
 	let scaled = decoded.resize(CARD, CARD, image::imageops::FilterType::Triangle).into_rgba8();
 	Some(Made::Picture(scaled))
-}
-
-/// A PDF's first page, white under it as paper is, scaled to fit a card. The system's own renderer
-/// draws it: an NSImage of a PDF is its first page, drawn by CoreGraphics. Elsewhere a PDF shows
-/// the system's icon, until those systems have a renderer of their own here. See spec/ui.md.
-#[cfg(target_os = "macos")]
-fn pdf(path: &Path) -> Option<image::RgbaImage> {
-	use objc2::AllocAnyThread;
-	use objc2_app_kit::{NSBitmapImageRep, NSDeviceRGBColorSpace, NSGraphicsContext, NSImage};
-	use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-
-	let page =
-		NSImage::initWithContentsOfFile(NSImage::alloc(), &NSString::from_str(path.to_str()?))?;
-	let size = page.size();
-	if size.width <= 0.0 || size.height <= 0.0 {
-		return None;
-	}
-	let scale = (f64::from(CARD) / size.width).min(f64::from(CARD) / size.height);
-	let (width, height) =
-		((size.width * scale).round().max(1.0), (size.height * scale).round().max(1.0));
-	let (w, h) = (width as isize, height as isize);
-	let rep = unsafe {
-		NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
-			NSBitmapImageRep::alloc(),
-			std::ptr::null_mut(),
-			w,
-			h,
-			8,
-			4,
-			true,
-			false,
-			NSDeviceRGBColorSpace,
-			w * 4,
-			32,
-		)?
-	};
-	let bytes = rep.bitmapData();
-	if bytes.is_null() {
-		return None;
-	}
-	let length = (w * h * 4) as usize;
-	// Paper: a page is transparent where nothing is printed, and a card is dark.
-	unsafe { std::ptr::write_bytes(bytes, 255, length) };
-	let context = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)?;
-	NSGraphicsContext::saveGraphicsState_class();
-	NSGraphicsContext::setCurrentContext(Some(&context));
-	page.drawInRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height)));
-	NSGraphicsContext::restoreGraphicsState_class();
-	let rgba = unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec();
-	image::RgbaImage::from_raw(w as u32, h as u32, rgba)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn pdf(_path: &Path) -> Option<image::RgbaImage> {
-	None
 }
 
 /// A binary's first bytes as a hex dump, eight a line with their offset and what of them is

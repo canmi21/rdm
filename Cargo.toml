@@ -156,6 +156,21 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 	"NSGraphicsContext",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSData", "NSFileManager", "NSURL", "NSError"] }
+# A Word, Excel or PowerPoint file's first page, asked of QuickLook as Finder asks it, with the
+# block its answer comes back through and the size type its request is made in. See
+# src/thumbnail/first_page.rs.
+objc2-quick-look-thumbnailing = { version = "0.3", default-features = false, features = [
+	"std",
+	"QLThumbnailGenerator",
+	"QLThumbnailGenerationRequest",
+	"QLThumbnailRepresentation",
+	"bitflags",
+	"block2",
+	"objc2-app-kit",
+	"objc2-core-foundation",
+] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }
 
 # The tray on macOS and Windows, where the menu is the system's own. Without libxdo, which only
 # the predefined edit items need. Not on Linux: it reaches gtk3 there through muda, which is not
