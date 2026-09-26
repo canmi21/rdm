@@ -150,28 +150,28 @@ written.
 ## A window for the rules
 
 A window of its own, opened from Settings' Transfers under Sources, is **a table drawn as the main
-window's detailed list is**: column titles over dense rows of the same height, a row selected by a
-press, and a status bar whose buttons act on the selected row. The columns are the name, what it
-matches -- the template, or a family's prefixes -- what it provides, the layer it came from, and its
-priority; a row's tooltip holds what the columns cut short. Tabs at its foot, over the status bar, narrow it to the rules, the
-mirror families, the authorities or the choices made in New Task, each with its count, and a tab of
-what could not be read appears only while there is something in it. The tab row is a
-little lower than the status bar under it, starts at the window's left edge, and has a dashed line
-along its top; the tabs are bare words, and the one showing is ruled solid on its sides and over
-its own stretch of the line, with no space added around it. The line over the status bar runs in
-two stretches with a gap under the tab showing, which opens into the status bar as a browser's tab
-opens into its page; each other tab draws its own stretch. Every tab keeps a clear border on the
-same three sides, so choosing another moves nothing, and the line is an element under the tabs
-rather than the row's border, which gpui paints over its children and which showed through the
-solid top. Filled pills, a solid or dashed frame on every tab, and the showing
-tab outlined as a browser outlines its own were each tried and each busier. It was a list of cards grouped
-under headings, with buttons on every row, and read as a settings page rather than as the data it
-is.
+window's detailed list is**: column titles over dense rows of the same height, and a row selected by
+a press. The columns are the name, what it matches -- the template, or a family's prefixes -- what it
+provides, the layer it came from, and its priority; a row's tooltip holds what the columns cut short.
+It was a list of cards grouped under headings, with buttons on every row, and read as a settings
+page rather than as the data it is.
 
-The status bar says how many rules there are and where the last sync stands. Its first buttons are
-the selected row's -- move up, move down, forget a choice, show the rule's file in its folder, each
-dimmed where it does not apply -- and its last the whole set's: sync now, reload from disk, open the
-custom folder. Nothing in the window is typed: a rule is written in a file.
+**Its foot is one row, the status bar's height**, with a dashed line along its top. At the left, from
+the window's edge, the tabs narrow the table to the rules, the mirror families, the authorities or
+the choices made in New Task, each with its count, and a tab of what could not be read appears only
+while there is something in it. The tabs are bare words; the one showing is ruled solid on its sides
+and over its own stretch of the dashed line, with no space added around it, and every tab keeps a
+clear border on the same three sides so choosing another moves nothing. The line is an element under
+the tabs rather than the row's border, which gpui paints over its children and which showed through
+the solid top. Filled pills, a frame on every tab, and the showing tab outlined as a browser's were
+each tried and each busier; the tabs had a row of their own over a status bar until the two were
+folded into this one.
+
+At the right are the buttons: first the selected row's -- move up, move down, forget a choice, show
+the rule's file in its folder, each dimmed where it does not apply -- then the whole set's: sync now,
+reload from disk, open the custom folder. Where the last sync stands is said by the sync button's
+tooltip, under what it does, rather than in a line of its own; the counts are on the tabs. Nothing
+in the window is typed: a rule is written in a file.
 
 A synced file naming an authority is reported only when that would have made a host one: the synced
 copy of the built-in jsDelivr file names the hosts the built-in layer already does, and was reported

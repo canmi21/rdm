@@ -11,7 +11,7 @@ use gpui::{
 use crate::app::Rdm;
 use crate::rules::{Choice, Compiled, Layer};
 use crate::ui::download_window::{Title, chrome};
-use crate::ui::icon::{Icon, icon};
+use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::icon_button;
 use crate::ui::theme::{self, Palette};
 use crate::ui::tooltip::tooltip;
@@ -24,8 +24,6 @@ const PRIORITY: f32 = 52.0;
 /// The main list's measures, so the two tables read alike.
 const HEADER_H: f32 = 24.0;
 const ROW_H: f32 = 26.0;
-/// The tab row, a little lower than the status bar under it.
-const TABS_H: f32 = 22.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
@@ -161,13 +159,6 @@ fn lines(rules: &Compiled) -> Vec<Line> {
 	out
 }
 
-/// The line along the foot of the tab row, over the status bar, drawn a stretch at a time. `out`
-/// reaches it under the clear side borders a tab keeps, which its children are placed inside of, so
-/// the stretches meet.
-fn rule(p: Palette, out: f32) -> impl IntoElement {
-	div().absolute().bottom_0().left(px(-out)).right(px(-out)).h(px(1.0)).bg(p.border)
-}
-
 fn shows(tab: Tab, kind: Kind) -> bool {
 	match tab {
 		Tab::All => kind != Kind::Problem,
@@ -206,30 +197,11 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
-		// A dashed line along the top and the tabs bare words under it; the one showing ruled solid on
-		// its sides and over its stretch of the line. The line is an element of its own under the tabs
-		// rather than the row's border, which gpui paints over the children, so the showing tab's
-		// solid top covers it; and every tab keeps a clear border on the same three sides, so the one
-		// showing takes no more room than the rest and nothing moves when another is chosen.
-		div()
-			.relative()
-			.flex()
-			.flex_none()
-			.items_center()
-			.h(px(TABS_H))
-			.text_xs()
-			.child(
-				div()
-					.absolute()
-					.top_0()
-					.left_0()
-					.right_0()
-					.h(px(1.0))
-					.border_t_1()
-					.border_dashed()
-					.border_color(p.border),
-			)
-			.children(tabs.into_iter().map(|(tab, title)| {
+		// Bare words, the one showing ruled solid on its sides and over its stretch of the foot's
+		// dashed line. Every tab keeps a clear border on the same three sides, so the one showing takes
+		// no more room than the rest and nothing moves when another is chosen.
+		div().flex().flex_none().items_center().h_full().children(tabs.into_iter().map(
+			|(tab, title)| {
 				let on = self.tab == tab;
 				div()
 					.id(SharedString::from(format!("tab:{title}")))
@@ -259,11 +231,8 @@ impl RulesWindow {
 					}))
 					.child(title)
 					.child(div().text_color(p.muted).child(count(tab).to_string()))
-					// The line over the status bar runs under every tab but the one showing, which
-					// opens into the status bar as a browser's tab opens into its page.
-					.when(!on, |s| s.child(rule(p, 1.0)))
-			}))
-			.child(div().relative().flex_1().h_full().child(rule(p, 0.0)))
+			},
+		))
 	}
 
 	fn header(p: Palette) -> impl IntoElement {
@@ -385,24 +354,43 @@ impl Render for RulesWindow {
 				)
 			});
 
-		// The status bar: what the rules are and where the last sync stands, then what acts on the
-		// selected row, then what acts on the rules as a whole.
+		// The foot, one row the status bar's height: the tabs at the left, and at the right what acts
+		// on the selected row, then what acts on the rules as a whole. Where the last sync stands is
+		// said by the sync button when the pointer rests on it; the counts are on the tabs.
 		let (syncing, synced) = {
 			let rdm = self.rdm.read(cx);
 			(rdm.rules_sync.running, rdm.rules_sync.status.clone())
 		};
-		let plural =
-			|n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
-		let counted = format!(
-			"{}, {}",
-			plural(rules.entries.len(), "rule", "rules"),
-			plural(rules.families.len(), "mirror family", "mirror families")
-		);
-		let said = match (syncing, synced) {
-			(true, _) => format!("{counted}  \u{b7}  Fetching the rules"),
-			(false, Some(status)) => format!("{counted}  \u{b7}  {status}"),
-			(false, None) => counted,
+		let sync_said = match (syncing, synced) {
+			(true, _) => "Fetching the rules".to_owned(),
+			(false, Some(status)) => format!("Sync the rules now\n{status}"),
+			(false, None) => "Sync the rules now\nNot synced since rdm started".to_owned(),
 		};
+		let sync_rdm = self.rdm.clone();
+		let sync = div()
+			.id("rules-sync")
+			.role(gpui::Role::Button)
+			.aria_label("Sync the rules now")
+			.debug_selector(|| "button:Sync the rules now".to_owned())
+			.flex()
+			.items_center()
+			.justify_center()
+			.size_5()
+			.group("rules-sync")
+			.tooltip(tooltip(sync_said))
+			.child(
+				hover_icon(
+					Icon::Download,
+					"rules-sync",
+					if syncing { p.border } else { p.muted },
+					(!syncing).then_some(p.text),
+				)
+				.size_3p5(),
+			)
+			.when(!syncing, |s| {
+				s.cursor_pointer()
+					.on_click(move |_, _, cx| sync_rdm.update(cx, |rdm, cx| rdm.sync_rules(cx)))
+			});
 		let movable = chosen.filter(|l| matches!(l.kind, Kind::Entry | Kind::Family));
 		let (up, down) =
 			(movable.is_some_and(|l| l.place > 0), movable.is_some_and(|l| l.place + 1 < l.of));
@@ -420,23 +408,36 @@ impl Render for RulesWindow {
 		let (up_rdm, down_rdm, forget_rdm, file_rdm, custom_rdm) =
 			(self.rdm.clone(), self.rdm.clone(), self.rdm.clone(), self.rdm.clone(), self.rdm.clone());
 		let (up_id, down_id) = (moved.clone(), moved);
-		let status = div()
+		let foot = div()
+			.relative()
 			.flex()
 			.flex_none()
 			.items_center()
-			.justify_between()
-			.gap_3()
 			.h(px(crate::ui::status_bar::HEIGHT))
-			.px_3()
 			.text_xs()
 			.text_color(p.muted)
-			.child(div().min_w_0().truncate().child(said))
+			// The dashed line along the top is an element under the tabs rather than the row's border,
+			// which gpui paints over the children, so the showing tab's solid top covers it.
+			.child(
+				div()
+					.absolute()
+					.top_0()
+					.left_0()
+					.right_0()
+					.h(px(1.0))
+					.border_t_1()
+					.border_dashed()
+					.border_color(p.border),
+			)
+			.child(self.tabs(&all, p, cx))
+			.child(div().flex_1())
 			.child(
 				div()
 					.flex()
 					.flex_none()
 					.items_center()
 					.gap_0p5()
+					.pr_2()
 					.child(icon_button(p, "rule-up", Icon::ChevronUp, "Move up", up, move |_, _, cx| {
 						if let Some(id) = &up_id {
 							up_rdm.update(cx, |rdm, cx| rdm.move_rule(id, family, true, cx));
@@ -479,14 +480,7 @@ impl Render for RulesWindow {
 						},
 					))
 					.child(separator())
-					.child(icon_button(
-						p,
-						"rules-sync",
-						Icon::Download,
-						"Sync the rules now",
-						!syncing,
-						on(&self.rdm, |rdm, cx| rdm.sync_rules(cx)),
-					))
+					.child(sync)
 					.child(icon_button(
 						p,
 						"rules-reload",
@@ -515,10 +509,7 @@ impl Render for RulesWindow {
 			.text_size(px(13.0))
 			.child(Self::header(p))
 			.child(table)
-			// The tabs over the status bar, the two one foot to the table, as the main window keeps its
-			// view switch at the foot beside the status.
-			.child(self.tabs(&all, p, cx))
-			.child(status);
+			.child(foot);
 		chrome(p, window, Title { before: None, name: "Rules".to_owned() }, body)
 	}
 }
