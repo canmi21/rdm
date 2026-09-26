@@ -197,8 +197,18 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
-		div().flex().flex_none().items_center().gap_1().px_3().py_2().text_xs().children(
-			tabs.into_iter().map(|(tab, title)| {
+		div()
+			.flex()
+			.flex_none()
+			.items_center()
+			.gap_1()
+			.px_3()
+			.pt_1p5()
+			.pb_1()
+			.border_t_1()
+			.border_color(p.border)
+			.text_xs()
+			.children(tabs.into_iter().map(|(tab, title)| {
 				let on = self.tab == tab;
 				div()
 					.id(SharedString::from(format!("tab:{title}")))
@@ -222,8 +232,7 @@ impl RulesWindow {
 					}))
 					.child(title)
 					.child(div().text_color(p.muted).child(count(tab).to_string()))
-			}),
-		)
+			}))
 	}
 
 	fn header(p: Palette) -> impl IntoElement {
@@ -388,8 +397,6 @@ impl Render for RulesWindow {
 			.gap_3()
 			.h(px(crate::ui::status_bar::HEIGHT))
 			.px_3()
-			.border_t_1()
-			.border_color(p.border)
 			.text_xs()
 			.text_color(p.muted)
 			.child(div().min_w_0().truncate().child(said))
@@ -475,9 +482,11 @@ impl Render for RulesWindow {
 			.flex_1()
 			.min_h_0()
 			.text_size(px(13.0))
-			.child(self.tabs(&all, p, cx))
 			.child(Self::header(p))
 			.child(table)
+			// The tabs over the status bar, the two one foot to the table, as the main window keeps its
+			// view switch at the foot beside the status.
+			.child(self.tabs(&all, p, cx))
 			.child(status);
 		chrome(p, window, Title { before: None, name: "Rules".to_owned() }, body)
 	}

@@ -153,7 +153,7 @@ A window of its own, opened from Settings' Transfers under Sources, is **a table
 window's detailed list is**: column titles over dense rows of the same height, a row selected by a
 press, and a status bar whose buttons act on the selected row. The columns are the name, what it
 matches -- the template, or a family's prefixes -- what it provides, the layer it came from, and its
-priority; a row's tooltip holds what the columns cut short. Tabs above narrow it to the rules, the
+priority; a row's tooltip holds what the columns cut short. Tabs at its foot, over the status bar, narrow it to the rules, the
 mirror families, the authorities or the choices made in New Task, each with its count, and a tab of
 what could not be read appears only while there is something in it. It was a list of cards grouped
 under headings, with buttons on every row, and read as a settings page rather than as the data it
