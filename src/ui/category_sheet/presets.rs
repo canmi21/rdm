@@ -8,7 +8,7 @@ use crate::category::Category;
 use crate::ui::backdrop;
 use crate::ui::category_sheet::{section, word};
 use crate::ui::icon::{Icon, icon};
-use crate::ui::{button, sidebar, status_bar, toolbar};
+use crate::ui::{button, frame, sidebar, status_bar};
 
 impl Rdm {
 	pub(super) fn presets_face(&self, editing: bool, cx: &mut Context<Self>) -> gpui::Deferred {
@@ -117,7 +117,7 @@ impl Rdm {
 			div()
 				.absolute()
 				.inset_0()
-				.child(wash("wash-top", cx).top_0().left_0().w(side).h(px(toolbar::HEIGHT)))
+				.child(wash("wash-top", cx).top_0().left_0().w(side).h(px(frame::TOOLBAR_HEIGHT)))
 				.child(wash("wash-bottom", cx).bottom_0().left_0().w(side).h(px(status_bar::HEIGHT)))
 				.child(
 					wash("wash-right", cx)

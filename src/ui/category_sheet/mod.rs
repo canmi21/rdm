@@ -13,7 +13,7 @@ use crate::category::Combine;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::Palette;
-use crate::ui::tooltip::tooltip;
+use crate::ui::tooltip;
 use crate::ui::{LeavesFocus, icon_button};
 
 mod actions;

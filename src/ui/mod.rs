@@ -1,10 +1,9 @@
-//! The window, split into the pieces a reader would look for: toolbar, sidebar, list, status
-//! bar -- and the windows it opens beside itself.
+//! The window, split into the pieces a reader would look for: the frame and its toolbar, sidebar,
+//! list, status bar -- and the windows it opens beside itself.
 
 pub mod add_dialog;
 pub mod category_sheet;
 pub mod download_window;
-pub mod first_mouse;
 pub mod frame;
 pub mod guide;
 pub mod icon;
@@ -18,16 +17,14 @@ pub mod slider;
 pub mod status_bar;
 pub mod text_input;
 pub mod theme;
-pub mod toolbar;
-pub mod tooltip;
 
 use gpui::{
-	ClickEvent, Div, ElementId, MouseButton, Role, SharedString, Stateful, div, prelude::*, px,
+	AnyView, App, ClickEvent, Context, Div, ElementId, MouseButton, Render, Role, SharedString,
+	Stateful, Window, div, prelude::*, px,
 };
 
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::theme::Palette;
-use crate::ui::tooltip::tooltip;
 
 /// How narrow the window goes: the sidebar, the table's chrome, a handle before every fixed
 /// column, and every column's floor including the name's. Narrower than this the table would have
@@ -265,4 +262,34 @@ pub fn menu_row(
 		.child(hover_icon(glyph, "menu-row", glyph_color, Some(tint)).size_3())
 		.child(div().flex_1().child(label))
 		.child(div().text_color(p.muted).child(count.to_string()))
+}
+
+/// The small label that appears under the pointer after it has rested on an icon: what an icon
+/// alone cannot say. GPUI shows it after half a second and places it itself.
+pub struct Tooltip {
+	text: SharedString,
+}
+
+impl Render for Tooltip {
+	fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		let p = theme::palette(window.is_window_active());
+		div()
+			.px_1p5()
+			.py_0p5()
+			.rounded_sm()
+			.border_1()
+			.border_color(p.border)
+			.bg(p.panel)
+			.text_xs()
+			.text_color(p.text)
+			.shadow_md()
+			.whitespace_nowrap()
+			.child(self.text.clone())
+	}
+}
+
+/// The builder an element's `.tooltip(...)` takes, for a fixed piece of text.
+pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView {
+	let text = text.into();
+	move |_, cx| cx.new(|_| Tooltip { text: text.clone() }).into()
 }

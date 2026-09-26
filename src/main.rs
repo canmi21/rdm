@@ -22,7 +22,6 @@ mod proxy;
 mod quarantine;
 mod reveal;
 mod rules;
-mod screens;
 mod search;
 mod startup;
 mod state;
@@ -43,7 +42,7 @@ use gpui_platform::application;
 
 use crate::app::Rdm;
 use crate::assets::Assets;
-use crate::state::Paths;
+use crate::state::{Paths, Screen};
 
 fn main() {
 	// gpui reports what it cannot draw through `log` and nowhere else. See spec/framework.md.
@@ -57,8 +56,8 @@ fn main() {
 		let config =
 			paths.as_ref().map(|p| config::load_or_seed(&p.config)).unwrap_or_else(config::Config::seed);
 		// Every display there is now, by the name the system keeps for it, so the window can be put
-		// back on the one it was left on. See src/screens.rs.
-		let screens = screens::all(cx);
+		// back on the one it was left on. See `Screen::all`.
+		let screens = Screen::all(cx);
 		// The size outlives the place: a window whose display is gone comes back centred on the
 		// main one, but at the size the user made it, not at the size a first launch opens with.
 		let extent = saved.window.map_or_else(
@@ -67,10 +66,10 @@ fn main() {
 		);
 		// The frame is a place on the display named beside it, so the display is handed to GPUI
 		// with it; without one GPUI opens on the main display, which is where a centred window
-		// belongs anyway. See src/screens.rs.
+		// belongs anyway. See spec/state.md.
 		let (display_id, bounds) = match saved.frame_on(&screens) {
 			Some(f) => (
-				saved.display.as_deref().and_then(|uuid| screens::id_of(cx, uuid)),
+				saved.display.as_deref().and_then(|uuid| Screen::id_of(cx, uuid)),
 				Bounds::new(point(px(f.x), px(f.y)), size(px(f.width), px(f.height))),
 			),
 			None => (None, Bounds::centered(None, extent, cx)),

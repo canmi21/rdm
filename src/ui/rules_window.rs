@@ -18,7 +18,7 @@ use crate::ui::download_window::{Title, chrome};
 use crate::ui::icon::{Icon, hover_icon, icon};
 use crate::ui::icon_button;
 use crate::ui::theme::{self, Palette};
-use crate::ui::tooltip::tooltip;
+use crate::ui::tooltip;
 
 /// The columns whose width is set, in the order drawn; what a rule matches takes the rest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

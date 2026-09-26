@@ -6,7 +6,7 @@ use gpui::{Context, IntoElement, Role, SharedString, deferred, div, prelude::*};
 use crate::app::Rdm;
 use crate::category::Category;
 use crate::ui::category_sheet::{PresetForm, Shading, section, word};
-use crate::ui::tooltip::tooltip;
+use crate::ui::tooltip;
 use crate::ui::{LeavesFocus, backdrop};
 
 impl Rdm {

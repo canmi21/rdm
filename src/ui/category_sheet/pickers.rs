@@ -8,7 +8,7 @@ use crate::ui::category_sheet::CategorySheet;
 use crate::ui::icon::{Icon, hover_icon};
 use crate::ui::text_input::TextInput;
 use crate::ui::theme::{Tint, format_hex, parse_color};
-use crate::ui::tooltip::tooltip;
+use crate::ui::tooltip;
 
 /// The question mark's tooltip: an invitation, like every other icon's name, since the rule
 /// itself is in the guide it opens.

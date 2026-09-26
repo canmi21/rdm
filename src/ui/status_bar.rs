@@ -8,7 +8,7 @@ use gpui::{
 use crate::app::{Rdm, View};
 use crate::download::{Filter, Status, format_speed};
 use crate::ui::icon::{Icon, hover_icon, icon};
-use crate::ui::tooltip::tooltip;
+use crate::ui::tooltip;
 use crate::ui::{floating, icon_button, menu_row, sidebar};
 
 /// The status bar's height, which the filter menu sits just above.

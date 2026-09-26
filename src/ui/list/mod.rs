@@ -7,7 +7,7 @@ use crate::app::{Column, Rdm, SortKey, View};
 use crate::download::{Download, Status, format_added, format_bytes, format_speed};
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::{Palette, Tint};
-use crate::ui::tooltip::tooltip;
+use crate::ui::tooltip;
 
 mod card;
 mod row;

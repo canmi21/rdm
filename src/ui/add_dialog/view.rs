@@ -185,7 +185,7 @@ impl Rdm {
 									.id("mirror-why")
 									.role(gpui::Role::Button)
 									.aria_label("Why a checksum")
-									.tooltip(crate::ui::tooltip::tooltip(why))
+									.tooltip(crate::ui::tooltip(why))
 									.child(icon(Icon::CircleQuestion, p.muted).size_3p5()),
 							),
 					)

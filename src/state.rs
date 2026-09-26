@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, bail};
+use gpui::{App, DisplayId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -101,12 +102,38 @@ pub struct Frame {
 /// Only the name is written down. The size is not, because the size that decides where a window
 /// fits is the size the display is when the window comes back, not the size it was when the
 /// window left; and where the display sits is not, because no frame here is in the desktop's
-/// coordinates. See `State::frame_on` and src/screens.rs.
+/// coordinates. See `State::frame_on` and spec/state.md.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Screen {
 	pub uuid: String,
 	pub width: f32,
 	pub height: f32,
+}
+
+impl Screen {
+	/// Every display there is, in no particular order. A display whose name the system will not
+	/// give is left out: it cannot be recognised at the next launch, which is the only thing the
+	/// name is for. Where a display sits is asked of nobody: a window's frame is in the coordinates
+	/// of its own display, both as GPUI reports it and as GPUI takes it back.
+	pub fn all(cx: &App) -> Vec<Screen> {
+		cx.displays()
+			.into_iter()
+			.filter_map(|display| {
+				let uuid = display.uuid().ok()?.to_string();
+				let size = display.bounds().size;
+				Some(Screen { uuid, width: size.width.into(), height: size.height.into() })
+			})
+			.collect()
+	}
+
+	/// The display GPUI knows by that name, which is what a window is opened on. Read at launch,
+	/// from the name in state.json.
+	pub fn id_of(cx: &App, uuid: &str) -> Option<DisplayId> {
+		cx.displays()
+			.into_iter()
+			.find(|display| display.uuid().is_ok_and(|found| found.to_string() == uuid))
+			.map(|display| display.id())
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

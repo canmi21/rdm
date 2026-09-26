@@ -16,7 +16,7 @@ use crate::ui::add_dialog::{
 use crate::ui::icon::{Icon, icon};
 use crate::ui::slider::Slider;
 use crate::ui::text_input::TextInput;
-use crate::ui::{frame, icon_button, theme, toolbar};
+use crate::ui::{frame, icon_button, theme};
 
 /// A megabyte, as the limit's field counts it.
 const MB: f64 = 1_048_576.0;
@@ -580,7 +580,7 @@ pub(crate) fn chrome(
 		.flex()
 		.flex_none()
 		.items_center()
-		.h(px(toolbar::HEIGHT))
+		.h(px(frame::TOOLBAR_HEIGHT))
 		.pl(inset)
 		.border_b_1()
 		.border_color(p.border)

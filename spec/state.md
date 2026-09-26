@@ -210,7 +210,7 @@ on the display whose top left is `(-2259, -1440)` was recorded as `(459, 440)` o
 -- the local numbers, attributed to whichever display they happened to land on, which is the main
 one nearly always -- and came back on the main display at those coordinates. Now that only a
 display's size is wanted, and GPUI reports that correctly, nothing asks the system where a display
-sits and `src/screens.rs` has no platform arm left.
+sits and `Screen::all` in `src/state.rs` has no platform arm left.
 
 ## The identifier
 

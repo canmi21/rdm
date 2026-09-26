@@ -1,19 +1,25 @@
-//! The window's frame where the system draws none. On macOS the titlebar is transparent and
-//! the traffic lights sit in the toolbar's left, drawn and run by the system. On Windows the
-//! transparent titlebar leaves the whole strip to the application; on Linux the window may
-//! carry client-side decorations, in which case there is no bar above and no buttons at all.
-//! In both, the toolbar draws minimize, maximize and close at its right with the
-//! application's own glyphs and answers their presses itself, its empty middle drags the
-//! window, and the window's edges resize it. See spec/ui.md.
+//! The window's frame where the system draws none, and the toolbar that is its strip. On macOS
+//! the titlebar is transparent and the traffic lights sit in the toolbar's left, drawn and run
+//! by the system. On Windows the transparent titlebar leaves the whole strip to the application;
+//! on Linux the window may carry client-side decorations, in which case there is no bar above
+//! and no buttons at all. In both, the toolbar draws minimize, maximize and close at its right
+//! with the application's own glyphs and answers their presses itself, its empty middle drags
+//! the window, and the window's edges resize it. See spec/ui.md.
 
 use gpui::{
-	Decorations, IntoElement, MouseButton, MouseDownEvent, Pixels, ResizeEdge, SharedString, Tiling,
-	Window, div, prelude::*, px,
+	App, Bounds, Context, Decorations, DispatchPhase, Element, ElementId, GlobalElementId,
+	IntoElement, LayoutId, MouseButton, MouseDownEvent, Pixels, ResizeEdge, SharedString, Style,
+	Tiling, Window, div, prelude::*, px,
 };
 
+use crate::app::Rdm;
+use crate::download::Status;
+use crate::ui::button;
 use crate::ui::icon::{Icon, icon};
 use crate::ui::theme::Palette;
-use crate::ui::toolbar;
+
+/// The strip the traffic lights share; `titlebar` derives their offset from it.
+pub const TOOLBAR_HEIGHT: f32 = 36.0;
 
 /// The traffic lights' diameter, measured from a capture of the window; see spec/ui.md.
 const TRAFFIC_LIGHT: f32 = 14.0;
@@ -27,10 +33,7 @@ pub fn titlebar(title: impl Into<SharedString>) -> gpui::TitlebarOptions {
 	gpui::TitlebarOptions {
 		title: Some(title.into()),
 		appears_transparent: true,
-		traffic_light_position: Some(gpui::point(
-			px(12.0),
-			px((toolbar::HEIGHT - TRAFFIC_LIGHT) / 2.0),
-		)),
+		traffic_light_position: Some(gpui::point(px(12.0), px((TOOLBAR_HEIGHT - TRAFFIC_LIGHT) / 2.0))),
 	}
 }
 
@@ -154,7 +157,7 @@ pub fn controls(p: Palette, window: &Window) -> impl IntoElement {
 			.items_center()
 			.justify_center()
 			.w(px(46.0))
-			.h(px(toolbar::HEIGHT))
+			.h(px(TOOLBAR_HEIGHT))
 			.cursor_default()
 			.hover(move |s| if close { s.bg(p.failure).text_color(p.text) } else { s.bg(p.hover) })
 			.map(|s| match press {
@@ -192,6 +195,129 @@ pub fn controls(p: Palette, window: &Window) -> impl IntoElement {
 enum Press {
 	Own(fn(&mut Window)),
 	System(gpui::WindowControlArea),
+}
+
+/// Two labelled buttons: Add Task, and the one thing the selection can do next. Everything else
+/// is an icon in the status bar's corner. The strip is also the titlebar: on macOS the traffic
+/// lights sit at its left, until the window is full screen and there are none; where the
+/// system draws no frame, the frame's controls sit at its right and its middle drags the
+/// window. See spec/ui.md.
+impl Rdm {
+	pub(crate) fn render_toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let p = self.palette;
+		let next = self.selected().map(|d| match d.status {
+			Status::Downloading => (Icon::Pause, "Pause"),
+			// A cross up here; the trash can is the icon row's, below.
+			Status::Completed => (Icon::X, "Remove"),
+			Status::Paused | Status::Queued | Status::Failed => (Icon::Play, "Resume"),
+		});
+		let (glyph, label) = next.unwrap_or((Icon::Pause, "Pause"));
+		let framed = draws_frame(window);
+		div()
+			.flex()
+			.items_center()
+			.gap_0p5()
+			.h(px(TOOLBAR_HEIGHT))
+			// The traffic lights sit in this strip because the system titlebar is transparent.
+			.pl(lights_inset(window))
+			.border_b_1()
+			.border_color(p.border)
+			.bg(p.panel)
+			.child(button(
+				p,
+				"add",
+				Icon::Plus,
+				"Add Task",
+				true,
+				cx.listener(|this, _, window, cx| this.open_add(window, cx)),
+			))
+			.child(button(
+				p,
+				"next",
+				glyph,
+				label,
+				next.is_some(),
+				cx.listener(|this, _, _, cx| this.act_on_selected(cx)),
+			))
+			.child(drag_area())
+			// Search at the right, where a Mac window keeps it; ⌘F from anywhere in the window.
+			.child(button(
+				p,
+				"search",
+				Icon::Search,
+				"Search",
+				true,
+				cx.listener(|this, _, window, cx| this.open_search(window, cx)),
+			))
+			.when(framed, |s| s.child(controls(p, window)))
+	}
+}
+
+/// The press that brings the window back from another application asked for the window, not
+/// for what lay under the pointer. This element, drawn first in the root, registers the first
+/// mouse listener of every frame and swallows that press in the capture phase, before any
+/// row, button or backdrop -- however far above the root, and whatever occludes it -- can act
+/// on it. An element rather than a listener on the root, because a listener on the root fires
+/// only while the root is hovered, and a sheet's backdrop takes that away. See spec/ui.md.
+pub struct FirstMouseGuard;
+
+impl IntoElement for FirstMouseGuard {
+	type Element = Self;
+
+	fn into_element(self) -> Self::Element {
+		self
+	}
+}
+
+impl Element for FirstMouseGuard {
+	type RequestLayoutState = ();
+	type PrepaintState = ();
+
+	fn id(&self) -> Option<ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		_id: Option<&GlobalElementId>,
+		_inspector_id: Option<&gpui::InspectorElementId>,
+		window: &mut Window,
+		cx: &mut App,
+	) -> (LayoutId, Self::RequestLayoutState) {
+		(window.request_layout(Style::default(), [], cx), ())
+	}
+
+	fn prepaint(
+		&mut self,
+		_id: Option<&GlobalElementId>,
+		_inspector_id: Option<&gpui::InspectorElementId>,
+		_bounds: Bounds<Pixels>,
+		_request_layout: &mut Self::RequestLayoutState,
+		_window: &mut Window,
+		_cx: &mut App,
+	) -> Self::PrepaintState {
+	}
+
+	fn paint(
+		&mut self,
+		_id: Option<&GlobalElementId>,
+		_inspector_id: Option<&gpui::InspectorElementId>,
+		_bounds: Bounds<Pixels>,
+		_request_layout: &mut Self::RequestLayoutState,
+		_prepaint: &mut Self::PrepaintState,
+		window: &mut Window,
+		_cx: &mut App,
+	) {
+		window.on_mouse_event(|event: &MouseDownEvent, phase, _, cx| {
+			if phase == DispatchPhase::Capture && event.first_mouse {
+				cx.stop_propagation();
+			}
+		});
+	}
 }
 
 #[cfg(test)]

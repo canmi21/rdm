@@ -376,7 +376,7 @@ impl Rdm {
 	/// a replug, since GPUI reports the frame in the coordinates of whichever display the window
 	/// is on: the same numbers are a different place on each of them, and mean nothing at all
 	/// without the name. A system with no such name for a screen simply records none. See
-	/// src/screens.rs, src/state.rs and spec/state.md.
+	/// `Screen` in src/state.rs and spec/state.md.
 	fn remember_frame(&mut self, window: &Window, cx: &App) {
 		let bounds = window.window_bounds();
 		self.maximized = matches!(bounds, gpui::WindowBounds::Maximized(_));
@@ -391,7 +391,7 @@ impl Rdm {
 		// on every move, so it is the one answer that is right for a window that has been dragged.
 		// It is nothing only before the window is on screen, which is where this is called from
 		// once at launch -- and nothing is kept as no news rather than written down over a name
-		// that is still good. See src/screens.rs and spec/state.md.
+		// that is still good. See spec/state.md.
 		if let Some(uuid) = window.display(cx).and_then(|display| display.uuid().ok()) {
 			self.display = Some(uuid.to_string());
 		}
@@ -524,8 +524,8 @@ impl Render for Rdm {
 					this.open_search(window, cx);
 				}
 			}))
-			// First, so its listener is the first of the frame; see first_mouse.rs.
-			.child(crate::ui::first_mouse::FirstMouseGuard)
+			// First, so its listener is the first of the frame; see `FirstMouseGuard`.
+			.child(crate::ui::frame::FirstMouseGuard)
 			.child(self.render_toolbar(window, cx))
 			.child(
 				div()
