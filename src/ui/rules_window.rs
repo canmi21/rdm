@@ -197,14 +197,18 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
+		// A browser's tab strip turned over, as tabs at a foot are: a dashed line along its top, bare
+		// tabs hanging from it, and the one showing outlined on its sides and foot and opened into the
+		// table above, its stretch of the line covered.
 		div()
 			.flex()
 			.flex_none()
-			.items_center()
-			.gap_1()
+			.items_start()
+			.gap_0p5()
 			.px_3()
-			.py_1p5()
+			.pb_1()
 			.border_t_1()
+			.border_dashed()
 			.border_color(p.border)
 			.text_xs()
 			.children(tabs.into_iter().map(|(tab, title)| {
@@ -218,13 +222,23 @@ impl RulesWindow {
 					.flex()
 					.items_center()
 					.gap_1()
-					.px_2()
-					.py_0p5()
-					.rounded_sm()
+					.h(px(23.0))
+					.px_2p5()
 					.cursor_pointer()
-					.text_color(if on { p.text } else { p.muted })
-					.when(on, |s| s.bg(p.selection))
-					.when(!on, move |s| s.hover(move |s| s.bg(p.hover).text_color(p.text)))
+					// Up over the strip's line by its width, in the window's colour, which is what
+					// opens the tab into the table.
+					.when(on, |s| {
+						s.mt(px(-1.0))
+							.h(px(24.0))
+							.bg(p.window)
+							.border_l_1()
+							.border_r_1()
+							.border_b_1()
+							.border_color(p.muted)
+							.rounded_b_md()
+							.text_color(p.text)
+					})
+					.when(!on, move |s| s.text_color(p.muted).hover(move |s| s.text_color(p.text)))
 					.on_click(cx.listener(move |this, _, _, cx| {
 						this.tab = tab;
 						cx.notify();

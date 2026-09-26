@@ -155,7 +155,11 @@ press, and a status bar whose buttons act on the selected row. The columns are t
 matches -- the template, or a family's prefixes -- what it provides, the layer it came from, and its
 priority; a row's tooltip holds what the columns cut short. Tabs at its foot, over the status bar, narrow it to the rules, the
 mirror families, the authorities or the choices made in New Task, each with its count, and a tab of
-what could not be read appears only while there is something in it. It was a list of cards grouped
+what could not be read appears only while there is something in it. The tabs are a
+browser's tab strip turned over, as tabs at a foot are: a dashed line along the top, the tabs bare
+words hanging from it, and the one showing outlined on its sides and foot and opened into the table
+above, its stretch of the line covered. Filled pills said which was on by colour; framing every tab
+in solid or dashed lines was busier than either. It was a list of cards grouped
 under headings, with buttons on every row, and read as a settings page rather than as the data it
 is.
 
