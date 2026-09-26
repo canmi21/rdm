@@ -446,7 +446,7 @@ impl Engine {
 		let (sender, receiver) = mpsc::channel();
 		let settings = crate::engine::Settings::default();
 		self.runtime.spawn(async move {
-			let result = match crate::engine::client::build(&settings, false) {
+			let result = match settings.client(false) {
 				Ok(client) => inspect::inspect(&client, url).await.map_err(|e| e.failure()),
 				Err(e) => Err(e.failure()),
 			};

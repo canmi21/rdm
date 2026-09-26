@@ -326,7 +326,7 @@ the extension the server chose, and is reported in the snapshot for the window t
 
 ## Three tests reach the network
 
-`engine/mirror.rs`, in the test build only, downloads public files that have been served with ranges for years -- 20 MB
+The `mirror` module of `engine/task/tests.rs`, in the test build only, downloads public files that have been served with ranges for years -- 20 MB
 over plain HTTP from thinkbroadband's test files, a few megabytes over HTTPS from kernel.org's
 mirror -- with several connections, compares a split download with a single-connection one
 byte for byte, and checks a range against the slice of the whole. They are ignored by default

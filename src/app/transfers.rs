@@ -541,35 +541,6 @@ impl Rdm {
 		cx.notify();
 	}
 
-	/// Where the download's file is on disk: the finished file, else the partial one beside its
-	/// plan, else nothing yet.
-	pub(crate) fn file_of(&self, id: u64) -> Option<std::path::PathBuf> {
-		let row = self.download(id)?;
-		if let Some(path) = row.path.as_deref().map(std::path::PathBuf::from).filter(|p| p.exists()) {
-			return Some(path);
-		}
-		let part = engine::control::part_path(&self.folder_of(row)?.join(&row.name));
-		part.exists().then_some(part)
-	}
-
-	/// Opens the finished file the way the system opens it.
-	pub(crate) fn open_file(&self, id: u64) {
-		if let Some(row) = self.download(id)
-			&& row.status == Status::Completed
-			&& let Some(path) = self.file_of(id)
-		{
-			crate::reveal::open(&path);
-		}
-	}
-
-	/// Shows the file in its folder, selected: the finished one, or the partial one while it is
-	/// not finished.
-	pub(crate) fn reveal_file(&self, id: u64) {
-		if let Some(path) = self.file_of(id) {
-			crate::reveal::show(&path, &self.preferences.file_manager);
-		}
-	}
-
 	pub(crate) fn resume(&mut self, id: u64, cx: &mut Context<Self>) {
 		let Some(index) = self.downloads.iter().position(|d| d.id == id) else { return };
 		// Downloading at once where a place is free, which the engine is about to confirm: marked

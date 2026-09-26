@@ -129,7 +129,7 @@ impl Rdm {
 		let Some(paths) = &self.paths else { return };
 		let places = paths.rule_places();
 		let settings = self.preferences.engine_settings(self.proxy_in_use().as_deref());
-		let Ok(client) = crate::engine::client::build(&settings, false) else { return };
+		let Ok(client) = settings.client(false) else { return };
 		self.rules_sync.running = true;
 		let receiver = self.engine.run(async move {
 			let fetched =

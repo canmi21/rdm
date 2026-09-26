@@ -173,7 +173,7 @@ mod tests {
 			html,
 			Options { content_type: Some("text/html; charset=utf-8".into()), ..Options::default() },
 		);
-		let client = crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap();
+		let client = crate::engine::Settings::default().client(false).unwrap();
 		let seen = inspect(&client, server.url("/dir/page")).await.unwrap();
 		assert!(seen.is_page);
 		let names: Vec<&str> = seen.links.iter().map(|l| l.name.as_str()).collect();

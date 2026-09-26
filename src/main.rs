@@ -5,7 +5,6 @@
 
 mod agent;
 mod app;
-mod assets;
 mod category;
 mod config;
 // A Unix socket, so a debug build on Windows has no control socket; the tests stand in for it there.
@@ -41,8 +40,8 @@ use gpui::{
 use gpui_platform::application;
 
 use crate::app::Rdm;
-use crate::assets::Assets;
 use crate::state::{Paths, Screen};
+use crate::ui::icon::Assets;
 
 fn main() {
 	// gpui reports what it cannot draw through `log` and nowhere else. See spec/framework.md.

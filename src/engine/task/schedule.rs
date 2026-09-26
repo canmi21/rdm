@@ -177,7 +177,7 @@ pub(super) async fn schedule(
 			let split = ceiling() > 1;
 			let client = match reuse.take() {
 				Some(client) => client,
-				None => crate::engine::client::build(settings, split)?,
+				None => settings.client(split)?,
 			};
 			let allowed = allowed.clone();
 			let grew = grew.clone();

@@ -25,11 +25,10 @@ use crate::ui::theme::{self, Palette};
 
 mod background;
 mod categories;
-mod folder;
+pub(crate) mod folder;
 mod indexing;
 mod network;
 mod notices;
-pub(crate) mod quarantine;
 mod rules;
 mod search;
 mod table;
@@ -142,7 +141,7 @@ pub struct Rdm {
 	/// Which files the system has marked as having come from the internet, by path. Read once a
 	/// file and kept: the answer is one attribute lookup, and the list draws every row it has.
 	/// Interior mutability for the reason the pictures have it -- drawing is what asks.
-	pub(crate) marked: std::cell::RefCell<crate::app::quarantine::Marks>,
+	pub(crate) marked: std::cell::RefCell<crate::app::folder::Marks>,
 	/// The proxy the last look found, None until it has looked or when it found none. Not kept
 	/// in the config: it is a fact about the machine now rather than a choice. See src/proxy.rs.
 	pub(crate) found_proxy: Option<String>,

@@ -1,5 +1,9 @@
-//! The download folder's own files: read in the background, turned into rows, and folded into
-//! folders or flattened as the preference says.
+//! Files on disk. The download folder's own: read in the background, turned into rows, and folded
+//! into folders or flattened as the preference says. And any row's file: where it is, opening it,
+//! showing it, and the mark the system puts on a downloaded one -- whose reading and writing are
+//! `src/quarantine.rs`, with the cache in front of them here. See spec/ui.md.
+
+use std::path::{Path, PathBuf};
 
 use super::*;
 
@@ -250,5 +254,71 @@ impl Rdm {
 		} else if self.selected.is_some_and(Self::is_folder_file) {
 			self.selected = None;
 		}
+	}
+}
+
+impl Rdm {
+	/// Where the download's file is on disk: the finished file, else the partial one beside its
+	/// plan, else nothing yet.
+	pub(crate) fn file_of(&self, id: u64) -> Option<std::path::PathBuf> {
+		let row = self.download(id)?;
+		if let Some(path) = row.path.as_deref().map(std::path::PathBuf::from).filter(|p| p.exists()) {
+			return Some(path);
+		}
+		let part = crate::engine::control::part_path(&self.folder_of(row)?.join(&row.name));
+		part.exists().then_some(part)
+	}
+
+	/// Opens the finished file the way the system opens it.
+	pub(crate) fn open_file(&self, id: u64) {
+		if let Some(row) = self.download(id)
+			&& row.status == Status::Completed
+			&& let Some(path) = self.file_of(id)
+		{
+			crate::reveal::open(&path);
+		}
+	}
+
+	/// Shows the file in its folder, selected: the finished one, or the partial one while it is
+	/// not finished.
+	pub(crate) fn reveal_file(&self, id: u64) {
+		if let Some(path) = self.file_of(id) {
+			crate::reveal::show(&path, &self.preferences.file_manager);
+		}
+	}
+
+	/// Takes the mark off the row's file. No privileges are asked for: the mark is on a file the
+	/// user owns, and a prompt for something that does not need one is a prompt to regret. What
+	/// fails is said once and the flag stays, which is the truth about the file.
+	pub(crate) fn clear_quarantine(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(path) = self.download(id).and_then(|d| d.path.clone()) else { return };
+		let path = PathBuf::from(path);
+		match crate::quarantine::clear(&path) {
+			Ok(()) => self.marked.borrow_mut().forget(&path),
+			Err(error) => eprintln!("could not clear the mark on {}: {error}", path.display()),
+		}
+		cx.notify();
+	}
+}
+
+/// Which files carry the mark, by path. One attribute lookup a file, kept for the run: the list
+/// draws every row it has, and asking the filesystem once a row a frame is asking too often.
+#[derive(Default)]
+pub struct Marks {
+	seen: HashMap<PathBuf, bool>,
+}
+
+impl Marks {
+	pub fn of(&mut self, path: &Path) -> bool {
+		if let Some(known) = self.seen.get(path) {
+			return *known;
+		}
+		let marked = crate::quarantine::marked(path);
+		self.seen.insert(path.to_path_buf(), marked);
+		marked
+	}
+
+	fn forget(&mut self, path: &Path) {
+		self.seen.remove(path);
 	}
 }

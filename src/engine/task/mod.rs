@@ -146,7 +146,7 @@ pub async fn run(request: Request, handle: &Handle, global: Limiter) -> Result<F
 	// dropped, the server would go on counting a socket it had not noticed close, and turn away a
 	// connection it would have taken; kept idle, it would hold one of the places for the whole
 	// download. See spec/engine.md, "The server decides how many connections it takes".
-	let first = crate::engine::client::build(&settings, false)?;
+	let first = settings.client(false)?;
 	let probed = probe(&first, request.url.clone()).await?;
 	*handle.probed.lock().unwrap() = Some(probed.clone());
 	if let (Some(size), Some(limit)) = (probed.size, settings.max_size)

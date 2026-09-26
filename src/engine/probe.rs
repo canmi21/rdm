@@ -157,7 +157,7 @@ mod tests {
 	use crate::engine::testing::{Options, TestServer};
 
 	fn client() -> Client {
-		crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap()
+		crate::engine::Settings::default().client(false).unwrap()
 	}
 
 	#[tokio::test]

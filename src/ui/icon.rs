@@ -1,4 +1,6 @@
-use gpui::{Hsla, Svg, prelude::*, svg};
+use std::borrow::Cow;
+
+use gpui::{AssetSource, Hsla, SharedString, Svg, prelude::*, svg};
 
 use crate::download::{Filter, Status};
 
@@ -281,9 +283,32 @@ pub fn hover_icon(icon: Icon, group: &'static str, color: Hsla, hover: Option<Hs
 	}
 }
 
+/// Lucide icons under assets/lucide, ISC licensed; the licence sits beside them. The app's own
+/// artwork sits above them and is not what the window draws: the bundle task renders it.
+#[derive(rust_embed::Embed)]
+#[folder = "assets"]
+pub struct Assets;
+
+impl AssetSource for Assets {
+	fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
+		Ok(Self::get(path).map(|file| file.data))
+	}
+
+	fn list(&self, path: &str) -> anyhow::Result<Vec<SharedString>> {
+		Ok(Self::iter().filter(|p| p.starts_with(path)).map(SharedString::from).collect())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn icons_are_embedded() {
+		let listed = Assets.list("lucide/").unwrap();
+		assert!(listed.iter().any(|p| p.as_ref() == "lucide/plus.svg"), "{listed:?}");
+		assert!(Assets.load("lucide/plus.svg").unwrap().is_some());
+	}
 
 	/// Every status is a ring, and the two state filters that name one wear the same ring, since
 	/// the sidebar and the funnel's menu are the legend to the column the marks are read down.

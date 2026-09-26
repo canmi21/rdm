@@ -228,7 +228,7 @@ async fn a_mirror_is_kept_only_when_it_serves_the_same_file_and_used_only_with_a
 		short.url("/")
 	);
 	let rules = Arc::new(compile(&[(Layer::Synced, vec![("t.toml".into(), family)])]));
-	let client = crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap();
+	let client = crate::engine::Settings::default().client(false).unwrap();
 	let url = origin.url("/pkg/f.bin");
 	let probe = crate::engine::probe(&client, url.clone()).await.unwrap();
 	let found = resolve(rules.clone(), client, url, probe).await;
@@ -255,7 +255,7 @@ async fn a_mirror_is_kept_only_when_it_serves_the_same_file_and_used_only_with_a
 #[ignore = "reaches GitHub, npm, PyPI and jsDelivr"]
 async fn the_built_in_rules_find_real_checksums() {
 	let rules = compile(&[(Layer::BuiltIn, built_in())]);
-	let client = crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap();
+	let client = crate::engine::Settings::default().client(false).unwrap();
 	for entry in rules.entries.iter().filter(|e| !e.checksum.is_empty()) {
 		for example in &entry.examples {
 			let captures = Template::parse(&entry.pattern).unwrap().matches(example).unwrap();
@@ -410,7 +410,7 @@ fn a_sync_replaces_the_synced_layer_whole() {
 #[tokio::test]
 #[ignore = "reaches GitHub and jsDelivr"]
 async fn the_repository_s_rules_arrive_and_read() {
-	let client = crate::engine::client::build(&crate::engine::Settings::default(), false).unwrap();
+	let client = crate::engine::Settings::default().client(false).unwrap();
 	let fetched = super::sync::fetch(client, super::sync::Sources::repository()).await.unwrap();
 	let texts: Texts = fetched
 		.files

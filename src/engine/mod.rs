@@ -9,13 +9,10 @@
 // those items are unreached from the binary. The allow narrows as the window grows.
 #![allow(dead_code, unused_imports)]
 
-pub mod client;
 pub mod control;
 pub mod error;
 pub mod inspect;
 pub mod limiter;
-#[cfg(test)]
-mod mirror;
 pub mod probe;
 pub mod queue;
 pub mod segments;

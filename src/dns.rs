@@ -35,7 +35,7 @@
 //! asked and the one that matters is the one seen from where the connection is made. Turning
 //! HTTPS on says something stronger -- who may see and answer the question at all -- so it wins,
 //! and somebody who turns it on beside a proxy has pointed two things at one job. The switch is
-//! off until they do. See src/engine/client.rs.
+//! off until they do. See `Settings::client` in src/engine/settings.rs.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, OnceLock};

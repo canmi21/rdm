@@ -137,7 +137,7 @@ impl Rdm {
 		// What the rules say about it, worked out while the second screen is read: with the settings'
 		// proxy and resolver, as the download itself will go.
 		let settings = self.preferences.engine_settings(self.proxy_in_use().as_deref());
-		let receiver = crate::engine::client::build(&settings, false).ok().map(|client| {
+		let receiver = settings.client(false).ok().map(|client| {
 			let job = crate::rules::resolve::resolve(
 				self.rules.clone(),
 				client,
