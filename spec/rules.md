@@ -159,7 +159,8 @@ page rather than as the data it is.
 **Its foot is one row, the status bar's height**, with a dashed line along its top. At the left, from
 the window's edge, the tabs narrow the table to the rules, the mirror families, the authorities or
 the choices made in New Task, each with its count, and a tab of what could not be read appears only
-while there is something in it. The tabs are bare words; the one showing stands between dashed lines down its sides,
+while there is something in it. The tabs are bare words; the one showing stands between dashed lines down its sides, in the
+colour of the line along the top -- they are there or not, and not brighter --
 with no space added around it, and every tab keeps a clear border on the same two sides so choosing
 another moves nothing. The line along the top is an element under the tabs rather than the row's
 border, which gpui paints over its children. Filled pills, a frame on every tab, and the showing tab outlined as a browser's were

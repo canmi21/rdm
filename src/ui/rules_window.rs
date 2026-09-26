@@ -219,7 +219,7 @@ impl RulesWindow {
 					.border_r_1()
 					.border_dashed()
 					.cursor_pointer()
-					.when(on, |s| s.border_color(p.muted).text_color(p.text))
+					.when(on, |s| s.border_color(p.border).text_color(p.text))
 					.when(!on, move |s| {
 						s.border_color(gpui::transparent_black())
 							.text_color(p.muted)
