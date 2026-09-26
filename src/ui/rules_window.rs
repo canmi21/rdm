@@ -24,6 +24,8 @@ const PRIORITY: f32 = 52.0;
 /// The main list's measures, so the two tables read alike.
 const HEADER_H: f32 = 24.0;
 const ROW_H: f32 = 26.0;
+/// The tab row, a little lower than the status bar under it.
+const TABS_H: f32 = 22.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
@@ -197,19 +199,31 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
-		// A dashed line along the top and the tabs bare words under it, the row as high as the status
-		// bar below; the one showing is told by its colour.
+		// A dashed line along the top and the tabs bare words under it; the one showing ruled solid on
+		// its sides and over its stretch of the line. The line is an element of its own under the tabs
+		// rather than the row's border, which gpui paints over the children, so the showing tab's
+		// solid top covers it; and every tab keeps a clear border on the same three sides, so the one
+		// showing takes no more room than the rest and nothing moves when another is chosen.
 		div()
+			.relative()
 			.flex()
 			.flex_none()
 			.items_center()
 			.gap_0p5()
-			.h(px(crate::ui::status_bar::HEIGHT))
-			.px_3()
-			.border_t_1()
-			.border_dashed()
-			.border_color(p.border)
+			.h(px(TABS_H))
+			.pr_3()
 			.text_xs()
+			.child(
+				div()
+					.absolute()
+					.top_0()
+					.left_0()
+					.right_0()
+					.h(px(1.0))
+					.border_t_1()
+					.border_dashed()
+					.border_color(p.border),
+			)
 			.children(tabs.into_iter().map(|(tab, title)| {
 				let on = self.tab == tab;
 				div()
@@ -223,19 +237,16 @@ impl RulesWindow {
 					.gap_1()
 					.h_full()
 					.px_2()
+					.border_t_1()
+					.border_l_1()
+					.border_r_1()
 					.cursor_pointer()
-					// The one showing ruled solid on its sides and over its stretch of the dashed line:
-					// up by the line's width, so its top edge is the line.
-					.when(on, |s| {
-						s.mt(px(-1.0))
-							.h(px(crate::ui::status_bar::HEIGHT))
-							.border_t_1()
-							.border_l_1()
-							.border_r_1()
-							.border_color(p.muted)
-							.text_color(p.text)
+					.when(on, |s| s.border_color(p.muted).text_color(p.text))
+					.when(!on, move |s| {
+						s.border_color(gpui::transparent_black())
+							.text_color(p.muted)
+							.hover(move |s| s.text_color(p.text))
 					})
-					.when(!on, move |s| s.text_color(p.muted).hover(move |s| s.text_color(p.text)))
 					.on_click(cx.listener(move |this, _, _, cx| {
 						this.tab = tab;
 						cx.notify();

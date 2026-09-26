@@ -155,9 +155,13 @@ press, and a status bar whose buttons act on the selected row. The columns are t
 matches -- the template, or a family's prefixes -- what it provides, the layer it came from, and its
 priority; a row's tooltip holds what the columns cut short. Tabs at its foot, over the status bar, narrow it to the rules, the
 mirror families, the authorities or the choices made in New Task, each with its count, and a tab of
-what could not be read appears only while there is something in it. The tab row is as
-high as the status bar under it, with a dashed line along its top, and the tabs are bare words; the one showing is ruled
-solid on its sides and over its own stretch of the dashed line, with no space added around it. Filled pills, a solid or dashed frame on every tab, and the showing
+what could not be read appears only while there is something in it. The tab row is a
+little lower than the status bar under it, starts at the window's left edge, and has a dashed line
+along its top; the tabs are bare words, and the one showing is ruled solid on its sides and over
+its own stretch of the line, with no space added around it. Every tab keeps a clear border on the
+same three sides, so choosing another moves nothing, and the line is an element under the tabs
+rather than the row's border, which gpui paints over its children and which showed through the
+solid top. Filled pills, a solid or dashed frame on every tab, and the showing
 tab outlined as a browser outlines its own were each tried and each busier. It was a list of cards grouped
 under headings, with buttons on every row, and read as a settings page rather than as the data it
 is.
