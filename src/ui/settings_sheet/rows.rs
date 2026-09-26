@@ -229,10 +229,9 @@ impl Rdm {
 						Bump::Slowest => 2,
 					},
 					set: |this, index, cx| {
-						this.preferences.bump = [Bump::Newest, Bump::MostLeft, Bump::Slowest][index];
-						this.engine.set_bump(this.preferences.bump);
-						this.save_config();
-						cx.notify();
+						let bump = [Bump::Newest, Bump::MostLeft, Bump::Slowest][index];
+						this.engine.set_bump(bump);
+						this.set_preference(cx, |p| p.bump = bump);
 					},
 				},
 			},
@@ -280,10 +279,8 @@ impl Rdm {
 						HttpVersion::Http2 => 2,
 					},
 					set: |this, index, cx| {
-						this.preferences.http =
-							[HttpVersion::Auto, HttpVersion::Http1, HttpVersion::Http2][index];
-						this.save_config();
-						cx.notify();
+						let http = [HttpVersion::Auto, HttpVersion::Http1, HttpVersion::Http2][index];
+						this.set_preference(cx, |p| p.http = http);
 					},
 				},
 			},
@@ -302,9 +299,7 @@ impl Rdm {
 				control: Control::Switch {
 					on: self.preferences.preallocate,
 					set: |this, on, cx| {
-						this.preferences.preallocate = on;
-						this.save_config();
-						cx.notify();
+						this.set_preference(cx, |p| p.preallocate = on);
 					},
 				},
 			},

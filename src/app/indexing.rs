@@ -122,14 +122,19 @@ impl Rdm {
 		}
 		let changed = !arrived.is_empty();
 		for (path, indexed) in arrived {
-			if let Some(store) = &self.store
-				&& let Err(error) = store.save_archive(&path, &indexed)
-			{
-				eprintln!("could not keep the index of {path}: {error:#}");
-			}
-			self.archives.insert(path, indexed);
+			self.keep_archive(path, indexed);
 		}
 		changed
+	}
+
+	/// An archive's reading, kept in the index and in the store.
+	pub(crate) fn keep_archive(&mut self, path: String, indexed: Indexed) {
+		if let Some(store) = &self.store
+			&& let Err(error) = store.save_archive(&path, &indexed)
+		{
+			eprintln!("could not keep the index of {path}: {error:#}");
+		}
+		self.archives.insert(path, indexed);
 	}
 
 	/// The names at the top of the archive a row is, for the categories; empty for a row that
@@ -149,11 +154,7 @@ impl Rdm {
 		if let Some(path) = &download.path {
 			return Some((path.clone(), None));
 		}
-		let folder = match &download.directory {
-			Some(directory) => std::path::PathBuf::from(directory),
-			None => self.paths.as_ref()?.downloads.clone(),
-		};
-		let target = folder.join(&download.name);
+		let target = self.folder_of(download)?.join(&download.name);
 		let part = crate::engine::control::part_path(&target);
 		if !part.exists() {
 			return None;

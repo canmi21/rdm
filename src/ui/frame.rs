@@ -34,6 +34,15 @@ pub fn titlebar(title: impl Into<SharedString>) -> gpui::TitlebarOptions {
 	}
 }
 
+/// Linux is asked for client-side decorations, so the window's own strip is the frame there as it
+/// is on Windows; a compositor that cannot give them says so and keeps its own bar.
+pub fn request_client_decorations(window: &mut Window) {
+	#[cfg(target_os = "linux")]
+	window.request_decorations(gpui::WindowDecorations::Client);
+	#[cfg(not(target_os = "linux"))]
+	let _ = window;
+}
+
 /// How far a strip's content starts from its left: clear of the traffic lights where the system
 /// draws them, which on macOS is everywhere but full screen.
 pub fn lights_inset(window: &Window) -> Pixels {

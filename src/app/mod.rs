@@ -175,11 +175,7 @@ impl Rdm {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
-		// Linux is asked for client-side decorations, so the toolbar is the frame there as it is
-		// on Windows; a compositor that cannot give them says so and keeps its own bar. See
-		// src/ui/frame.rs.
-		#[cfg(target_os = "linux")]
-		window.request_decorations(gpui::WindowDecorations::Client);
+		crate::ui::frame::request_client_decorations(window);
 		// Every move or resize is remembered a moment later; there is no hook for a forced quit.
 		cx.observe_window_bounds(window, |this, window, cx| {
 			this.remember_frame(window, cx);
@@ -476,15 +472,8 @@ impl Rdm {
 			// Three by two, title strip included, and as wide as the New Task card, whose measures
 			// the body takes. See spec/ui.md.
 			let extent = size(px(480.0), px(320.0));
-			let options = child_window(cx, "Edit Task", extent);
 			let view = rdm.clone();
-			if let Ok(handle) = cx.open_window(options, |window, cx| {
-				// Linux is asked for client-side decorations, so the title strip is the frame
-				// there too; see src/ui/frame.rs.
-				#[cfg(target_os = "linux")]
-				window.request_decorations(gpui::WindowDecorations::Client);
-				#[cfg(not(target_os = "linux"))]
-				let _ = window;
+			if let Some(handle) = open_child_window(cx, "Edit Task", extent, |_, cx| {
 				cx.new(|cx| DownloadWindow::new(view, id, cx))
 			}) {
 				rdm.update(cx, |this, _| {
@@ -557,12 +546,22 @@ impl Render for Rdm {
 	}
 }
 
-/// A secondary window draws its own title strip, as the main window draws its toolbar, with the
-/// traffic lights in it on macOS. See spec/ui.md.
-fn child_window(cx: &App, title: &str, extent: gpui::Size<gpui::Pixels>) -> WindowOptions {
-	WindowOptions {
+/// A secondary window, centred. It draws its own title strip, as the main window draws its
+/// toolbar, with the traffic lights in it on macOS. See spec/ui.md.
+fn open_child_window<V: Render>(
+	cx: &mut App,
+	title: &str,
+	extent: gpui::Size<gpui::Pixels>,
+	build: impl FnOnce(&mut Window, &mut App) -> gpui::Entity<V>,
+) -> Option<WindowHandle<V>> {
+	let options = WindowOptions {
 		window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, extent, cx))),
 		titlebar: Some(crate::ui::frame::titlebar(title.to_owned())),
 		..Default::default()
-	}
+	};
+	cx.open_window(options, |window, cx| {
+		crate::ui::frame::request_client_decorations(window);
+		build(window, cx)
+	})
+	.ok()
 }

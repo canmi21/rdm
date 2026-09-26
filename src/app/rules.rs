@@ -17,13 +17,9 @@ impl Rdm {
 		// Deferred for the reason `open_download` gives: the new window's first frame reads this.
 		let rdm = cx.entity();
 		cx.defer(move |cx| {
-			let options = super::child_window(cx, "Rules", size(px(760.0), px(460.0)));
+			let extent = size(px(760.0), px(460.0));
 			let view = rdm.clone();
-			if let Ok(handle) = cx.open_window(options, |window, cx| {
-				#[cfg(target_os = "linux")]
-				window.request_decorations(gpui::WindowDecorations::Client);
-				#[cfg(not(target_os = "linux"))]
-				let _ = window;
+			if let Some(handle) = super::open_child_window(cx, "Rules", extent, |_, cx| {
 				cx.new(|cx| RulesWindow::new(view, cx))
 			}) {
 				rdm.update(cx, |this, _| this.rules_window = Some(handle));

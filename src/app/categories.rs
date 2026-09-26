@@ -5,7 +5,7 @@ use gpui::Context;
 
 use crate::app::Rdm;
 use crate::category::{self, Category, Overrides};
-use crate::config::{self, Config};
+use crate::config::{self, Config, Preferences};
 use crate::download::Filter;
 use crate::ui::category_sheet::CategorySheet;
 use crate::ui::icon::Icon;
@@ -149,15 +149,22 @@ impl Rdm {
 		}
 	}
 
-	pub(crate) fn set_colorful_categories(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.colorful_categories = on;
+	/// A preference changed from Settings: written to config.json at once, drawn at the next frame.
+	pub(crate) fn set_preference(
+		&mut self,
+		cx: &mut Context<Self>,
+		change: impl FnOnce(&mut Preferences),
+	) {
+		change(&mut self.preferences);
 		self.save_config();
 		cx.notify();
 	}
 
+	pub(crate) fn set_colorful_categories(&mut self, on: bool, cx: &mut Context<Self>) {
+		self.set_preference(cx, |p| p.colorful_categories = on);
+	}
+
 	pub(crate) fn set_dim_inactive(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.dim_inactive = on;
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.dim_inactive = on);
 	}
 }

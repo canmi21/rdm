@@ -368,24 +368,18 @@ impl Rdm {
 	}
 
 	pub(crate) fn set_check_updates(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.check_updates = on;
-		self.save_config();
+		self.set_preference(cx, |p| p.check_updates = on);
 		if on {
 			self.check_for_updates(false, cx);
 		}
-		cx.notify();
 	}
 
 	pub(crate) fn set_auto_update(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.auto_update = on;
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.auto_update = on);
 	}
 
 	pub(crate) fn set_update_policy(&mut self, policy: Policy, cx: &mut Context<Self>) {
-		self.preferences.update_policy = policy;
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.update_policy = policy);
 	}
 
 	/// The settings row's word on the last check.

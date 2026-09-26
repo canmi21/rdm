@@ -55,26 +55,20 @@ impl Rdm {
 	/// read again at once, since the answer is a different list rather than a different view of
 	/// the same one.
 	pub(crate) fn set_folders(&mut self, folders: crate::download::Folders, cx: &mut Context<Self>) {
-		self.preferences.folders = folders;
-		self.save_config();
+		self.set_preference(cx, |p| p.folders = folders);
 		if self.folder_shown {
 			self.scan_folder();
 		}
-		cx.notify();
 	}
 
 	/// Settings' Folder row: whether the download folder's junk is kept out of the lists.
 	pub(crate) fn set_hide_junk(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.hide_junk = on;
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.hide_junk = on);
 	}
 
 	/// Settings' Notifications rows: where this occasion is said from now on, kept in config.json.
 	pub(crate) fn set_notice(&mut self, occasion: Occasion, style: Style, cx: &mut Context<Self>) {
-		self.preferences.set_notice(occasion, style);
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.set_notice(occasion, style));
 	}
 
 	/// A notice in a window of its own, at the screen's top right, under whatever is already

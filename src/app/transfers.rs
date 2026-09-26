@@ -28,6 +28,25 @@ pub(crate) fn connections_for(asked: Option<u16>) -> engine::Connections {
 }
 
 impl Rdm {
+	/// The id a new row takes: the store's next, so it is never reused while a partial file might
+	/// still carry it, and past every row already listed.
+	fn next_id(&self) -> u64 {
+		self.store
+			.as_ref()
+			.and_then(|s| s.next_id().ok())
+			.unwrap_or(0)
+			.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1)
+	}
+
+	/// The folder a row's file goes to: the one it asked for, else the download folder.
+	pub(crate) fn folder_of(&self, download: &Download) -> Option<std::path::PathBuf> {
+		download
+			.directory
+			.as_ref()
+			.map(std::path::PathBuf::from)
+			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))
+	}
+
 	/// Downloads the folder holds that the list does not: a plan and a partial file left by a
 	/// run whose rows were lost, or copied in from elsewhere. Each that can be continued comes
 	/// in as a paused row, to be resumed by hand; what cannot be read is left where it is. Run
@@ -57,31 +76,12 @@ impl Rdm {
 			if self.downloads.iter().any(|d| d.name == name || d.url == found.control.url) {
 				continue;
 			}
-			let id = self
-				.store
-				.as_ref()
-				.and_then(|s| s.next_id().ok())
-				.unwrap_or(0)
-				.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
+			let id = self.next_id();
+			let modified = found.modified.map_or_else(chrono::Local::now, chrono::DateTime::from);
 			self.downloads.push(Download {
-				id,
-				name,
-				url: found.control.url.clone(),
 				size: found.control.size.unwrap_or(0),
 				received: found.control.plan.done(),
-				speed: 0,
-				last_speed: 0,
-				status: Status::Paused,
-				added: found.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
-				source: None,
-				path: None,
-				error: None,
-				connections: None,
-				directory: None,
-				mirrors: Vec::new(),
-				checksum: None,
-				range: None,
-				speed_limit: None,
+				..Download::new(id, name, found.control.url.clone(), Status::Paused, modified)
 			});
 			self.persist(id);
 			added = true;
@@ -310,12 +310,7 @@ impl Rdm {
 		download: &Download,
 	) -> Option<(engine::Request, Option<engine::Checksum>)> {
 		let url = reqwest::Url::parse(&download.url).ok()?;
-		let directory = download
-			.directory
-			.as_ref()
-			.map(std::path::PathBuf::from)
-			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))
-			.unwrap_or_else(|| std::path::PathBuf::from("."));
+		let directory = self.folder_of(download).unwrap_or_else(|| std::path::PathBuf::from("."));
 		let mut request = engine::Request::new(url, directory);
 		request.file_name = Some(download.name.clone());
 		request.mirrors = download.mirrors.iter().filter_map(|m| reqwest::Url::parse(m).ok()).collect();
@@ -374,10 +369,7 @@ impl Rdm {
 		&self,
 		download: &Download,
 	) -> Option<Vec<engine::segments::Segment>> {
-		let folder = match &download.directory {
-			Some(directory) => std::path::PathBuf::from(directory),
-			None => self.paths.as_ref()?.downloads.clone(),
-		};
+		let folder = self.folder_of(download)?;
 		let control = engine::control::load(&folder.join(&download.name)).ok().flatten()?;
 		let mut parts = control.plan.segments;
 		parts.sort_by_key(|part| part.span.start);
@@ -418,12 +410,7 @@ impl Rdm {
 		asked: Asked,
 		cx: &mut Context<Self>,
 	) -> u64 {
-		let id = self
-			.store
-			.as_ref()
-			.and_then(|s| s.next_id().ok())
-			.unwrap_or(0)
-			.max(self.downloads.iter().map(|d| d.id).max().unwrap_or(0) + 1);
+		let id = self.next_id();
 		let name = name.unwrap_or_else(|| {
 			url
 				.path_segments()
@@ -433,24 +420,14 @@ impl Rdm {
 				.to_owned()
 		});
 		self.downloads.push(Download {
-			id,
-			name,
-			url: url.to_string(),
-			size: 0,
-			received: 0,
-			speed: 0,
-			last_speed: 0,
-			status: Status::Queued,
-			added: chrono::Local::now(),
 			source,
-			path: None,
-			error: None,
 			connections: asked.connections,
 			directory: asked.directory,
 			mirrors: asked.mirrors,
 			checksum: asked.checksum,
 			range: asked.range,
 			speed_limit: asked.speed_limit,
+			..Download::new(id, name, url.to_string(), Status::Queued, chrono::Local::now())
 		});
 		if let Some((request, checksum)) = self.downloads.last().and_then(|d| self.request_for(d)) {
 			self.engine.add_with_id(TaskId(id), request, checksum);
@@ -570,12 +547,7 @@ impl Rdm {
 		if let Some(path) = row.path.as_deref().map(std::path::PathBuf::from).filter(|p| p.exists()) {
 			return Some(path);
 		}
-		let directory = row
-			.directory
-			.clone()
-			.map(std::path::PathBuf::from)
-			.or_else(|| self.paths.as_ref().map(|p| p.downloads.clone()))?;
-		let part = engine::control::part_path(&directory.join(&row.name));
+		let part = engine::control::part_path(&self.folder_of(row)?.join(&row.name));
 		part.exists().then_some(part)
 	}
 

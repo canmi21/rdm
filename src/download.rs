@@ -121,6 +121,37 @@ pub fn parse_range(text: &str) -> Result<Option<(u64, Option<u64>)>, String> {
 }
 
 impl Download {
+	/// A row known only by who it is: no bytes yet, no speed, and nothing Add Task asked for.
+	/// Whatever else is known is laid over it.
+	pub fn new(
+		id: u64,
+		name: String,
+		url: String,
+		status: Status,
+		added: DateTime<Local>,
+	) -> Download {
+		Download {
+			id,
+			name,
+			url,
+			size: 0,
+			received: 0,
+			speed: 0,
+			last_speed: 0,
+			status,
+			added,
+			source: None,
+			path: None,
+			error: None,
+			connections: None,
+			directory: None,
+			mirrors: Vec::new(),
+			checksum: None,
+			range: None,
+			speed_limit: None,
+		}
+	}
+
 	pub fn progress(&self) -> f32 {
 		if self.size == 0 {
 			0.0
@@ -412,25 +443,17 @@ pub fn format_duration(duration: Duration) -> String {
 pub fn sample() -> Vec<Download> {
 	let now = Local::now();
 	let entry = |id: u64, name: &str, url: &str, size, received, speed, status| Download {
-		id,
-		name: name.to_owned(),
-		url: url.to_owned(),
 		size,
 		received,
 		speed,
-		last_speed: 0,
-		status,
 		// Spread over the past days so the Added column has something to order by.
-		added: now - chrono::Duration::hours(id as i64 * 7),
-		source: None,
-		path: None,
-		error: None,
-		connections: None,
-		directory: None,
-		mirrors: Vec::new(),
-		checksum: None,
-		range: None,
-		speed_limit: None,
+		..Download::new(
+			id,
+			name.to_owned(),
+			url.to_owned(),
+			status,
+			now - chrono::Duration::hours(id as i64 * 7),
+		)
 	};
 	vec![
 		entry(

@@ -138,16 +138,12 @@ impl Rdm {
 		let Some(receiver) = &sheet.receiver else { return false };
 		let Ok(mut gathered) = receiver.try_recv() else { return false };
 		sheet.receiver = None;
-		for (path, indexed) in std::mem::take(&mut gathered.catalog.learned) {
-			if let Some(store) = &self.store
-				&& let Err(error) = store.save_archive(&path, &indexed)
-			{
-				eprintln!("could not keep the index of {path}: {error:#}");
-			}
-			self.archives.insert(path, indexed);
-		}
+		let learned = std::mem::take(&mut gathered.catalog.learned);
 		sheet.gathered = Some(Arc::new(gathered));
 		*sheet.found.borrow_mut() = None;
+		for (path, indexed) in learned {
+			self.keep_archive(path, indexed);
+		}
 		true
 	}
 

@@ -233,25 +233,15 @@ impl Rdm {
 		self.folder_files = files
 			.into_iter()
 			.enumerate()
-			.map(|(index, file)| Download {
-				id: FOLDER_ID + index as u64,
-				name: file.name,
-				url: String::new(),
-				size: file.size,
-				received: file.size,
-				speed: 0,
-				last_speed: 0,
-				status: Status::Completed,
-				added: file.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
-				source: None,
-				path: Some(file.path.to_string_lossy().into_owned()),
-				error: None,
-				connections: None,
-				directory: None,
-				mirrors: Vec::new(),
-				checksum: None,
-				range: None,
-				speed_limit: None,
+			.map(|(index, file)| {
+				let id = FOLDER_ID + index as u64;
+				let added = file.modified.map_or_else(chrono::Local::now, chrono::DateTime::from);
+				Download {
+					size: file.size,
+					received: file.size,
+					path: Some(file.path.to_string_lossy().into_owned()),
+					..Download::new(id, file.name, String::new(), Status::Completed, added)
+				}
 			})
 			.collect();
 		// The rows were renumbered; the selection follows its file by name, or lets go.

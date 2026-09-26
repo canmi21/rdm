@@ -57,21 +57,17 @@ impl Rdm {
 	/// Settings' row: where the proxy comes from. Looking again is part of choosing to look,
 	/// since the answer is about the machine as it is now.
 	pub(crate) fn set_proxy_source(&mut self, source: Source, cx: &mut Context<Self>) {
-		self.preferences.proxy_source = source;
-		self.save_config();
+		self.set_preference(cx, |p| p.proxy_source = source);
 		if source == Source::Found {
 			self.look_for_proxy(cx);
 		}
-		cx.notify();
 	}
 
 	/// Settings' row: what the window is read in. It takes effect at the next frame, which is
 	/// what "immediately" looks like; nothing is restarted and nothing is rebuilt.
 	pub(crate) fn set_language(&mut self, language: crate::i18n::Language, cx: &mut Context<Self>) {
-		self.preferences.language = language;
 		crate::i18n::use_language(language);
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.language = language);
 	}
 
 	/// Settings' row: whether this build starts with the machine. What the system says after the
@@ -80,32 +76,28 @@ impl Rdm {
 		if let Err(error) = crate::startup::set(on) {
 			eprintln!("could not change the login item: {error:#}");
 		}
-		self.preferences.start_at_login = crate::startup::enabled();
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.start_at_login = crate::startup::enabled());
 	}
 
 	/// Settings' row: what this application calls itself to a server. Choosing one of the
 	/// disguises fills the field beside it, so what is being sent is on screen rather than
 	/// implied -- a disguise nobody can read is a disguise nobody can check.
 	pub(crate) fn set_agent(&mut self, agent: crate::agent::Agent, cx: &mut Context<Self>) {
-		self.preferences.agent = agent;
-		if agent != crate::agent::Agent::Custom {
-			let own = crate::engine::Settings::default().user_agent;
-			self.preferences.user_agent = Some(agent.string(&own, ""));
-		}
-		self.save_config();
+		self.set_preference(cx, |p| {
+			p.agent = agent;
+			if agent != crate::agent::Agent::Custom {
+				let own = crate::engine::Settings::default().user_agent;
+				p.user_agent = Some(agent.string(&own, ""));
+			}
+		});
 		self.show_setting("settings.label.user_agent", cx);
-		cx.notify();
 	}
 
 	/// Settings' row: hand the whole business back to the machine. On, nothing of ours is built
 	/// and reqwest resolves the way everything else on this machine does -- the way out if
 	/// resolving here is ever the problem. See src/dns.rs.
 	pub(crate) fn set_dns_force_system(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.dns_force_system = on;
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.dns_force_system = on);
 	}
 
 	/// Settings' row: whether the questions go over HTTPS. Turning it changes what a server is --
@@ -120,23 +112,20 @@ impl Rdm {
 	/// Settings' row: HTTPS or nothing. On, there is no chain under it -- a name that cannot be
 	/// resolved over HTTPS is a download that does not start, which is what forcing it is for.
 	pub(crate) fn set_dns_force_https(&mut self, on: bool, cx: &mut Context<Self>) {
-		self.preferences.dns_force_https = on;
-		self.save_config();
-		cx.notify();
+		self.set_preference(cx, |p| p.dns_force_https = on);
 	}
 
 	/// Settings' row: which servers. Choosing one of the offered fills the field beside it, so
 	/// what is being asked is on screen rather than implied -- the same reason a chosen user agent
 	/// fills its field. Custom leaves the field alone, the field being the choice.
 	pub(crate) fn set_dns_servers(&mut self, servers: crate::dns::Servers, cx: &mut Context<Self>) {
-		self.preferences.dns_servers = servers;
-		if servers != crate::dns::Servers::Custom {
-			self.preferences.dns_servers_written =
-				servers.written(self.preferences.dns_transport).to_owned();
-		}
-		self.save_config();
+		self.set_preference(cx, |p| {
+			p.dns_servers = servers;
+			if servers != crate::dns::Servers::Custom {
+				p.dns_servers_written = servers.written(p.dns_transport).to_owned();
+			}
+		});
 		self.show_setting("settings.label.name_servers", cx);
-		cx.notify();
 	}
 
 	/// What Settings says about the proxy: the address in use and where it came from, or why
