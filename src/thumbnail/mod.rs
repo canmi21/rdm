@@ -306,9 +306,8 @@ fn render_image(width: u32, height: u32, bgra: Vec<u8>) -> Option<RenderImage> {
 
 #[cfg(target_os = "macos")]
 fn read(path: &Path) -> Option<RenderImage> {
-	use objc2::AllocAnyThread;
-	use objc2_app_kit::{NSBitmapImageRep, NSDeviceRGBColorSpace, NSGraphicsContext, NSWorkspace};
-	use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+	use objc2_app_kit::NSWorkspace;
+	use objc2_foundation::NSString;
 
 	// The window server answers this, and it answers on the main thread; every caller is drawing,
 	// so every caller is on it.
@@ -321,34 +320,7 @@ fn read(path: &Path) -> Option<RenderImage> {
 	// thirty-two representations, 16 square to 1024, into one uncompressed file, which is then
 	// decoded again and scaled down to this. A list of two hundred rows did that two hundred
 	// times and spent gigabytes on it. See spec/ui.md.
-	let side = SIZE as isize;
-	let rep = unsafe {
-		NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
-			NSBitmapImageRep::alloc(),
-			std::ptr::null_mut(),
-			side,
-			side,
-			8,
-			4,
-			true,
-			false,
-			NSDeviceRGBColorSpace,
-			side * 4,
-			32,
-		)?
-	};
-	let context = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)?;
-	NSGraphicsContext::saveGraphicsState_class();
-	NSGraphicsContext::setCurrentContext(Some(&context));
-	icon.drawInRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(SIZE as f64, SIZE as f64)));
-	NSGraphicsContext::restoreGraphicsState_class();
-	let drawn = rep.bitmapData();
-	if drawn.is_null() {
-		return None;
-	}
-	// The rep holds the bytes; they are copied out because it is about to be dropped and gpui
-	// wants a Vec of its own anyway.
-	let mut bgra = unsafe { std::slice::from_raw_parts(drawn, SIZE * SIZE * 4) }.to_vec();
+	let mut bgra = first_page::drawn(&icon, SIZE, SIZE, 0)?;
 	// AppKit draws RGBA and the renderer wants BGRA; the two differ by a swap of the first and
 	// third byte of every pixel. Getting it backwards shows as blue people.
 	for pixel in bgra.as_chunks_mut::<4>().0 {

@@ -29,10 +29,6 @@ pub fn asked(extension: &str) -> bool {
 /// RGBA. Paper because a page is transparent where nothing is printed, and a card is dark.
 #[cfg(target_os = "macos")]
 fn on_paper(page: &objc2_app_kit::NSImage, paper: bool) -> Option<image::RgbaImage> {
-	use objc2::AllocAnyThread;
-	use objc2_app_kit::{NSBitmapImageRep, NSDeviceRGBColorSpace, NSGraphicsContext};
-	use objc2_foundation::{NSPoint, NSRect, NSSize};
-
 	let size = page.size();
 	if size.width <= 0.0 || size.height <= 0.0 {
 		return None;
@@ -40,19 +36,38 @@ fn on_paper(page: &objc2_app_kit::NSImage, paper: bool) -> Option<image::RgbaIma
 	let scale = (f64::from(CARD) / size.width).min(f64::from(CARD) / size.height);
 	let (width, height) =
 		((size.width * scale).round().max(1.0), (size.height * scale).round().max(1.0));
-	let (w, h) = (width as isize, height as isize);
+	let (w, h) = (width as usize, height as usize);
+	let rgba = drawn(page, w, h, if paper { 255 } else { 0 })?;
+	image::RgbaImage::from_raw(w as u32, h as u32, rgba)
+}
+
+/// An NSImage drawn into a bitmap `w` by `h` over a ground of `fill` in every byte -- 255 is
+/// white paper, 0 is nothing -- and its bytes copied out as RGBA: the bitmap is dropped here, and
+/// every caller wants a Vec of its own anyway.
+#[cfg(target_os = "macos")]
+pub(super) fn drawn(
+	image: &objc2_app_kit::NSImage,
+	w: usize,
+	h: usize,
+	fill: u8,
+) -> Option<Vec<u8>> {
+	use objc2::AllocAnyThread;
+	use objc2_app_kit::{NSBitmapImageRep, NSDeviceRGBColorSpace, NSGraphicsContext};
+	use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+	let (wide, high) = (w as isize, h as isize);
 	let rep = unsafe {
 		NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
 			NSBitmapImageRep::alloc(),
 			std::ptr::null_mut(),
-			w,
-			h,
+			wide,
+			high,
 			8,
 			4,
 			true,
 			false,
 			NSDeviceRGBColorSpace,
-			w * 4,
+			wide * 4,
 			32,
 		)?
 	};
@@ -60,15 +75,14 @@ fn on_paper(page: &objc2_app_kit::NSImage, paper: bool) -> Option<image::RgbaIma
 	if bytes.is_null() {
 		return None;
 	}
-	let length = (w * h * 4) as usize;
-	unsafe { std::ptr::write_bytes(bytes, if paper { 255 } else { 0 }, length) };
+	let length = w * h * 4;
+	unsafe { std::ptr::write_bytes(bytes, fill, length) };
 	let context = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)?;
 	NSGraphicsContext::saveGraphicsState_class();
 	NSGraphicsContext::setCurrentContext(Some(&context));
-	page.drawInRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height)));
+	image.drawInRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w as f64, h as f64)));
 	NSGraphicsContext::restoreGraphicsState_class();
-	let rgba = unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec();
-	image::RgbaImage::from_raw(w as u32, h as u32, rgba)
+	Some(unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec())
 }
 
 /// A PDF's first page, white under it as paper is, scaled to fit a card.

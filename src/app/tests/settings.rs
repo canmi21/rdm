@@ -142,8 +142,7 @@ const NIGHTLY_99: &str = r#"{ "channel": "nightly", "version": "2026.9.5", "buil
 #[gpui::test]
 fn a_development_build_checks_and_says_nothing(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
-	let manifest: crate::update::Manifest = serde_json::from_str(NIGHTLY_99)
-	.unwrap();
+	let manifest: crate::update::Manifest = serde_json::from_str(NIGHTLY_99).unwrap();
 	rdm.read_with(&cx, |rdm, _| {
 		assert!(!rdm.updates.announces, "which is what a build from the working tree is");
 	});
@@ -166,8 +165,7 @@ fn a_development_build_checks_and_says_nothing(cx: &mut TestAppContext) {
 #[gpui::test]
 fn a_newer_build_puts_a_card_in_the_corner_until_waved_away(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
-	let manifest = crate::update::Manifest::parse(NIGHTLY_99)
-	.unwrap();
+	let manifest = crate::update::Manifest::parse(NIGHTLY_99).unwrap();
 	assert!(cx.debug_bounds("toast:update").is_none(), "nothing known, nothing shown");
 	// A hand build is shown a newer build only when it asked. The test binary made in CI
 	// carries the run's number, so the test says which build it is; and the tests are a
@@ -439,8 +437,7 @@ fn the_two_user_agent_rows_are_named_apart_and_both_are_searchable(cx: &mut Test
 #[gpui::test]
 fn the_update_card_keeps_to_the_corner_however_the_window_is_sized(cx: &mut TestAppContext) {
 	let (rdm, mut cx) = open(cx);
-	let manifest = crate::update::Manifest::parse(NIGHTLY_99)
-	.unwrap();
+	let manifest = crate::update::Manifest::parse(NIGHTLY_99).unwrap();
 	rdm.update(&mut cx, |rdm, _| {
 		rdm.updates.this = None;
 		rdm.updates.announces = true;
