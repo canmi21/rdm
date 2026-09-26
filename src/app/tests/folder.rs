@@ -267,7 +267,11 @@ fn the_rows_come_back_from_the_store_and_the_unfinished_are_queued_again(cx: &mu
 	let rows = store.load().unwrap();
 	assert_eq!(rows.len(), 5);
 	assert_eq!(rows[4].id, 5);
-	assert_eq!(rows[2].status, Status::Queued, "the resume was written");
+	assert_eq!(
+		rows[2].status,
+		Status::Downloading,
+		"the resume was written, moving since a place was free"
+	);
 	rdm.update(&mut cx, |rdm, cx| rdm.remove(2, cx));
 	assert_eq!(store.load().unwrap().len(), 4, "a removed row is gone from the store");
 }

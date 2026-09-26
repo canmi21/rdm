@@ -102,7 +102,10 @@ both are drawn in the muted color faded to under half, which reads as what was r
 is, in the table's speed column, after the middle view's second line, and in the download's own
 window. The status beside them already says Paused, so fading is the whole of the hint: struck
 through read as an error, and a mark of its own said twice what the status says. A download
-resumed shows the same until its first report of a speed. The last speed is not kept between runs,
+resumed shows the same until its first report of a speed, and is marked moving at once where a
+place is free, which the engine is about to confirm: marked queued, its bar went grey for the
+moment between the press and the report, between the paused color and the moving one. Where it
+will really wait for a place it is queued, and grey says so. The last speed is not kept between runs,
 so a download paused in an earlier run shows a dash. See src/download.rs.
 
 **The middle view is a row of two lines.** Fifty points high, by a thirty-point square: a

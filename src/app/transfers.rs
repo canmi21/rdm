@@ -599,7 +599,12 @@ impl Rdm {
 
 	pub(crate) fn resume(&mut self, id: u64, cx: &mut Context<Self>) {
 		let Some(index) = self.downloads.iter().position(|d| d.id == id) else { return };
-		self.downloads[index].status = Status::Queued;
+		// Downloading at once where a place is free, which the engine is about to confirm: marked
+		// queued, the row went grey for the moment between the press and the engine's report,
+		// between the paused color and the moving one. Queued where it will really wait.
+		let running = self.downloads.iter().filter(|d| d.status == Status::Downloading).count();
+		self.downloads[index].status =
+			if running < self.preferences.max_active { Status::Downloading } else { Status::Queued };
 		self.downloads[index].error = None;
 		let row = self.downloads[index].clone();
 		if self.engine.contains(TaskId(id)) {
