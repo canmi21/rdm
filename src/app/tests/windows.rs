@@ -83,24 +83,12 @@ fn the_guide_lies_over_the_form_and_leaves_it_alone(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn the_press_that_brings_the_window_back_does_nothing_else(cx: &mut TestAppContext) {
-	use gpui::{MouseButton, MouseDownEvent, MouseUpEvent};
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:New category");
 	let row = cx.debug_bounds("row:3").unwrap().center();
 	let press = |cx: &mut VisualTestContext, first_mouse: bool| {
-		cx.simulate_event(MouseDownEvent {
-			button: MouseButton::Left,
-			position: row,
-			modifiers: Modifiers::default(),
-			click_count: 1,
-			first_mouse,
-		});
-		cx.simulate_event(MouseUpEvent {
-			button: MouseButton::Left,
-			position: row,
-			modifiers: Modifiers::default(),
-			click_count: 1,
-		});
+		press_at(cx, row, first_mouse);
+		release_at(cx, row);
 	};
 	press(&mut cx, true);
 	rdm.read_with(&cx, |rdm, _| {

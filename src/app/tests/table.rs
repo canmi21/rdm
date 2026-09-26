@@ -142,30 +142,15 @@ fn a_row_selects_and_the_view_switch_redraws_it(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn dragging_a_header_edge_resizes_that_column(cx: &mut TestAppContext) {
-	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, point, px};
+	use gpui::{point, px};
 	let (rdm, mut cx) = open(cx);
 	let before = rdm.read_with(&cx, |rdm, _| rdm.width(Column::Size));
 	let handle = cx.debug_bounds("resize:Size").expect("a handle after the Size title");
 	let start = handle.center();
-	cx.simulate_event(MouseDownEvent {
-		button: MouseButton::Left,
-		position: start,
-		modifiers: Modifiers::default(),
-		click_count: 1,
-		first_mouse: false,
-	});
+	press_at(&mut cx, start, false);
 	let moved = point(start.x + px(40.0), start.y);
-	cx.simulate_event(MouseMoveEvent {
-		position: moved,
-		pressed_button: Some(MouseButton::Left),
-		modifiers: Modifiers::default(),
-	});
-	cx.simulate_event(MouseUpEvent {
-		button: MouseButton::Left,
-		position: moved,
-		modifiers: Modifiers::default(),
-		click_count: 1,
-	});
+	move_pressed(&mut cx, moved);
+	release_at(&mut cx, moved);
 	rdm.read_with(&cx, |rdm, _| {
 		assert_eq!(
 			rdm.width(Column::Size),
@@ -191,22 +176,12 @@ fn reset_under_appearance_puts_every_column_width_back(cx: &mut TestAppContext) 
 
 #[gpui::test]
 fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
-	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, point, px};
+	use gpui::{point, px};
 	let (rdm, mut cx) = open(cx);
 	let handle = cx.debug_bounds("resize:Size").unwrap();
 	let start = handle.center();
-	cx.simulate_event(MouseDownEvent {
-		button: MouseButton::Left,
-		position: start,
-		modifiers: Modifiers::default(),
-		click_count: 1,
-		first_mouse: false,
-	});
-	cx.simulate_event(MouseMoveEvent {
-		position: point(px(0.0), start.y),
-		pressed_button: Some(MouseButton::Left),
-		modifiers: Modifiers::default(),
-	});
+	press_at(&mut cx, start, false);
+	move_pressed(&mut cx, point(px(0.0), start.y));
 	let name = cx.debug_bounds("sort:Name").expect("the name title is still drawn");
 	assert!(
 		f32::from(name.size.width) >= crate::ui::list::NAME_MIN - 12.0,
@@ -225,34 +200,19 @@ fn a_drag_stops_where_the_name_column_would_vanish(cx: &mut TestAppContext) {
 /// twitching there, and letting a fresh press take half of what was left.
 #[gpui::test]
 fn a_drag_past_the_stop_holds_there_and_a_second_takes_no_more(cx: &mut TestAppContext) {
-	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, point, px};
+	use gpui::{Pixels, Point, point, px};
 
 	/// One press on the Size handle and twenty points of leftward travel per move, which widens
 	/// the column, with the width after every move so the walk itself can be read.
 	fn drag_left(rdm: &Entity<Rdm>, cx: &mut VisualTestContext, from: Point<Pixels>) -> Vec<f32> {
-		cx.simulate_event(MouseDownEvent {
-			button: MouseButton::Left,
-			position: from,
-			modifiers: Modifiers::default(),
-			click_count: 1,
-			first_mouse: false,
-		});
+		press_at(cx, from, false);
 		let widths = (1u8..=25)
 			.map(|step| {
-				cx.simulate_event(MouseMoveEvent {
-					position: point(from.x - px(20.0 * f32::from(step)), from.y),
-					pressed_button: Some(MouseButton::Left),
-					modifiers: Modifiers::default(),
-				});
+				move_pressed(cx, point(from.x - px(20.0 * f32::from(step)), from.y));
 				rdm.read_with(cx, |rdm, _| rdm.width(Column::Size))
 			})
 			.collect();
-		cx.simulate_event(MouseUpEvent {
-			button: MouseButton::Left,
-			position: from,
-			modifiers: Modifiers::default(),
-			click_count: 1,
-		});
+		release_at(cx, from);
 		widths
 	}
 
@@ -296,32 +256,17 @@ fn drag(
 	handle: &'static str,
 	steps: &[f32],
 ) -> Vec<[f32; 5]> {
-	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, point, px};
+	use gpui::{point, px};
 	let from = cx.debug_bounds(handle).expect("a handle to take hold of").center();
-	cx.simulate_event(MouseDownEvent {
-		button: MouseButton::Left,
-		position: from,
-		modifiers: Modifiers::default(),
-		click_count: 1,
-		first_mouse: false,
-	});
+	press_at(cx, from, false);
 	let rows = steps
 		.iter()
 		.map(|dx| {
-			cx.simulate_event(MouseMoveEvent {
-				position: point(from.x + px(*dx), from.y),
-				pressed_button: Some(MouseButton::Left),
-				modifiers: Modifiers::default(),
-			});
+			move_pressed(cx, point(from.x + px(*dx), from.y));
 			rdm.read_with(cx, |rdm, _| rdm.drawn())
 		})
 		.collect();
-	cx.simulate_event(MouseUpEvent {
-		button: MouseButton::Left,
-		position: from,
-		modifiers: Modifiers::default(),
-		click_count: 1,
-	});
+	release_at(cx, from);
 	rows
 }
 

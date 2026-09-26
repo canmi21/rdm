@@ -1,6 +1,9 @@
 // Headless: the test platform draws the window into no screen, so this exercises what a click
 // does without a window, a pointer or a display. See spec/workflow.md.
-use gpui::{Entity, EntityInputHandler, Modifiers, TestAppContext, VisualTestContext};
+use gpui::{
+	Entity, EntityInputHandler, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+	Pixels, Point, TestAppContext, VisualTestContext,
+};
 
 use super::*;
 use crate::testing::scratch;
@@ -67,6 +70,35 @@ fn wait_for_folder(rdm: &Entity<Rdm>, cx: &mut VisualTestContext) {
 		std::thread::sleep(std::time::Duration::from_millis(20));
 	}
 	panic!("the folder was not read in time");
+}
+
+/// The left button pressed at a point, moved with it held, and let go: the three events a drag is,
+/// sent as the platform sends them. `first_mouse` is the press that brings the window forward.
+fn press_at(cx: &mut VisualTestContext, position: Point<Pixels>, first_mouse: bool) {
+	cx.simulate_event(MouseDownEvent {
+		button: MouseButton::Left,
+		position,
+		modifiers: Modifiers::default(),
+		click_count: 1,
+		first_mouse,
+	});
+}
+
+fn move_pressed(cx: &mut VisualTestContext, position: Point<Pixels>) {
+	cx.simulate_event(MouseMoveEvent {
+		position,
+		pressed_button: Some(MouseButton::Left),
+		modifiers: Modifiers::default(),
+	});
+}
+
+fn release_at(cx: &mut VisualTestContext, position: Point<Pixels>) {
+	cx.simulate_event(MouseUpEvent {
+		button: MouseButton::Left,
+		position,
+		modifiers: Modifiers::default(),
+		click_count: 1,
+	});
 }
 
 fn click(cx: &mut VisualTestContext, selector: &'static str) {

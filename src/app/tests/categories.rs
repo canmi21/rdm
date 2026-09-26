@@ -216,7 +216,6 @@ fn a_preset_row_toggles_the_category_in_and_out(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAppContext) {
-	use gpui::{MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent};
 	let (rdm, mut cx) = open(cx);
 	click(&mut cx, "button:New category");
 	click(&mut cx, "button:Reorder");
@@ -227,26 +226,11 @@ fn reorder_drags_a_sidebar_row_onto_another_and_other_stays_last(cx: &mut TestAp
 	let drag = |cx: &mut VisualTestContext, from: &'static str, onto: &'static str| {
 		let start = cx.debug_bounds(from).unwrap().center();
 		let end = cx.debug_bounds(onto).unwrap().center();
-		cx.simulate_event(MouseDownEvent {
-			button: MouseButton::Left,
-			position: start,
-			modifiers: Modifiers::default(),
-			click_count: 1,
-			first_mouse: false,
-		});
+		press_at(cx, start, false);
 		for position in [start + gpui::point(px(0.0), px(6.0)), end] {
-			cx.simulate_event(MouseMoveEvent {
-				position,
-				pressed_button: Some(MouseButton::Left),
-				modifiers: Modifiers::default(),
-			});
+			move_pressed(cx, position);
 		}
-		cx.simulate_event(MouseUpEvent {
-			button: MouseButton::Left,
-			position: end,
-			modifiers: Modifiers::default(),
-			click_count: 1,
-		});
+		release_at(cx, end);
 	};
 	drag(&mut cx, "filter:Videos", "filter:Programs");
 	rdm.read_with(&cx, |rdm, _| {
