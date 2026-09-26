@@ -69,6 +69,9 @@ pub(crate) fn crawling(downloads: &[Download]) -> bool {
 pub(crate) struct RulesSync {
 	pub(crate) running: bool,
 	pub(crate) status: Option<String>,
+	/// How the last sync ended, None before the first: what the rules window's button shows until the
+	/// next one starts.
+	pub(crate) succeeded: Option<bool>,
 	_poll: Option<Task<()>>,
 }
 
@@ -153,6 +156,7 @@ impl Rdm {
 		cx: &mut Context<Self>,
 	) {
 		self.rules_sync.running = false;
+		self.rules_sync.succeeded = Some(answer.is_ok());
 		let at = chrono::Local::now().format("%H:%M");
 		self.rules_sync.status = Some(match answer {
 			Ok((count, from)) => {

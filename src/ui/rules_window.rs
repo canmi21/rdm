@@ -197,42 +197,48 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
-		// Bare words, the one showing between dashed lines down its sides. Every tab keeps a clear
-		// border on the same two sides, so the one showing takes no more room than the rest and nothing
-		// moves when another is chosen.
-		div().flex().flex_none().items_center().h_full().children(tabs.into_iter().map(
-			|(tab, title)| {
-				let on = self.tab == tab;
-				div()
-					.id(SharedString::from(format!("tab:{title}")))
-					.role(gpui::Role::Tab)
-					.aria_label(title)
-					.aria_selected(on)
-					.debug_selector(move || format!("tab:{title}"))
-					.relative()
-					.flex()
-					.items_center()
-					.gap_1()
-					.h_full()
-					.px_2()
-					.border_l_1()
-					.border_r_1()
-					.border_dashed()
-					.cursor_pointer()
-					.when(on, |s| s.border_color(p.border).text_color(p.text))
-					.when(!on, move |s| {
-						s.border_color(gpui::transparent_black())
-							.text_color(p.muted)
-							.hover(move |s| s.text_color(p.text))
-					})
-					.on_click(cx.listener(move |this, _, _, cx| {
-						this.tab = tab;
-						cx.notify();
-					}))
-					.child(title)
-					.child(div().text_color(p.muted).child(count(tab).to_string()))
-			},
-		))
+		// Bare words with a one-pixel slot before, between and after them -- one slot to a boundary,
+		// shared by the tabs on either side -- and the two slots beside the tab showing drawn as dashed
+		// lines. A slot of its own on each side of every tab put two between neighbours, and the line
+		// moved by a pixel as the choice moved from one to the other.
+		let showing = tabs.iter().position(|(tab, _)| *tab == self.tab).unwrap_or(0);
+		let slot = move |index: usize| {
+			let lit = index == showing || index == showing + 1;
+			div().w(px(1.0)).h_full().flex_none().border_l_1().border_dashed().border_color(if lit {
+				p.border
+			} else {
+				gpui::transparent_black()
+			})
+		};
+		let mut row = div().flex().flex_none().items_center().h_full().child(slot(0));
+		for (index, (tab, title)) in tabs.into_iter().enumerate() {
+			let on = self.tab == tab;
+			row = row
+				.child(
+					div()
+						.id(SharedString::from(format!("tab:{title}")))
+						.role(gpui::Role::Tab)
+						.aria_label(title)
+						.aria_selected(on)
+						.debug_selector(move || format!("tab:{title}"))
+						.flex()
+						.items_center()
+						.gap_1()
+						.h_full()
+						.px_2()
+						.cursor_pointer()
+						.when(on, |s| s.text_color(p.text))
+						.when(!on, move |s| s.text_color(p.muted).hover(move |s| s.text_color(p.text)))
+						.on_click(cx.listener(move |this, _, _, cx| {
+							this.tab = tab;
+							cx.notify();
+						}))
+						.child(title)
+						.child(div().text_color(p.muted).child(count(tab).to_string())),
+				)
+				.child(slot(index + 1));
+		}
+		row
 	}
 
 	fn header(p: Palette) -> impl IntoElement {
@@ -357,9 +363,9 @@ impl Render for RulesWindow {
 		// The foot, one row the status bar's height: the tabs at the left, and at the right what acts
 		// on the selected row, then what acts on the rules as a whole. Where the last sync stands is
 		// said by the sync button when the pointer rests on it; the counts are on the tabs.
-		let (syncing, synced) = {
+		let (syncing, synced, succeeded) = {
 			let rdm = self.rdm.read(cx);
-			(rdm.rules_sync.running, rdm.rules_sync.status.clone())
+			(rdm.rules_sync.running, rdm.rules_sync.status.clone(), rdm.rules_sync.succeeded)
 		};
 		// The button says where the sync stands and nothing else: a cloud to fetch from, and while it
 		// fetches, the cloud with its arrows turning inside it.
@@ -394,10 +400,15 @@ impl Render for RulesWindow {
 			.tooltip(tooltip(sync_said))
 			.map(|s| {
 				if syncing {
-					s.child(turning)
-				} else {
-					s.child(hover_icon(Icon::CloudDownload, "rules-sync", p.muted, Some(p.text)).size_3p5())
+					return s.child(turning);
 				}
+				// How the last sync ended, until the next begins: none yet, done, or failed.
+				let (glyph, tint) = match succeeded {
+					None => (Icon::CloudDownload, p.muted),
+					Some(true) => (Icon::CloudCheck, p.muted),
+					Some(false) => (Icon::CloudAlert, p.status(crate::download::Status::Failed)),
+				};
+				s.child(hover_icon(glyph, "rules-sync", tint, Some(p.text)).size_3p5())
 			})
 			.when(!syncing, |s| {
 				s.cursor_pointer()

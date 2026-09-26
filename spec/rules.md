@@ -161,16 +161,19 @@ the window's edge, the tabs narrow the table to the rules, the mirror families, 
 the choices made in New Task, each with its count, and a tab of what could not be read appears only
 while there is something in it. The tabs are bare words; the one showing stands between dashed lines down its sides, in the
 colour of the line along the top -- they are there or not, and not brighter --
-with no space added around it, and every tab keeps a clear border on the same two sides so choosing
-another moves nothing. The line along the top is an element under the tabs rather than the row's
+with no space added around it, and the lines are one-pixel slots before, between and after the tabs --
+one to a boundary, shared by the tabs on either side -- of which the two beside the tab showing are
+drawn. A slot of its own on each side of every tab put two between neighbours, and the line moved by
+a pixel as the choice moved from one to the other. The line along the top is an element under the tabs rather than the row's
 border, which gpui paints over its children. Filled pills, a frame on every tab, and the showing tab outlined as a browser's were
 each tried and each busier; the tabs had a row of their own over a status bar until the two were
 folded into this one.
 
 At the right are the buttons: first the selected row's -- move up, move down, forget a choice, show
 the rule's file in its folder, each dimmed where it does not apply -- then the whole set's: sync now,
-reload from disk, open the custom folder. The sync button is a cloud to fetch from, and while it fetches, the
-cloud with its arrows turning inside it; its tooltip says where the last sync stands and nothing
+reload from disk, open the custom folder. The sync button is a cloud to fetch from before the first sync, the
+cloud with its arrows turning inside it while one runs, and after it a cloud with a check or, when it
+failed, with an alert, kept until the next begins; its tooltip says where the last sync stands and nothing
 else, rather than a line of its own saying so. The counts are on the tabs. Nothing
 in the window is typed: a rule is written in a file.
 
