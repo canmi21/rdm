@@ -23,6 +23,7 @@ mod quarantine;
 mod reveal;
 mod rules;
 mod screens;
+mod search;
 mod startup;
 mod state;
 mod store;

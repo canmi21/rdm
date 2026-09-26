@@ -52,6 +52,15 @@ impl Rdm {
 				cx.listener(|this, _, _, cx| this.act_on_selected(cx)),
 			))
 			.child(frame::drag_area())
+			// Search at the right, where a Mac window keeps it; ⌘F from anywhere in the window.
+			.child(button(
+				p,
+				"search",
+				Icon::Search,
+				"Search",
+				true,
+				cx.listener(|this, _, window, cx| this.open_search(window, cx)),
+			))
 			.when(framed, |s| s.child(frame::controls(p, window)))
 	}
 }

@@ -31,6 +31,7 @@ mod network;
 mod notices;
 pub(crate) mod quarantine;
 mod rules;
+mod search;
 mod table;
 #[cfg(test)]
 mod tests;
@@ -159,6 +160,8 @@ pub struct Rdm {
 	pub(crate) rules_sync: background::RulesSync,
 	/// A download failed since the main window was last in front: the tray's dot.
 	pub(crate) unseen_failure: bool,
+	/// The search sheet while it is open. See src/app/search.rs.
+	pub(crate) search: Option<search::SearchSheet>,
 	_checks: Option<Task<()>>,
 }
 
@@ -288,6 +291,7 @@ impl Rdm {
 			schedule: background::Schedule::new(std::time::Instant::now()),
 			rules_sync: background::RulesSync::default(),
 			unseen_failure: false,
+			search: None,
 			_checks: None,
 		};
 		this.engine.set_speed_limit(this.preferences.speed_limit);
@@ -450,6 +454,8 @@ impl Rdm {
 			self.close_settings_menu(cx);
 		} else if self.settings_open() {
 			self.close_settings(cx);
+		} else if self.search_open() {
+			self.close_search(cx);
 		} else if self.filter_open {
 			self.toggle_filter_menu(false, cx);
 		}
@@ -522,9 +528,11 @@ impl Render for Rdm {
 				crate::ui::frame::on_root_mouse_down(event, window)
 			})
 			// Escape reaches here when no field took it: the topmost sheet is asked to go.
-			.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
 				if event.keystroke.key == "escape" {
 					this.escape(cx);
+				} else if event.keystroke.key == "f" && event.keystroke.modifiers.platform {
+					this.open_search(window, cx);
 				}
 			}))
 			// First, so its listener is the first of the frame; see first_mouse.rs.
@@ -543,6 +551,7 @@ impl Render for Rdm {
 			.when(self.filter_open, |s| s.child(self.filter_popover(cx)))
 			.when(self.adding.is_some(), |s| s.child(self.add_dialog(cx)))
 			.when(self.settings_open(), |s| s.child(self.settings_sheet(cx)))
+			.when(self.search_open(), |s| s.child(self.search_sheet(cx)))
 			.when(self.category_sheet.is_some(), |s| s.child(self.render_category_sheet(cx)))
 			.when_some(self.guide, |s, guide| s.child(self.guide_sheet(guide, cx)))
 	}

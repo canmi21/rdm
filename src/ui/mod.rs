@@ -11,6 +11,7 @@ pub mod icon;
 pub mod list;
 pub mod notice_window;
 pub mod rules_window;
+pub mod search_sheet;
 pub mod settings_sheet;
 pub mod sidebar;
 pub mod slider;

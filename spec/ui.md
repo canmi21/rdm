@@ -1360,6 +1360,29 @@ Categories are read from `config.json` and written back when one is added, a pre
 or its list changed, or the order changed; see [state.md](state.md). Editing or removing a custom one from the window is not built; the
 file is the way, for now.
 
+## Search
+
+**Search finds what is in the download folder, inside its archives too.** It is a sheet inside the
+main window, as Settings is, opened from Search at the toolbar's right end -- where a Mac window
+keeps its search -- or with ⌘F anywhere in the window. Opening it gathers the folder once, off the
+window: every file and folder eight deep and fifty thousand at most, hidden files and a download's
+own partial and plan files left out, and for every archive among them its entries -- what the
+index already holds for the file as it now is, and what it does not listed there and then and
+handed back for the index to keep, so the next search and the grid's cards have it too. Each key
+then matches in memory: every word must be in the name, or in an entry's path inside its archive,
+case aside; a name starting with the query comes first, then one holding it whole, a file before
+an entry, a short name before a long one. See src/search.rs.
+
+The sheet is the field across the top; a chip for All and for every category holding a match,
+each with its count, in the sidebar's order, the categories judged on the thread that gathered the
+folder; three segmented filters -- anywhere, files or in archives; any time, today, this week,
+month or year; and five bands of size; then the results, a row each with the category's icon, the
+name, and under it where it is -- its folder under the download folder, or the archive and the
+folder inside it after an archive glyph -- with its size and date at the right. The arrows move the
+choice, return opens it, ⌘return shows it in its folder, a double click opens, and Escape or a
+press outside closes. An entry inside an archive cannot be opened where it is, so opening it shows
+the archive instead. See src/ui/search_sheet.rs and src/app/search.rs.
+
 ## What is deliberately not there yet
 
 The rows come from the engine now (see [engine.md](engine.md)): Add Task hands the address to

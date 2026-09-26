@@ -95,7 +95,6 @@ pub fn stamp(path: &Path) -> Option<(i64, u64)> {
 }
 
 /// A whole archive's entries, by the kind its name says, up to `ENTRY_LIMIT` of them.
-#[cfg(test)]
 pub fn list(path: &Path) -> Result<Vec<Entry>> {
 	let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
 	let kind = kind_of(name).context("not a kind that can be listed")?;

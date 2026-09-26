@@ -586,6 +586,12 @@ impl Rdm {
 				}
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
+			// `search [words]` opens the search with the words typed; `search close` closes it.
+			"search" if label == "close" => self.close_search(cx),
+			"search" => {
+				let input = self.begin_search(cx);
+				input.update(cx, |input, cx| input.set_content(&label, cx));
+			}
 			"rules" if label == "sync" => self.sync_rules(cx),
 			"rules" => self.open_rules(cx),
 			// A rule moved as its window's buttons move it: `rule <id> <up|down>`, `rule <id> up family`.
