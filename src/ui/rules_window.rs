@@ -4,8 +4,8 @@
 //! is written in a file, and the custom folder is a press away. See spec/rules.md.
 
 use gpui::{
-	Context, ElementId, Entity, IntoElement, Render, ScrollHandle, SharedString, Subscription,
-	Window, div, prelude::*, px,
+	Animation, AnimationExt, Context, ElementId, Entity, IntoElement, Render, ScrollHandle,
+	SharedString, Subscription, Transformation, Window, div, percentage, prelude::*, px,
 };
 
 use crate::app::Rdm;
@@ -197,9 +197,9 @@ impl RulesWindow {
 		if count(Tab::Problems) > 0 {
 			tabs.push((Tab::Problems, "Problems"));
 		}
-		// Bare words, the one showing ruled solid on its sides and over its stretch of the foot's
-		// dashed line. Every tab keeps a clear border on the same three sides, so the one showing takes
-		// no more room than the rest and nothing moves when another is chosen.
+		// Bare words, the one showing between dashed lines down its sides. Every tab keeps a clear
+		// border on the same two sides, so the one showing takes no more room than the rest and nothing
+		// moves when another is chosen.
 		div().flex().flex_none().items_center().h_full().children(tabs.into_iter().map(
 			|(tab, title)| {
 				let on = self.tab == tab;
@@ -215,9 +215,9 @@ impl RulesWindow {
 					.gap_1()
 					.h_full()
 					.px_2()
-					.border_t_1()
 					.border_l_1()
 					.border_r_1()
+					.border_dashed()
 					.cursor_pointer()
 					.when(on, |s| s.border_color(p.muted).text_color(p.text))
 					.when(!on, move |s| {
@@ -361,11 +361,25 @@ impl Render for RulesWindow {
 			let rdm = self.rdm.read(cx);
 			(rdm.rules_sync.running, rdm.rules_sync.status.clone())
 		};
+		// The button says where the sync stands and nothing else: a cloud to fetch from, and while it
+		// fetches, the cloud with its arrows turning inside it.
 		let sync_said = match (syncing, synced) {
 			(true, _) => "Fetching the rules".to_owned(),
-			(false, Some(status)) => format!("Sync the rules now\n{status}"),
-			(false, None) => "Sync the rules now\nNot synced since rdm started".to_owned(),
+			(false, Some(status)) => status,
+			(false, None) => "Not synced since rdm started".to_owned(),
 		};
+		let turning =
+			div().relative().size_3p5().child(icon(Icon::SyncCloud, p.text).size_3p5()).child(
+				// Down by the four units the arrows were moved up to centre their circle, of the
+				// twenty-four the icon is drawn in. See spec/icons.md.
+				div().absolute().top(px(14.0 * 4.0 / 24.0)).left_0().size_3p5().child(
+					icon(Icon::SyncArrows, p.text).size_3p5().with_animation(
+						"rules-sync-turn",
+						Animation::new(std::time::Duration::from_secs(1)).repeat(),
+						|svg, delta| svg.with_transformation(Transformation::rotate(percentage(delta))),
+					),
+				),
+			);
 		let sync_rdm = self.rdm.clone();
 		let sync = div()
 			.id("rules-sync")
@@ -378,15 +392,13 @@ impl Render for RulesWindow {
 			.size_5()
 			.group("rules-sync")
 			.tooltip(tooltip(sync_said))
-			.child(
-				hover_icon(
-					Icon::Download,
-					"rules-sync",
-					if syncing { p.border } else { p.muted },
-					(!syncing).then_some(p.text),
-				)
-				.size_3p5(),
-			)
+			.map(|s| {
+				if syncing {
+					s.child(turning)
+				} else {
+					s.child(hover_icon(Icon::CloudDownload, "rules-sync", p.muted, Some(p.text)).size_3p5())
+				}
+			})
 			.when(!syncing, |s| {
 				s.cursor_pointer()
 					.on_click(move |_, _, cx| sync_rdm.update(cx, |rdm, cx| rdm.sync_rules(cx)))

@@ -159,18 +159,18 @@ page rather than as the data it is.
 **Its foot is one row, the status bar's height**, with a dashed line along its top. At the left, from
 the window's edge, the tabs narrow the table to the rules, the mirror families, the authorities or
 the choices made in New Task, each with its count, and a tab of what could not be read appears only
-while there is something in it. The tabs are bare words; the one showing is ruled solid on its sides
-and over its own stretch of the dashed line, with no space added around it, and every tab keeps a
-clear border on the same three sides so choosing another moves nothing. The line is an element under
-the tabs rather than the row's border, which gpui paints over its children and which showed through
-the solid top. Filled pills, a frame on every tab, and the showing tab outlined as a browser's were
+while there is something in it. The tabs are bare words; the one showing stands between dashed lines down its sides,
+with no space added around it, and every tab keeps a clear border on the same two sides so choosing
+another moves nothing. The line along the top is an element under the tabs rather than the row's
+border, which gpui paints over its children. Filled pills, a frame on every tab, and the showing tab outlined as a browser's were
 each tried and each busier; the tabs had a row of their own over a status bar until the two were
 folded into this one.
 
 At the right are the buttons: first the selected row's -- move up, move down, forget a choice, show
 the rule's file in its folder, each dimmed where it does not apply -- then the whole set's: sync now,
-reload from disk, open the custom folder. Where the last sync stands is said by the sync button's
-tooltip, under what it does, rather than in a line of its own; the counts are on the tabs. Nothing
+reload from disk, open the custom folder. The sync button is a cloud to fetch from, and while it fetches, the
+cloud with its arrows turning inside it; its tooltip says where the last sync stands and nothing
+else, rather than a line of its own saying so. The counts are on the tabs. Nothing
 in the window is typed: a rule is written in a file.
 
 A synced file naming an authority is reported only when that would have made a host one: the synced

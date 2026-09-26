@@ -23,7 +23,7 @@ pub const SOCKET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/rdm.sock")
 const USAGE: &str = "state | tree | view <detailed|thumbnails|grid> | select <id> | open <id> | settings [section] | menu <label> | fullscreen | update | \
 	drag <size|progress|speed|status|added> <points> | say <occasion> [text] | \
 	pause <id> | resume <id> | remove <id> | yield <id> | now <id> | again <id> | filter <label> | status <label|none> | \
-	sort <added|name|size|progress|speed|status> [desc] | add <url> | rules | rule <id> <up|down> | look <address> | slide <limit|range> ... | connections <id> <auto|n> | \
+	sort <added|name|size|progress|speed|status> [desc] | add <url> | rules [sync] | rule <id> <up|down> | look <address> | slide <limit|range> ... | connections <id> <auto|n> | \
 	category <name> <icon> <pattern> | preset <name> | categories | edit <id> | extension <id> <ext> <on|off> | icon <id> <name> | color <id> <hex> | custom | advanced | colorhelp | reorder | \
 	move <id> <onto id>";
 
@@ -586,6 +586,7 @@ impl Rdm {
 				}
 			}
 			"add" if !label.is_empty() => self.add_url(&label, cx),
+			"rules" if label == "sync" => self.sync_rules(cx),
 			"rules" => self.open_rules(cx),
 			// A rule moved as its window's buttons move it: `rule <id> <up|down>`, `rule <id> up family`.
 			"rule" => match (rest.first(), rest.get(1).copied()) {

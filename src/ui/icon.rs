@@ -65,6 +65,11 @@ pub enum Icon {
 	Copy,
 	/// The copy button's answer for a moment after it has copied.
 	Check,
+	/// The rules' sync: a cloud to fetch from, and while it fetches the cloud with its arrows turning
+	/// inside it, drawn as two files so the arrows turn alone. See spec/icons.md.
+	CloudDownload,
+	SyncCloud,
+	SyncArrows,
 	/// A download window's actions: back to the queue, started ahead of it, begun over, opened, and
 	/// shown in its folder. See spec/ui.md.
 	ListEnd,
@@ -100,6 +105,9 @@ impl Icon {
 			Icon::ChevronsRightLeft => "lucide/chevrons-right-left.svg",
 			Icon::Copy => "lucide/copy.svg",
 			Icon::Check => "lucide/check.svg",
+			Icon::CloudDownload => "lucide/cloud-download.svg",
+			Icon::SyncCloud => "sync/cloud.svg",
+			Icon::SyncArrows => "sync/arrows.svg",
 			Icon::ListEnd => "lucide/list-end.svg",
 			Icon::ListStart => "lucide/list-start.svg",
 			Icon::RotateCcw => "lucide/rotate-ccw.svg",

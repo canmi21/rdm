@@ -31,6 +31,13 @@ status does and are the exceptions: All Tasks is a **pyramid**, a shape rather t
 one thing that holds everything under it; and Unfinished is a **dashed circle**, a ring left
 open, which is what unfinished looks like and what no single status means.
 
+**One Lucide icon is split into two files of our own**: `cloud-sync`, as `assets/sync/cloud.svg`
+and `assets/sync/arrows.svg`, committed, under the set's ISC licence as the files say. The rules
+window turns the arrows while a sync runs, and gpui turns an svg whole, around its centre: one file
+would turn the cloud too, and the arrows' circle is centred at (12, 16) of the twenty-four the icon
+is drawn in, so the arrows' file is moved up four units to put it at the centre, and drawn four
+twenty-fourths lower to meet the cloud again.
+
 ## Declared in the source, fetched by a task
 
 The files are not committed. `assets/lucide/` is ignored, and `mise run icons` fetches whatever
