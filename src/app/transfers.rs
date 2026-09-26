@@ -70,6 +70,7 @@ impl Rdm {
 				size: found.control.size.unwrap_or(0),
 				received: found.control.plan.done(),
 				speed: 0,
+				last_speed: 0,
 				status: Status::Paused,
 				added: found.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
 				source: None,
@@ -242,6 +243,9 @@ impl Rdm {
 						d.size = s.total;
 					}
 					d.speed = s.speed;
+					if s.speed > 0 {
+						d.last_speed = s.speed;
+					}
 					if let Some(name) = s.file_name {
 						d.name = name;
 					}
@@ -435,6 +439,7 @@ impl Rdm {
 			size: 0,
 			received: 0,
 			speed: 0,
+			last_speed: 0,
 			status: Status::Queued,
 			added: chrono::Local::now(),
 			source,

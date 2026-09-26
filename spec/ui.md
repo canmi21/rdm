@@ -96,6 +96,15 @@ glyph stands in; that is not a failure, since the glyph is what this application
 drawing for itself. The pictures are cached by path for the run and asked for again when a
 download finishes, the file on disk no longer being what it was.
 
+**A paused download shows what it last did, faded.** Its speed is the last it moved at and its
+time left is reckoned at that speed, so the time stands still rather than running on or vanishing;
+both are drawn in the muted color faded to under half, which reads as what was rather than what
+is, in the table's speed column, after the middle view's second line, and in the download's own
+window. The status beside them already says Paused, so fading is the whole of the hint: struck
+through read as an error, and a mark of its own said twice what the status says. A download
+resumed shows the same until its first report of a speed. The last speed is not kept between runs,
+so a download paused in an earlier run shows a dash. See src/download.rs.
+
 **The middle view is a row of two lines.** Fifty points high, by a thirty-point square: a
 picture file shows itself cropped to the square, anything else the system's icon, and the
 category's glyph where there is none -- the square is kept whatever fills it, so every row's words

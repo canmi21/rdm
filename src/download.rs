@@ -70,6 +70,9 @@ pub struct Download {
 	pub received: u64,
 	/// Bytes per second, zero unless downloading.
 	pub speed: u64,
+	/// The last speed it moved at, kept through a pause so the pause can show it, faded, as what it
+	/// was rather than what it is. Not kept between runs.
+	pub last_speed: u64,
 	pub status: Status,
 	pub added: DateTime<Local>,
 	/// The page the address was found on, when it came from one.
@@ -124,6 +127,26 @@ impl Download {
 		} else {
 			(self.received as f64 / self.size as f64).clamp(0.0, 1.0) as f32
 		}
+	}
+
+	/// The speed to show, and whether it is stale: the live one while it moves, and while it is
+	/// paused or waiting to go again the last it had, which no longer counts. See spec/ui.md.
+	pub fn shown_speed(&self) -> Option<(u64, bool)> {
+		if self.status == Status::Downloading && self.speed > 0 {
+			return Some((self.speed, false));
+		}
+		let held = matches!(self.status, Status::Paused | Status::Queued | Status::Downloading);
+		(held && self.last_speed > 0).then_some((self.last_speed, true))
+	}
+
+	/// The time left at the speed shown, and whether it is stale; a paused download's stands still,
+	/// since neither what is left nor the speed it was reckoned at moves.
+	pub fn shown_remaining(&self) -> Option<(Duration, bool)> {
+		let (speed, stale) = self.shown_speed()?;
+		if speed == 0 || self.size <= self.received {
+			return None;
+		}
+		Some((Duration::from_secs((self.size - self.received) / speed), stale))
 	}
 
 	pub fn remaining(&self) -> Option<Duration> {
@@ -395,6 +418,7 @@ pub fn sample() -> Vec<Download> {
 		size,
 		received,
 		speed,
+		last_speed: 0,
 		status,
 		// Spread over the past days so the Added column has something to order by.
 		added: now - chrono::Duration::hours(id as i64 * 7),

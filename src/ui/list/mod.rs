@@ -343,7 +343,9 @@ impl Rdm {
 				),
 			)
 			.child(
-				cell(Column::Speed).text_color(p.muted).child(div().truncate().child(speed_cell(download))),
+				cell(Column::Speed)
+					.text_color(if speed_stale(download) { stale(p) } else { p.muted })
+					.child(div().truncate().child(speed_cell(download))),
 			)
 			.child(cell(Column::Status).child(status_label(download, tint)))
 			.child(
@@ -474,8 +476,23 @@ fn size_cell(download: &Download) -> String {
 	}
 }
 
+/// The speed, live, or the last one a paused download moved at; a dash where there is neither.
 fn speed_cell(download: &Download) -> SharedString {
-	if download.speed > 0 { format_speed(download.speed).into() } else { "\u{2013}".into() }
+	match download.shown_speed() {
+		Some((speed, _)) => format_speed(speed).into(),
+		None => "\u{2013}".into(),
+	}
+}
+
+fn speed_stale(download: &Download) -> bool {
+	download.shown_speed().is_some_and(|(_, stale)| stale)
+}
+
+/// How a number that no longer counts is written: the muted color faded further, so it reads as
+/// what was rather than what is -- a paused download's last speed, and its time left, which stands
+/// still. See spec/ui.md.
+pub(crate) fn stale(p: Palette) -> Hsla {
+	p.muted.opacity(0.45)
 }
 
 #[cfg(test)]

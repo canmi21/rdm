@@ -240,6 +240,7 @@ impl Rdm {
 				size: file.size,
 				received: file.size,
 				speed: 0,
+				last_speed: 0,
 				status: Status::Completed,
 				added: file.modified.map_or_else(chrono::Local::now, chrono::DateTime::from),
 				source: None,

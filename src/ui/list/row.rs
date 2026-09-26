@@ -62,9 +62,26 @@ impl Rdm {
 							.gap_2()
 							.text_xs()
 							.text_color(if download.status == Status::Failed { p.failure } else { p.muted })
-							.child(
-								div().flex_1().min_w_0().truncate().child(detail(download, category.as_deref())),
-							)
+							.child({
+								// What no longer counts -- a paused download's last speed and the time
+								// left at it -- follows what does, faded.
+								let tail = stale_tail(download);
+								div()
+									.flex_1()
+									.min_w_0()
+									.flex()
+									.gap_1()
+									.child(
+										div()
+											.flex_none()
+											.max_w_full()
+											.truncate()
+											.child(detail(download, category.as_deref())),
+									)
+									.when_some(tail, |s, tail| {
+										s.child(div().min_w_0().truncate().text_color(super::stale(p)).child(tail))
+									})
+							})
 							.child(div().flex_none().text_color(p.muted).child(right)),
 					)
 					.when(part_way, |s| s.child(progress_bar(p, download, tint))),
@@ -104,6 +121,20 @@ impl Rdm {
 	}
 }
 
+/// A paused or waiting download's last speed and the time left at it, which the second line shows
+/// faded after what still counts; None for a download moving now or never seen moving.
+fn stale_tail(download: &Download) -> Option<String> {
+	let (speed, stale) = download.shown_speed()?;
+	if !stale {
+		return None;
+	}
+	let mut parts = vec![format!("\u{b7} {}", format_speed(speed))];
+	if let Some((left, _)) = download.shown_remaining() {
+		parts.push(format!("{} left", format_duration(left)));
+	}
+	Some(parts.join(" \u{b7} "))
+}
+
 /// The second line's words, by where the download stands. A finished file says where it came from,
 /// or for one the folder holds with no address, the category it is filed under.
 fn detail(download: &Download, category: Option<&str>) -> String {
@@ -112,6 +143,9 @@ fn detail(download: &Download, category: Option<&str>) -> String {
 		size => format!("{} of {}", format_bytes(download.received), format_bytes(size)),
 	};
 	match download.status {
+		// Moving but between reports, as a resumed download is before its first: the last speed
+		// follows, faded, from `stale_tail`.
+		Status::Downloading if download.speed == 0 => so_far(),
 		Status::Downloading => {
 			let mut parts = vec![so_far(), format_speed(download.speed)];
 			if let Some(left) = download.remaining() {
@@ -157,6 +191,16 @@ mod tests {
 		assert_eq!(detail(row, Some("Disk Images")), "4.0 MB \u{b7} example.com");
 		row.url.clear();
 		assert_eq!(detail(row, Some("Disk Images")), "4.0 MB \u{b7} Disk Images");
+		row.status = Status::Paused;
+		row.speed = 0;
+		row.last_speed = 1_000_000;
+		row.url = "https://example.com/a.iso".to_owned();
+		assert_eq!(detail(row, None), "1.0 MB of 4.0 MB");
+		assert_eq!(
+			stale_tail(row).as_deref(),
+			Some("\u{b7} 1.0 MB/s \u{b7} 3s left"),
+			"the pause shows what it last did"
+		);
 		row.status = Status::Failed;
 		row.error = Some("The server said 404".to_owned());
 		assert_eq!(detail(row, None), "The server said 404");

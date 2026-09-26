@@ -200,6 +200,7 @@ impl Store {
 				size: row.get::<_, i64>(4)? as u64,
 				received: row.get::<_, i64>(5)? as u64,
 				speed: 0,
+				last_speed: 0,
 				status: Status::parse(&status).unwrap_or(Status::Failed),
 				added: DateTime::parse_from_rfc3339(&added)
 					.map(|t| t.with_timezone(&Local))
@@ -286,6 +287,7 @@ mod tests {
 			size: 1000,
 			received: 250,
 			speed: 99,
+			last_speed: 0,
 			status,
 			added: Local::now(),
 			path: None,

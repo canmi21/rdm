@@ -251,16 +251,16 @@ impl Render for DownloadWindow {
 			format_bytes(download.received)
 		};
 		let moving = download.status == Status::Downloading;
-		let speed = if moving && download.speed > 0 {
-			format_speed(download.speed)
-		} else {
-			"\u{2014}".to_owned()
+		// A paused download shows what it last did, faded, as what was: the speed it moved at and
+		// the time left at that speed, which stands still. See spec/ui.md.
+		let (speed, speed_stale) = match download.shown_speed() {
+			Some((speed, stale)) => (format_speed(speed), stale),
+			None => ("\u{2014}".to_owned(), false),
 		};
-		let left = download
-			.remaining()
-			.filter(|_| moving)
-			.map(format_duration)
-			.unwrap_or_else(|| "\u{2014}".to_owned());
+		let (left, left_stale) = match download.shown_remaining() {
+			Some((left, stale)) => (format_duration(left), stale),
+			None => ("\u{2014}".to_owned(), false),
+		};
 		let resume = match resumable {
 			_ if download.status == Status::Completed => "\u{2014}",
 			Some(true) => "Supported",
@@ -279,15 +279,22 @@ impl Render for DownloadWindow {
 			.file_name()
 			.map(|name| name.to_string_lossy().into_owned())
 			.unwrap_or(folder);
-		let fact = move |label: &'static str, value: String| {
+		let stated = move |label: &'static str, value: String, faded: bool| {
 			div()
 				.flex()
 				.items_center()
 				.gap_2()
 				.min_w_0()
 				.child(div().w(px(FACT)).flex_none().text_color(p.muted).child(text!(id = label, label)))
-				.child(div().min_w_0().truncate().child(text!(id = (label, 1usize), value)))
+				.child(
+					div()
+						.min_w_0()
+						.truncate()
+						.when(faded, |s| s.text_color(crate::ui::list::stale(p)))
+						.child(text!(id = (label, 1usize), value)),
+				)
 		};
+		let fact = move |label: &'static str, value: String| stated(label, value, false);
 		let column = || div().flex().flex_col().flex_1().min_w_0().gap_1();
 		let facts = div()
 			.flex()
@@ -298,8 +305,8 @@ impl Render for DownloadWindow {
 			.child(
 				column()
 					.child(fact("Downloaded", landed))
-					.child(fact("Speed", speed))
-					.child(fact("Time left", left)),
+					.child(stated("Speed", speed, speed_stale))
+					.child(stated("Time left", left, left_stale)),
 			)
 			.child(
 				column()
