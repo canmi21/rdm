@@ -58,7 +58,7 @@ impl Rdm {
 		let p = self.palette;
 		let path = download.path.as_deref().map(std::path::Path::new);
 		// An archive already read by the index shows what it holds; nothing more is opened for it.
-		if let Some(indexed) = download.path.as_deref().and_then(|path| self.archives.get(path))
+		if let Some(indexed) = self.archive_of(download)
 			&& indexed.error.is_none()
 			&& !indexed.entries.is_empty()
 		{

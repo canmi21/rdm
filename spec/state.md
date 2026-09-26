@@ -47,12 +47,25 @@ Three files and a folder, because three kinds of writing and one kind of picture
   list, `checksum`, `range` as written and `speed_limit`, everything Add Task can ask for, NULL
   where it did not; an older file gains the columns on open. Version 4 adds a second table,
   `archives`: for every archive among the rows that can be listed without unpacking -- zip and
-  what is a zip under another name, 7z, tar, and a gzip tar under 64 MB, since gzip has no
-  directory and must be inflated to its end -- its entries as JSON, keyed by path with the
-  file's modification time and size, or the reason it could not be read, so a file is read once
-  and again only when it changed. Read in the background after launch, after a download
+  what is a zip under another name, 7z, tar, a tar compressed with gzip, xz, lzip, bzip2 or zstd
+  read through its first 64 MB, since a stream has no directory and names only what has been
+  inflated, and RAR 4 and 5, ISO 9660 and CAB, read off their headers -- its entries as JSON,
+  keyed by path with the file's modification time and size, or the reason it could not be read,
+  so a file is read once and again only when it changed. A disk image is not listed: its names
+  are inside a file system inside compressed blocks, which was judged not worth its code. Read in the background after launch, after a download
   finishes, and after the folder is read, one file at a time; a file gone from disk takes its
-  row with it. Version 5 adds a third, `notices`: what the system was last told about an update
+  row with it.
+
+  **An archive is listed as far as it has arrived.** A download not yet whole is its partial file
+  read only where its plan says the bytes are: several connections write it at once, so it has
+  holes, and a read that meets one ends as the file would. Each format then names what it can --
+  a tar or a RAR up to the first hole, an ISO every folder whose sectors are there, a zip by the
+  directory at its end, which a split download often has early, or else header by header from the
+  front, and a 7z by its end. Such a reading is stamped with when it was taken and read again
+  twenty seconds later, since the file changes with every write; it is keyed by the partial file's
+  path, which goes when the download finishes and the finished file is read whole. See
+  src/index/.
+  Version 5 adds a third, `notices`: what the system was last told about an update
   and at which stage -- the version and the build named -- one row a stage, replaced rather than
   added to. It is a table and not a line in `state.json` because the point of it is to outlive
   the run that wrote it, and because the check runs every five minutes while the state file is

@@ -118,13 +118,18 @@ pulldown-cmark = { version = "0.13", default-features = false }
 # A Word or OpenDocument file's first paragraphs, read out of the XML inside it for its card. The
 # version is the one already in the tree. See src/thumbnail/document.rs.
 quick-xml = "0.41"
-# What an archive holds, read without unpacking it: zip, 7z, tar and gzip. See src/index.rs.
+# What an archive holds, read without unpacking it: zip, 7z, tar, and a tar compressed with gzip,
+# xz, lzip, bzip2 or zstd; RAR, ISO and CAB are read from their headers by hand. See src/index/.
 # zip is also what the Windows build comes in, and tar with flate2 the Linux one; see
-# src/update/install.rs.
+# src/update/install.rs. xz, lzip and bzip2 are the versions 7z already brings, bzip2 on its pure
+# Rust backend, and zstd is ruzstd's decoder, pure Rust too.
 sevenz-rust2 = { version = "0.23", default-features = false }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "lzip"] }
+bzip2 = "0.6"
+ruzstd = { version = "0.9", default-features = false, features = ["std"] }
 # The rules, which are written by hand and want comments beside them. See spec/rules.md.
 toml = "1.1"
 

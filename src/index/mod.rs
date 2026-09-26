@@ -1,8 +1,9 @@
-//! What an archive holds, read without unpacking it, for the categories to judge it by: a zip's
-//! central directory, a 7z's header, a tar's headers skipped through by their sizes, and for a
-//! small gzip tar the whole stream, since gzip has no directory to read. The rest -- rar, the
-//! large stream-compressed ones, disk images -- is left alone: what cannot be read cheaply is
-//! not read. Indexed in the background and kept in the store. See spec/state.md.
+//! What an archive holds, read without unpacking it, for the categories to judge it by and a card
+//! to list: a zip's central directory, a 7z's header, a tar's headers skipped through by their
+//! sizes, a compressed tar's stream as far as its first megabytes go, and the names RAR, ISO 9660
+//! and CAB keep in their headers. A download not yet whole is read where it has arrived. A disk
+//! image is left alone: its names sit inside a file system inside compressed blocks. Indexed in the
+//! background and kept in the store. See spec/state.md.
 
 use std::io::Read;
 use std::path::Path;
@@ -10,8 +11,13 @@ use std::path::Path;
 use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
 
-/// A gzip tar larger than this is not read: a stream has to be inflated to its end to name its
-/// last file, and past this much the wait is not worth a category.
+mod available;
+mod headers;
+
+pub use available::Available;
+
+/// How much of a compressed tar is read: a stream has to be inflated to name what is in it, and
+/// past this much the names already read are what the card and the categories get.
 pub const STREAM_LIMIT: u64 = 64 * 1024 * 1024;
 
 /// How many entries are kept per archive: enough to judge it, not the whole of a large one.
@@ -35,26 +41,44 @@ pub struct Indexed {
 	pub error: Option<String>,
 }
 
-/// The kinds that can be listed cheaply.
+/// The kinds that can be listed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
 	Zip,
 	SevenZ,
 	Tar,
 	TarGz,
+	TarXz,
+	TarBz2,
+	TarZst,
+	TarLz,
+	Rar,
+	Iso,
+	Cab,
 }
 
 /// The kind a file name says it is, if it is one that can be listed. `jar`, `apk` and `ipa`
 /// are zips and are listed as such, so an archive of a program is seen to hold one.
 pub fn kind_of(name: &str) -> Option<Kind> {
 	let lower = name.to_ascii_lowercase();
-	if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
-		return Some(Kind::TarGz);
+	for (ends, kind) in [
+		(&[".tar.gz", ".tgz"][..], Kind::TarGz),
+		(&[".tar.xz", ".txz"], Kind::TarXz),
+		(&[".tar.bz2", ".tbz2", ".tbz"], Kind::TarBz2),
+		(&[".tar.zst", ".tzst"], Kind::TarZst),
+		(&[".tar.lz", ".tlz"], Kind::TarLz),
+	] {
+		if ends.iter().any(|end| lower.ends_with(end)) {
+			return Some(kind);
+		}
 	}
 	match lower.rsplit_once('.').map(|(_, ext)| ext)? {
 		"zip" | "zipx" | "jar" | "apk" | "ipa" | "xapk" | "aab" => Some(Kind::Zip),
 		"7z" => Some(Kind::SevenZ),
 		"tar" => Some(Kind::Tar),
+		"rar" => Some(Kind::Rar),
+		"iso" => Some(Kind::Iso),
+		"cab" => Some(Kind::Cab),
 		_ => None,
 	}
 }
@@ -70,24 +94,42 @@ pub fn stamp(path: &Path) -> Option<(i64, u64)> {
 	Some((modified, metadata.len()))
 }
 
-/// The archive's entries, by its kind, up to `ENTRY_LIMIT` of them.
+/// A whole archive's entries, by the kind its name says, up to `ENTRY_LIMIT` of them.
+#[cfg(test)]
 pub fn list(path: &Path) -> Result<Vec<Entry>> {
 	let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
 	let kind = kind_of(name).context("not a kind that can be listed")?;
 	let file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+	list_available(Available::whole(file)?, kind)
+}
+
+/// An archive's entries as far as the file has arrived: a whole file, or a partial one with its
+/// holes, read the same way.
+pub fn list_available(mut file: Available, kind: Kind) -> Result<Vec<Entry>> {
+	let stream = |file: Available| file.take(STREAM_LIMIT);
 	match kind {
-		Kind::Zip => list_zip(file),
-		Kind::SevenZ => list_7z(path),
-		Kind::Tar => list_tar_file(file),
-		Kind::TarGz => {
-			let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-			anyhow::ensure!(size <= STREAM_LIMIT, "a gzip tar over the stream limit is not read");
-			list_tar_stream(flate2::read::GzDecoder::new(file))
-		}
+		// The directory at the end, which a download split across connections often has early;
+		// failing that, the headers from the front.
+		Kind::Zip => match list_zip(&mut file) {
+			Ok(entries) => Ok(entries),
+			Err(error) => headers::zip_from_front(file).map_err(|_| error),
+		},
+		Kind::SevenZ => list_7z(file),
+		Kind::Tar => list_tar(file),
+		Kind::TarGz => list_tar(flate2::read::GzDecoder::new(stream(file))),
+		Kind::TarXz => list_tar(lzma_rust2::XzReader::new(stream(file), true)),
+		Kind::TarBz2 => list_tar(bzip2::read::MultiBzDecoder::new(stream(file))),
+		Kind::TarZst => list_tar(
+			ruzstd::decoding::StreamingDecoder::new(stream(file)).context("read the zstd frame")?,
+		),
+		Kind::TarLz => list_tar(lzma_rust2::LzipReader::new(stream(file))),
+		Kind::Rar => headers::rar(file),
+		Kind::Iso => headers::iso(file),
+		Kind::Cab => headers::cab(file),
 	}
 }
 
-fn list_zip(file: std::fs::File) -> Result<Vec<Entry>> {
+fn list_zip(file: &mut Available) -> Result<Vec<Entry>> {
 	let mut archive = zip::ZipArchive::new(file).context("read the zip directory")?;
 	let mut entries = Vec::new();
 	for index in 0..archive.len().min(ENTRY_LIMIT) {
@@ -97,8 +139,9 @@ fn list_zip(file: std::fs::File) -> Result<Vec<Entry>> {
 	Ok(entries)
 }
 
-fn list_7z(path: &Path) -> Result<Vec<Entry>> {
-	let archive = sevenz_rust2::Archive::open(path).context("read the 7z header")?;
+fn list_7z(mut file: Available) -> Result<Vec<Entry>> {
+	let archive = sevenz_rust2::Archive::read(&mut file, &sevenz_rust2::Password::empty())
+		.context("read the 7z header")?;
 	Ok(
 		archive
 			.files
@@ -113,22 +156,17 @@ fn list_7z(path: &Path) -> Result<Vec<Entry>> {
 	)
 }
 
-/// A tar's headers, one every block: a file that can seek skips each entry's data, a stream
-/// reads through it.
-fn list_tar_file(file: std::fs::File) -> Result<Vec<Entry>> {
-	let mut archive = tar::Archive::new(file);
-	read_tar_entries(archive.entries_with_seek().context("read the tar")?)
-}
-
-fn list_tar_stream<R: Read>(reader: R) -> Result<Vec<Entry>> {
+/// A tar's headers, one every block, read through its data. What was named before an error is
+/// kept: a stream cut at the limit, or a download at a hole, still named what came before.
+fn list_tar<R: Read>(reader: R) -> Result<Vec<Entry>> {
 	let mut archive = tar::Archive::new(reader);
-	read_tar_entries(archive.entries().context("read the tar")?)
-}
-
-fn read_tar_entries<R: Read>(iter: tar::Entries<'_, R>) -> Result<Vec<Entry>> {
 	let mut entries = Vec::new();
-	for entry in iter {
-		let entry = entry.context("a tar header")?;
+	for entry in archive.entries().context("read the tar")? {
+		let entry = match entry {
+			Ok(entry) => entry,
+			Err(error) if entries.is_empty() => return Err(error).context("a tar header"),
+			Err(_) => break,
+		};
 		let header = entry.header();
 		entries.push(Entry {
 			name: entry.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
@@ -244,9 +282,12 @@ mod tests {
 		assert_eq!(kind_of("a.tar"), Some(Kind::Tar));
 		assert_eq!(kind_of("a.7z"), Some(Kind::SevenZ));
 		assert_eq!(kind_of("app.apk"), Some(Kind::Zip));
-		assert_eq!(kind_of("a.rar"), None, "rar needs a library this build does not carry");
-		assert_eq!(kind_of("a.tar.xz"), None, "xz is a stream with no cheap way through");
-		assert_eq!(kind_of("a.dmg"), None);
+		assert_eq!(kind_of("a.rar"), Some(Kind::Rar));
+		assert_eq!(kind_of("a.tar.xz"), Some(Kind::TarXz));
+		assert_eq!(kind_of("a.tbz2"), Some(Kind::TarBz2));
+		assert_eq!(kind_of("a.tar.zst"), Some(Kind::TarZst));
+		assert_eq!(kind_of("image.ISO"), Some(Kind::Iso));
+		assert_eq!(kind_of("a.dmg"), None, "a disk image's names are inside a file system");
 	}
 
 	#[test]
@@ -338,5 +379,46 @@ mod tests {
 				Top { name: "docs".to_owned(), dir: true, size: 4 },
 			]
 		);
+	}
+
+	fn tar_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+		let mut builder = tar::Builder::new(Vec::new());
+		for (name, data) in files {
+			let mut header = tar::Header::new_gnu();
+			header.set_size(data.len() as u64);
+			header.set_mode(0o644);
+			header.set_cksum();
+			builder.append_data(&mut header, name, *data).unwrap();
+		}
+		builder.into_inner().unwrap()
+	}
+
+	#[test]
+	fn a_bzip2_tar_is_listed_through_its_stream() {
+		let dir = crate::testing::scratch("index-bz2");
+		let path = dir.join("a.tar.bz2");
+		let mut encoder = bzip2::write::BzEncoder::new(
+			std::fs::File::create(&path).unwrap(),
+			bzip2::Compression::fast(),
+		);
+		encoder.write_all(&tar_of(&[("one.txt", b"1"), ("two.txt", b"2")])).unwrap();
+		encoder.finish().unwrap();
+		let names: Vec<String> = list(&path).unwrap().into_iter().map(|e| e.name).collect();
+		assert_eq!(names, ["one.txt", "two.txt"]);
+	}
+
+	/// A tar downloaded as far as its second file's header: the first is named, and the list stops
+	/// at the hole rather than failing.
+	#[test]
+	fn a_partial_tar_names_what_has_arrived() {
+		let dir = crate::testing::scratch("index-partial");
+		let path = dir.join("a.tar.downloading");
+		let bytes = tar_of(&[("first.bin", &[7u8; 600][..]), ("second.bin", b"2")]);
+		std::fs::write(&path, &bytes).unwrap();
+		let file =
+			Available::partial(std::fs::File::open(&path).unwrap(), bytes.len() as u64, vec![(0, 1100)]);
+		let names: Vec<String> =
+			list_available(file, Kind::Tar).unwrap().into_iter().map(|e| e.name).collect();
+		assert_eq!(names, ["first.bin"]);
 	}
 }

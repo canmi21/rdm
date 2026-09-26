@@ -90,7 +90,7 @@ impl Store {
 		}
 		if version <= 3 && version != 0 {
 			// What each archive in the folder holds, read once and kept by the file's stamp.
-			// See src/index.rs.
+			// See src/index/.
 			connection.execute_batch(
 				"CREATE TABLE IF NOT EXISTS archives (
 					path TEXT PRIMARY KEY,
