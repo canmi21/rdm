@@ -881,7 +881,9 @@ extra width was spent on gaps; a user resizing it by eye settled near three by t
 From the top: the address on a line of its own, cut short, with a button that copies it whole and
 shows a check for a moment and a half after, since a copy changes nothing on screen and a press
 that shows nothing reads as one that did nothing --
-nothing there is typed, so it is not a field. Then the transfer's facts in a card, two columns as
+nothing there is typed, so it is not a field. A file the folder scan found has no address, and the
+line holds its path instead, the button copying that; the line is there even with neither, since
+leaving it out moved everything under it up and left a gap above the bar. Then the transfer's facts in a card, two columns as
 New Task shows what it found: how much has landed, the speed, the time left; whether the server
 serves ranges so the download can be resumed, how many parts it is in and how many connections are
 open on them, and the folder. Then the two settings. At the bottom, the transfer as **one bar made

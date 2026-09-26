@@ -182,3 +182,22 @@ fn opening_a_download_adds_one_window_and_removing_it_closes_it(cx: &mut TestApp
 	cx.run_until_parked();
 	assert_eq!(cx.windows().len(), 1);
 }
+
+/// A file the folder scan found has no address. Its window once left the address line out, so
+/// everything under it moved up and a gap opened above the bar; the line holds the path instead.
+#[gpui::test]
+fn a_file_with_no_address_shows_its_path_where_the_address_goes(cx: &mut TestAppContext) {
+	let (rdm, mut main) = open(cx);
+	rdm.update(&mut main, |rdm, cx| {
+		let row = rdm.downloads.iter_mut().find(|d| d.id == 2).unwrap();
+		row.url.clear();
+		row.path = Some("/Users/somebody/Downloads/found.bin".to_owned());
+		rdm.open_download(2, cx);
+	});
+	main.run_until_parked();
+	let handle = rdm.read_with(&main, |rdm, _| *rdm.open.get(&2).unwrap());
+	let mut window = VisualTestContext::from_window(handle.into(), cx);
+	window.run_until_parked();
+	assert!(window.debug_bounds("button:Copy path").is_some(), "the path takes the address's line");
+	assert!(window.debug_bounds("button:Copy address").is_none());
+}

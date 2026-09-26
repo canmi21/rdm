@@ -204,43 +204,44 @@ impl Render for DownloadWindow {
 
 		// The address on a line of its own, cut short, with a button that copies it whole: nothing
 		// here is typed, so it is not a field.
+		// A file the folder scan found came from no address, so the line holds where it is on disk;
+		// the line is kept even with neither, so nothing under it moves up. See spec/ui.md.
 		let copied = self.copied.is_some_and(|at| at.elapsed() < COPIED);
-		let address = (!download.url.is_empty()).then(|| {
-			let url = download.url.clone();
-			div()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(div().flex_1().min_w_0().truncate().text_color(p.muted).child(download.url.clone()))
-				.child(
-					div()
-						.id("copy-address")
-						.role(gpui::Role::Button)
-						.aria_label("Copy address")
-						.debug_selector(|| "button:Copy address".to_owned())
-						.flex_none()
-						.p_0p5()
-						.rounded_sm()
-						.cursor_pointer()
-						.hover(move |s| s.bg(p.hover))
-						.on_click(cx.listener(move |this, _, _, cx| {
-							cx.write_to_clipboard(ClipboardItem::new_string(url.clone()));
-							this.copied = Some(std::time::Instant::now());
-							cx.notify();
-							// Drawn again once the check's moment is over, which nothing else would.
-							cx.spawn(async move |this, cx| {
-								cx.background_executor().timer(COPIED).await;
-								let _ = this.update(cx, |_, cx| cx.notify());
-							})
-							.detach();
-						}))
-						.child(if copied {
-							icon(Icon::Check, p.success).size_3p5()
-						} else {
-							icon(Icon::Copy, p.muted).size_3p5()
-						}),
-				)
-		});
+		let (line, label) = match download.url.is_empty() {
+			true => (download.path.clone().unwrap_or_default(), "Copy path"),
+			false => (download.url.clone(), "Copy address"),
+		};
+		let copy = crate::ui::pressable("copy-address", label).flex_none().p_0p5().rounded_sm().child(
+			if copied {
+				icon(Icon::Check, p.success).size_3p5()
+			} else {
+				icon(Icon::Copy, p.muted).size_3p5()
+			},
+		);
+		let copy = if line.is_empty() {
+			copy.invisible()
+		} else {
+			let text = line.clone();
+			copy.cursor_pointer().hover(move |s| s.bg(p.hover)).on_click(cx.listener(
+				move |this, _, _, cx| {
+					cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+					this.copied = Some(std::time::Instant::now());
+					cx.notify();
+					// Drawn again once the check's moment is over, which nothing else would.
+					cx.spawn(async move |this, cx| {
+						cx.background_executor().timer(COPIED).await;
+						let _ = this.update(cx, |_, cx| cx.notify());
+					})
+					.detach();
+				},
+			))
+		};
+		let address = div()
+			.flex()
+			.items_center()
+			.gap_2()
+			.child(div().flex_1().min_w_0().truncate().text_color(p.muted).child(line))
+			.child(copy);
 
 		// What the transfer is doing, in a card as New Task shows what it found: how much has
 		// landed, how fast, how long is left; whether it can be resumed, how it is divided, and
@@ -435,7 +436,7 @@ impl Render for DownloadWindow {
 			_ => download.status.label().to_owned(),
 		};
 		let body = body
-			.when_some(address, |s, address| s.child(address))
+			.child(address)
 			.child(facts)
 			.child(
 				div()
