@@ -190,6 +190,7 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 	let mut families = Vec::new();
 	let mut domains: Vec<(Layer, Domain)> = Vec::new();
 	let mut orders: Vec<Order> = Vec::new();
+	let mut synced_authorities: Vec<(String, String)> = Vec::new();
 	for (layer, texts) in layers {
 		for (path, text) in texts {
 			let file: File = match toml::from_str(text) {
@@ -215,10 +216,7 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 			}
 			for authority in file.authority {
 				if *layer == Layer::Synced {
-					compiled.problems.push(format!(
-						"Synced {path}: authority {} ignored; only built-in and custom rules name one",
-						authority.host
-					));
+					synced_authorities.push((path.clone(), authority.host));
 				} else if !compiled.authorities.contains(&authority.host) {
 					compiled.authorities.push(authority.host);
 				}
@@ -227,6 +225,15 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 			if *layer == Layer::Custom {
 				orders.extend(file.order);
 			}
+		}
+	}
+	// A synced authority is a problem only when it would have made a host one: the synced copy of
+	// the built-in jsDelivr file names the same hosts the built-in layer already does.
+	for (path, host) in synced_authorities {
+		if !compiled.authorities.contains(&host) {
+			compiled.problems.push(format!(
+				"Synced {path}: authority {host} ignored; only built-in and custom rules name one"
+			));
 		}
 	}
 	// One rule to an id: the copy in the highest layer, so a synced rule replaces the built-in one it

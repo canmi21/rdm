@@ -446,3 +446,17 @@ fn a_rule_of_the_same_id_in_a_higher_layer_replaces_the_lower_one() {
 	);
 	assert_eq!(ids.len(), unique.len());
 }
+
+#[test]
+fn a_synced_authority_is_a_problem_only_when_it_is_not_one_already() {
+	let file = |host: &str| format!("[[authority]]\nhost = \"{host}\"\n");
+	let compiled = compile(&[
+		(Layer::BuiltIn, vec![("a.toml".into(), file("cdn.test"))]),
+		(Layer::Synced, vec![("a.toml".into(), file("cdn.test") + &file("evil.test"))]),
+	]);
+	assert_eq!(compiled.authorities, ["cdn.test"]);
+	assert_eq!(compiled.problems.len(), 1, "{:?}", compiled.problems);
+	assert!(compiled.problems[0].contains("evil.test"));
+	let repository = compile(&[(Layer::BuiltIn, built_in()), (Layer::Synced, repository_rules())]);
+	assert!(repository.problems.is_empty(), "the repository's own files: {:?}", repository.problems);
+}

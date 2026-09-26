@@ -149,11 +149,24 @@ written.
 
 ## A window for the rules
 
-A window of its own, opened from Settings' Transfers under Sources, lists the merged rules with the
-layer each came from and its priority, then the mirror families, the authorities, the choices made
-in New Task, and any file that could not be read. Nothing in it is typed: a rule is written in a
-file, and the custom folder opens in the system's file manager from the window's foot, beside
-Reload for a file edited by hand.
+A window of its own, opened from Settings' Transfers under Sources, is **a table drawn as the main
+window's detailed list is**: column titles over dense rows of the same height, a row selected by a
+press, and a status bar whose buttons act on the selected row. The columns are the name, what it
+matches -- the template, or a family's prefixes -- what it provides, the layer it came from, and its
+priority; a row's tooltip holds what the columns cut short. Tabs above narrow it to the rules, the
+mirror families, the authorities or the choices made in New Task, each with its count, and a tab of
+what could not be read appears only while there is something in it. It was a list of cards grouped
+under headings, with buttons on every row, and read as a settings page rather than as the data it
+is.
+
+The status bar says how many rules there are and where the last sync stands. Its first buttons are
+the selected row's -- move up, move down, forget a choice, show the rule's file in its folder, each
+dimmed where it does not apply -- and its last the whole set's: sync now, reload from disk, open the
+custom folder. Nothing in the window is typed: a rule is written in a file.
+
+A synced file naming an authority is reported only when that would have made a host one: the synced
+copy of the built-in jsDelivr file names the hosts the built-in layer already does, and was reported
+as a problem on every sync until this.
 
 **A rule is moved up or down one place**, whatever layer it is in, and the move is written to the
 custom layer's `order.toml` rather than to the rule's own file, a synced file being the sync's to

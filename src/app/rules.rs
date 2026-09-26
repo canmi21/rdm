@@ -17,7 +17,7 @@ impl Rdm {
 		// Deferred for the reason `open_download` gives: the new window's first frame reads this.
 		let rdm = cx.entity();
 		cx.defer(move |cx| {
-			let options = super::child_window(cx, "Rules", size(px(640.0), px(440.0)));
+			let options = super::child_window(cx, "Rules", size(px(760.0), px(460.0)));
 			let view = rdm.clone();
 			if let Ok(handle) = cx.open_window(options, |window, cx| {
 				#[cfg(target_os = "linux")]
@@ -81,6 +81,28 @@ impl Rdm {
 		if let Some(paths) = &self.paths {
 			let _ = std::fs::create_dir_all(&paths.custom_rules);
 			crate::reveal::open(&paths.custom_rules);
+		}
+	}
+
+	/// The file a rule came from, for a synced or custom one; a built-in rule has none on disk.
+	pub(crate) fn rule_file(
+		&self,
+		layer: crate::rules::Layer,
+		file: &str,
+	) -> Option<std::path::PathBuf> {
+		let paths = self.paths.as_ref()?;
+		let root = match layer {
+			crate::rules::Layer::BuiltIn => return None,
+			crate::rules::Layer::Synced => &paths.rules,
+			crate::rules::Layer::Custom => &paths.custom_rules,
+		};
+		Some(root.join(file)).filter(|path| path.exists())
+	}
+
+	/// Shows a rule's file in its folder, selected.
+	pub(crate) fn reveal_rule_file(&self, layer: crate::rules::Layer, file: &str) {
+		if let Some(path) = self.rule_file(layer, file) {
+			crate::reveal::show(&path, &self.preferences.file_manager);
 		}
 	}
 }
