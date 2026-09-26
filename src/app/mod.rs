@@ -33,6 +33,7 @@ mod rules;
 #[cfg(test)]
 mod tests;
 mod transfers;
+mod tray;
 pub(crate) use transfers::Asked;
 mod updates;
 
@@ -343,6 +344,8 @@ pub struct Rdm {
 	/// src/app/background.rs.
 	pub(crate) schedule: background::Schedule,
 	pub(crate) rules_sync: background::RulesSync,
+	/// A download failed since the main window was last in front: the tray's dot.
+	pub(crate) unseen_failure: bool,
 	_checks: Option<Task<()>>,
 }
 
@@ -370,12 +373,13 @@ impl Rdm {
 		// The engine's events are drained on the window's own executor a few times a second: the
 		// engine runs on tokio and the window on gpui, and a channel read by a timer is the whole
 		// of what joins them. Nothing redraws unless an event arrived.
-		let tick = cx.spawn(async move |this, cx| {
+		let tick = cx.spawn_in(window, async move |this, cx| {
 			loop {
 				cx.background_executor().timer(Duration::from_millis(200)).await;
 				if this.update(cx, |this, cx| this.pump_events(cx)).is_err() {
 					break;
 				}
+				let _ = this.update_in(cx, |this, window, cx| this.pump_tray(window, cx));
 			}
 		});
 		// The rows a previous run left. One that was moving or waiting when the window closed is
@@ -470,6 +474,7 @@ impl Rdm {
 			updates: updates::Updates::default(),
 			schedule: background::Schedule::new(std::time::Instant::now()),
 			rules_sync: background::RulesSync::default(),
+			unseen_failure: false,
 			_checks: None,
 		};
 		this.engine.set_speed_limit(this.preferences.speed_limit);

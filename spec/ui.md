@@ -268,15 +268,37 @@ color is a number on the category, so a written one is the same kind of thing as
 
 **An icon in the tray, with the system's menu under it.** The menu bar's right on macOS, the
 notification area on Windows, the indicator area on Linux: the application's icon, and under
-it the system's own menu with two items, show the window and quit. On macOS the icon is the
-bare glyph as a template image, which the system tints for a light or dark menu bar, at 22
-points; elsewhere the full icon, since those trays draw an icon as it is. A left click on
-Windows or Linux shows the window as the first item would; on macOS a click opens the menu,
-which is how the menu bar works. Closing the window still quits, as before: the tray is a way
-back to the window and a way out, not a place the window hides. A tray that cannot be made --
-a Linux desktop with no host for a StatusNotifierItem, say, which is a GNOME without the
-extension for it -- is reported and done without. See [packaging.md](packaging.md) for the two
-rendered icons and [framework.md](framework.md) for why Linux speaks the bus directly.
+it the system's own menu. Closing the window still quits, as before: the tray is a way back to
+the window, a word on what goes on behind it and a way out, not a place the window hides. A left
+click on Windows or Linux shows the window; on macOS a click opens the menu, which is how the menu
+bar works. A tray that cannot be made -- a Linux desktop with no host for a StatusNotifierItem,
+say, which is a GNOME without the extension for it -- is reported and done without. See
+[framework.md](framework.md) for why Linux speaks the bus directly.
+
+**The icon says what goes on, and moves while something does.** Its frames are drawn by the
+application from the glyph's own geometry as they are needed, a dozen a second while it moves,
+and none while it is still. By what is most pressing: a download moving is the arrow falling into
+its base, one after another, the base filling with the running downloads' progress when every
+one knows its size; the rules syncing is Lucide's two sync arrows, turning; something waiting in
+the queue with nothing moving is the arrow still over a base of three dots lit in turn; nothing is
+the glyph at rest. A dot in the top right corner, cut clear of the glyph, says a download failed
+since the main window was last in front, or the last rules sync failed; bringing the window
+forward clears the first, and a sync that succeeds the second. On macOS the frame is a template
+image the system tints for a light or dark bar, cropped to the glyph's own extent with a point
+of room: tray-icon sizes every icon to 18 points high, and the committed artwork's margin once
+made the glyph a third smaller than the symbols beside it. Elsewhere the glyph is drawn white on
+the application's tile, since those trays draw an icon as it is, and the dot is red.
+
+**The menu names what moves and reaches what is used from outside the window.** Its first line,
+which is not a button, is the state in words -- downloading so many at what speed, so many
+waiting, or nothing downloading -- and under it up to five downloads, moving first, each with its
+percentage or "waiting", which open that download's window. Then Show and New Task, which bring
+the main window forward first; Pause All and Resume All, each only while something can be paused
+or resumed; Rules and Sync Rules Now, which reads "Syncing Rules" and is off while one runs, with
+the failure under it in words when the last one failed; Settings and Check for Updates; and Quit.
+The tooltip says the same state in a line. The menu is built again only when a download joins or
+leaves it or the failure note comes or goes; otherwise its words are set in place, so a menu held
+open follows along.
 
 **Notifications is a page of one row a moment, and each row is a choice of where.** Four moments
 are worth telling somebody about -- a download finishes, a download fails, every download

@@ -85,6 +85,9 @@ impl Rdm {
 		self.updates.active = window.is_window_active();
 		cx.observe_window_activation(window, |this, window, _| {
 			this.updates.active = window.is_window_active();
+			if this.updates.active {
+				this.unseen_failure = false;
+			}
 		})
 		.detach();
 		cx.spawn(async move |this, cx| {

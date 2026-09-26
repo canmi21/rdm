@@ -90,19 +90,6 @@ impl Rdm {
 
 	/// Every event the engine has sent since the last look, applied to the rows.
 	pub(crate) fn pump_events(&mut self, cx: &mut Context<Self>) {
-		// The tray's presses first: show brings every window of the application forward,
-		// quit is quit.
-		for action in crate::tray::poll() {
-			match action {
-				crate::tray::Action::Show => {
-					cx.activate(true);
-					for handle in cx.windows() {
-						let _ = handle.update(cx, |_, window, _| window.activate_window());
-					}
-				}
-				crate::tray::Action::Quit => cx.quit(),
-			}
-		}
 		let mut changed = false;
 		while let Ok(event) = self.events.try_recv() {
 			self.apply(event, cx);
@@ -275,6 +262,7 @@ impl Rdm {
 					d.status = Status::Failed;
 					d.speed = 0;
 					d.error = Some(message);
+					self.unseen_failure = true;
 				}
 			}
 			Event::Paused(id) => {

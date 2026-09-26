@@ -105,8 +105,9 @@ sys-locale = "0.3"
 # Reading and taking off the mark a system puts on a downloaded file. One call each way; a crate
 # for two calls would be a crate. See src/quarantine.rs.
 libc = "0.2"
-# Decodes the tray's PNG, rendered from the artwork by `mise run icon`.
-png = "0.18"
+# Draws the tray's frames from SVG as they are needed; gpui already brings it for its own icons,
+# so the version is gpui's. See src/tray/art.rs.
+resvg = { version = "0.46", default-features = false }
 # The system's own icon for a file, which arrives as TIFF and is drawn as a gpui RenderImage.
 # The version is gpui's own: a RenderImage is built from this crate's Frame, so the two have to
 # agree on what a Frame is. See src/thumbnail.rs.
@@ -148,13 +149,13 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # The tray on macOS and Windows, where the menu is the system's own. Without libxdo, which only
 # the predefined edit items need. Not on Linux: it reaches gtk3 there through muda, which is not
 # an optional dependency of it, and gtk3 pins glib to an advisory with no patched release in
-# reach. See src/tray.rs and spec/framework.md.
+# reach. See src/tray/ and spec/framework.md.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 tray-icon = { version = "0.25", default-features = false }
 
 # The tray on Linux is StatusNotifierItem on the session bus, spoken directly. ksni brings zbus
 # and nothing of gtk; "blocking" is the face that runs the service on a thread of its own, which
-# suits a gpui loop that is not tokio's. See src/tray.rs.
+# suits a gpui loop that is not tokio's. See src/tray/.
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = { version = "0.3", features = ["blocking"] }
 

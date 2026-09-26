@@ -76,7 +76,7 @@ the blocking face -- `blocking` alone does not build -- so the dependency keeps 
 `tokio` and adds `blocking` to it, which suits an application whose own loop is gpui's and not
 tokio's. And a StatusNotifierItem carries ARGB32 in network byte order while the PNG decoder
 hands back RGBA, a difference that is invisible on any machine that does not run a Linux
-desktop; `src/tray.rs` converts, and tests the conversion everywhere.
+desktop; `src/tray/art.rs` converts, and tests the conversion everywhere.
 
 ## Text needs a feature flag
 
