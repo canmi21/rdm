@@ -224,7 +224,17 @@ impl RulesWindow {
 					.h_full()
 					.px_2()
 					.cursor_pointer()
-					.when(on, |s| s.text_color(p.text))
+					// The one showing ruled solid on its sides and over its stretch of the dashed line:
+					// up by the line's width, so its top edge is the line.
+					.when(on, |s| {
+						s.mt(px(-1.0))
+							.h(px(crate::ui::status_bar::HEIGHT))
+							.border_t_1()
+							.border_l_1()
+							.border_r_1()
+							.border_color(p.muted)
+							.text_color(p.text)
+					})
 					.when(!on, move |s| s.text_color(p.muted).hover(move |s| s.text_color(p.text)))
 					.on_click(cx.listener(move |this, _, _, cx| {
 						this.tab = tab;

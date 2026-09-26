@@ -156,8 +156,8 @@ matches -- the template, or a family's prefixes -- what it provides, the layer i
 priority; a row's tooltip holds what the columns cut short. Tabs at its foot, over the status bar, narrow it to the rules, the
 mirror families, the authorities or the choices made in New Task, each with its count, and a tab of
 what could not be read appears only while there is something in it. The tab row is as
-high as the status bar under it, with a dashed line along its top, and the tabs are bare words, the
-one showing told by its colour. Filled pills, a solid or dashed frame on every tab, and the showing
+high as the status bar under it, with a dashed line along its top, and the tabs are bare words; the one showing is ruled
+solid on its sides and over its own stretch of the dashed line, with no space added around it. Filled pills, a solid or dashed frame on every tab, and the showing
 tab outlined as a browser outlines its own were each tried and each busier. It was a list of cards grouped
 under headings, with buttons on every row, and read as a settings page rather than as the data it
 is.
