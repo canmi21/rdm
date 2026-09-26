@@ -270,3 +270,43 @@ async fn the_built_in_rules_find_real_checksums() {
 		}
 	}
 }
+
+#[test]
+fn the_user_s_order_moves_a_rule_of_any_layer_and_a_sync_s_does_not() {
+	let rule =
+		|id: &str| format!("[[entry]]\nid = \"{id}\"\nmatch = \"https://{id}.test/{{file}}\"\n");
+	let dir = scratch("order");
+	let layers = |custom: Texts| {
+		compile(&[
+			(Layer::BuiltIn, vec![("a.toml".into(), rule("first") + &rule("second"))]),
+			(
+				Layer::Synced,
+				vec![("s.toml".into(), "[[order]]\nid = \"second\"\npriority = 99\n".into())],
+			),
+			(Layer::Custom, custom),
+		])
+	};
+	let ids = |c: &Compiled| c.entries.iter().map(|e| e.id.clone()).collect::<Vec<_>>();
+	assert_eq!(
+		ids(&layers(read_tree(&dir))),
+		["first", "second"],
+		"a sync does not order the user's rules"
+	);
+	set_priorities(&dir, &[("second".into(), 1)]).unwrap();
+	let moved = layers(read_tree(&dir));
+	assert_eq!(ids(&moved), ["second", "first"]);
+	assert_eq!(
+		moved.entries[0].layer,
+		Layer::BuiltIn,
+		"moved, not copied: it is still the built-in rule"
+	);
+	set_priorities(&dir, &[("second".into(), -1)]).unwrap();
+	assert_eq!(
+		ids(&layers(read_tree(&dir))),
+		["first", "second"],
+		"moving again replaces the first move"
+	);
+	remember(&dir, "example.org", Choice::Never).unwrap();
+	forget(&dir, "example.org").unwrap();
+	assert_eq!(layers(read_tree(&dir)).choice_for("example.org"), None, "forgotten");
+}

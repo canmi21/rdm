@@ -47,6 +47,18 @@ struct File {
 	authority: Vec<Authority>,
 	#[serde(default)]
 	domain: Vec<Domain>,
+	#[serde(default)]
+	order: Vec<Order>,
+}
+
+/// A rule's place set by the user in the rules window: its priority, by id, whatever layer it is
+/// in. Honoured from the custom layer only, since the order is the user's; the rule's own file is
+/// left alone, a synced one being the sync's to replace. See spec/rules.md.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Order {
+	id: String,
+	priority: i32,
 }
 
 /// One kind of address, matched by a template with named parts, with where its file's checksum is
@@ -176,6 +188,7 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 	let mut entries = Vec::new();
 	let mut families = Vec::new();
 	let mut domains: Vec<(Layer, Domain)> = Vec::new();
+	let mut orders: Vec<Order> = Vec::new();
 	for (layer, texts) in layers {
 		for (path, text) in texts {
 			let file: File = match toml::from_str(text) {
@@ -210,6 +223,17 @@ pub fn compile(layers: &[(Layer, Texts)]) -> Compiled {
 				}
 			}
 			domains.extend(file.domain.into_iter().map(|d| (*layer, d)));
+			if *layer == Layer::Custom {
+				orders.extend(file.order);
+			}
+		}
+	}
+	for order in &orders {
+		for (_, entry) in entries.iter_mut().filter(|(_, e)| e.id == order.id) {
+			entry.priority = order.priority;
+		}
+		for (_, family) in families.iter_mut().filter(|(_, f)| f.id == order.id) {
+			family.priority = order.priority;
 		}
 	}
 	entries.sort_by(|(i, a), (j, b)| {
@@ -281,15 +305,48 @@ pub fn remember(custom: &Path, host: &str, choice: Choice) -> std::io::Result<()
 		std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
 	file.domain.retain(|d| !d.host.eq_ignore_ascii_case(host));
 	file.domain.push(Domain { host: host.to_ascii_lowercase(), mirror: choice });
+	std::fs::create_dir_all(custom)?;
+	write_choices(&path, &file.domain)
+}
+
+fn write_choices(path: &Path, domains: &[Domain]) -> std::io::Result<()> {
 	let mut text = String::from(
 		"# What was chosen in New Task for a source that had a mirror and no checksum. Written by rdm;\n# edit or delete a line to change it. See spec/rules.md.\n",
 	);
-	for domain in &file.domain {
+	for domain in domains {
 		let mirror = match domain.mirror {
 			Choice::Auto => "auto",
 			Choice::Never => "never",
 		};
 		text.push_str(&format!("\n[[domain]]\nhost = \"{}\"\nmirror = \"{mirror}\"\n", domain.host));
+	}
+	std::fs::write(path, text)
+}
+
+/// Forgets a choice made for a domain.
+pub fn forget(custom: &Path, host: &str) -> std::io::Result<()> {
+	let path = custom.join("choices.toml");
+	let Ok(text) = std::fs::read_to_string(&path) else { return Ok(()) };
+	let mut file: File = toml::from_str(&text).unwrap_or_default();
+	file.domain.retain(|d| !d.host.eq_ignore_ascii_case(host));
+	write_choices(&path, &file.domain)
+}
+
+/// Sets rules' priorities in the custom layer's `order.toml`, which nothing but the rules window
+/// writes, replacing what each had there.
+pub fn set_priorities(custom: &Path, priorities: &[(String, i32)]) -> std::io::Result<()> {
+	let path = custom.join("order.toml");
+	let mut file: File =
+		std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+	file.order.retain(|o| !priorities.iter().any(|(id, _)| *id == o.id));
+	file
+		.order
+		.extend(priorities.iter().map(|(id, priority)| Order { id: id.clone(), priority: *priority }));
+	let mut text = String::from(
+		"# Where rules were moved to in the rules window, by id and priority, whatever layer they are\n# in. Written by rdm; delete a block to put a rule back. See spec/rules.md.\n",
+	);
+	for order in &file.order {
+		text.push_str(&format!("\n[[order]]\nid = \"{}\"\npriority = {}\n", order.id, order.priority));
 	}
 	std::fs::create_dir_all(custom)?;
 	std::fs::write(path, text)

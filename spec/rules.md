@@ -125,5 +125,17 @@ written.
 
 ## A window for the rules
 
-A window of its own lists the merged rules with the layer each came from, and is where they are
-ordered and where the custom layer is edited.
+A window of its own, opened from Settings' Transfers under Sources, lists the merged rules with the
+layer each came from and its priority, then the mirror families, the authorities, the choices made
+in New Task, and any file that could not be read. Nothing in it is typed: a rule is written in a
+file, and the custom folder opens in the system's file manager from the window's foot, beside
+Reload for a file edited by hand.
+
+**A rule is moved up or down one place**, whatever layer it is in, and the move is written to the
+custom layer's `order.toml` rather than to the rule's own file, a synced file being the sync's to
+replace. Every rule of the kind is given a priority there, ten apart, in the order shown after the
+move: rules of equal priority leave no room to put one between two others, and giving the moved one
+a priority just past its neighbour's sent it past every rule that shared that priority. A rule that
+arrives later, at the default priority, lands below the ordered ones until it is moved.
+
+A choice is forgotten from the same window, and the next download from that domain is asked again.

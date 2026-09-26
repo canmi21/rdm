@@ -531,9 +531,9 @@ fn transfer(
 /// The window's title: how far the download has come, then the file's name -- the percentage while
 /// it moves, its state while it waits or has stopped, nothing once it is complete. See spec/ui.md.
 #[derive(Default)]
-struct Title {
-	before: Option<String>,
-	name: String,
+pub(crate) struct Title {
+	pub(crate) before: Option<String>,
+	pub(crate) name: String,
 }
 
 impl Title {
@@ -561,7 +561,12 @@ impl Title {
 /// traffic lights in it on macOS and the application's window buttons at its right where the system
 /// draws no frame; the system's radius on the systems that draw none; and a press on the edge
 /// resizing on Linux. The system titlebar is transparent, as the main window's is. See spec/ui.md.
-fn chrome(p: theme::Palette, window: &Window, title: Title, body: gpui::Div) -> gpui::Div {
+pub(crate) fn chrome(
+	p: theme::Palette,
+	window: &Window,
+	title: Title,
+	body: gpui::Div,
+) -> gpui::Div {
 	let inset = frame::lights_inset(window);
 	let strip = div()
 		.relative()

@@ -803,6 +803,22 @@ impl Rdm {
 				},
 			},
 			Row {
+				section: Section::Transfers,
+				group: "settings.group.sources",
+				note: "settings.note.rules",
+				label: "settings.label.rules",
+				title: None,
+				control: Control::Action {
+					word: "Open",
+					note: format!(
+						"{} rules, {} mirror families",
+						self.rules.entries.len(),
+						self.rules.families.len()
+					),
+					run: |this, cx| this.open_rules(cx),
+				},
+			},
+			Row {
 				section: Section::Appearance,
 				group: "settings.group.the_table",
 				note: "settings.note.column_widths",

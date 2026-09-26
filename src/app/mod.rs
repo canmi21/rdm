@@ -28,6 +28,7 @@ mod indexing;
 mod network;
 mod notices;
 pub(crate) mod quarantine;
+mod rules;
 #[cfg(test)]
 mod tests;
 mod transfers;
@@ -286,6 +287,8 @@ pub struct Rdm {
 	/// The windows opened beside this one. A handle stays here after its window closes and is
 	/// found dead on the next use, which is cheaper than being told.
 	pub(crate) open: HashMap<u64, WindowHandle<DownloadWindow>>,
+	/// The rules window, found dead on the next use once it is closed, as a download's is.
+	pub(crate) rules_window: Option<WindowHandle<crate::ui::rules_window::RulesWindow>>,
 	/// The Settings sheet while it is up.
 	pub(crate) settings: Option<SettingsSheet>,
 	/// The Add Task sheet while it is up.
@@ -434,6 +437,7 @@ impl Rdm {
 			palette: theme::palette(true),
 			viewport: gpui::Size::default(),
 			open: HashMap::new(),
+			rules_window: None,
 			rules: std::sync::Arc::new(match &paths {
 				Some(paths) => crate::rules::load(&paths.rule_places()),
 				None => crate::rules::compile(&[(crate::rules::Layer::BuiltIn, crate::rules::built_in())]),
