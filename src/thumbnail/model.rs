@@ -188,57 +188,57 @@ fn parse_model(
 	let mut reader = quick_xml::Reader::from_str(xml);
 	let mut current: Option<(String, Object)> = None;
 	let mut vertices: Vec<Vec3> = Vec::new();
-	let attribute = |tag: &quick_xml::events::BytesStart, name: &[u8]| {
+	let attribute = |tag: &quick_xml::events::BytesStart, name: &str| {
 		tag
 			.attributes()
 			.flatten()
 			.find(|a| a.key.local_name().as_ref() == name)
-			.map(|a| String::from_utf8_lossy(&a.value).into_owned())
+			.map(|a| a.value.into_owned())
 	};
 	loop {
 		match reader.read_event() {
 			Ok(Event::Start(tag) | Event::Empty(tag)) => match tag.local_name().as_ref() {
-				b"object" => {
-					current = attribute(&tag, b"id").map(|id| (id, Object::default()));
+				"object" => {
+					current = attribute(&tag, "id").map(|id| (id, Object::default()));
 					vertices.clear();
 				}
-				b"vertex" => {
-					let f = |n: &[u8]| attribute(&tag, n).and_then(|v| v.parse::<f32>().ok());
-					if let (Some(x), Some(y), Some(z)) = (f(b"x"), f(b"y"), f(b"z")) {
+				"vertex" => {
+					let f = |n: &str| attribute(&tag, n).and_then(|v| v.parse::<f32>().ok());
+					if let (Some(x), Some(y), Some(z)) = (f("x"), f("y"), f("z")) {
 						vertices.push([x, y, z]);
 					}
 				}
-				b"triangle" => {
-					let i = |n: &[u8]| {
+				"triangle" => {
+					let i = |n: &str| {
 						attribute(&tag, n)
 							.and_then(|v| v.parse::<usize>().ok())
 							.and_then(|i| vertices.get(i).copied())
 					};
 					if let (Some((_, object)), Some(a), Some(b), Some(c)) =
-						(current.as_mut(), i(b"v1"), i(b"v2"), i(b"v3"))
+						(current.as_mut(), i("v1"), i("v2"), i("v3"))
 					{
 						object.triangles.push([a, b, c]);
 					}
 				}
-				b"component" => {
-					if let (Some((_, object)), Some(id)) = (current.as_mut(), attribute(&tag, b"objectid")) {
-						let target = attribute(&tag, b"path").unwrap_or_else(|| file.to_owned());
+				"component" => {
+					if let (Some((_, object)), Some(id)) = (current.as_mut(), attribute(&tag, "objectid")) {
+						let target = attribute(&tag, "path").unwrap_or_else(|| file.to_owned());
 						object.components.push((
 							target,
 							id,
-							attribute(&tag, b"transform").as_deref().and_then(affine),
+							attribute(&tag, "transform").as_deref().and_then(affine),
 						));
 					}
 				}
-				b"item" => {
-					if let (Some(build), Some(id)) = (build.as_deref_mut(), attribute(&tag, b"objectid")) {
-						let target = attribute(&tag, b"path").unwrap_or_else(|| file.to_owned());
-						build.push((target, id, attribute(&tag, b"transform").as_deref().and_then(affine)));
+				"item" => {
+					if let (Some(build), Some(id)) = (build.as_deref_mut(), attribute(&tag, "objectid")) {
+						let target = attribute(&tag, "path").unwrap_or_else(|| file.to_owned());
+						build.push((target, id, attribute(&tag, "transform").as_deref().and_then(affine)));
 					}
 				}
 				_ => {}
 			},
-			Ok(Event::End(tag)) if tag.local_name().as_ref() == b"object" => {
+			Ok(Event::End(tag)) if tag.local_name().as_ref() == "object" => {
 				if let Some((id, object)) = current.take() {
 					objects.insert((file.to_owned(), id), object);
 				}

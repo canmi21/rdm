@@ -110,22 +110,23 @@ pub fn build(art: Artwork, summary: &Summary) -> Result<System> {
 	let tray = TrayIconBuilder::new()
 		.with_id(identity::NAME)
 		.with_menu(Box::new(menu))
-		.with_tooltip(&summary.tooltip)
-		.with_icon(icon)
-		.with_icon_as_template(cfg!(target_os = "macos"))
-		.build()
-		.context("put the icon in the tray")?;
+		.with_tooltip(&summary.tooltip);
+	#[cfg(target_os = "macos")]
+	let tray = tray.with_icon_templated(icon);
+	#[cfg(not(target_os = "macos"))]
+	let tray = tray.with_icon(icon);
+	let tray = tray.build().context("put the icon in the tray")?;
 	Ok(System { icon: tray, menu: Some(built) })
 }
 
 impl System {
-	/// On macOS through the call that names the template every time: tray-icon's plain `set_icon`
-	/// sets the image as not a template there, which draws the black frame black on a dark menu bar.
-	/// The other call does nothing elsewhere.
+	/// On macOS through the templated call: tray-icon's plain `set_icon` sets the image as not a
+	/// template there, which draws the black frame black on a dark menu bar. The templated call
+	/// exists only on macOS.
 	pub fn set_icon(&mut self, art: Artwork) {
 		if let Ok(icon) = tray_icon::Icon::from_rgba(art.rgba, art.width, art.height) {
 			#[cfg(target_os = "macos")]
-			let _ = self.icon.set_icon_with_as_template(Some(icon), true);
+			let _ = self.icon.set_icon_templated(Some(icon));
 			#[cfg(not(target_os = "macos"))]
 			let _ = self.icon.set_icon(Some(icon));
 		}

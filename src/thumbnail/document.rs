@@ -143,12 +143,12 @@ fn xml_in_zip(path: &Path, name: &str) -> Option<String> {
 	Some(xml)
 }
 
-fn attribute(tag: &quick_xml::events::BytesStart, name: &[u8]) -> Option<String> {
+fn attribute(tag: &quick_xml::events::BytesStart, name: &str) -> Option<String> {
 	tag
 		.attributes()
 		.flatten()
 		.find(|a| a.key.as_ref() == name)
-		.map(|a| String::from_utf8_lossy(&a.value).into_owned())
+		.map(|a| a.value.into_owned())
 }
 
 /// A style id that is a heading: `Title`, or `Heading` and a level, as Word names its built-in
@@ -169,22 +169,22 @@ fn parse_word(xml: &str) -> Option<Vec<Block>> {
 	loop {
 		match reader.read_event() {
 			Ok(Event::Start(tag) | Event::Empty(tag)) => match tag.name().as_ref() {
-				b"w:p" => (kind, text) = (Kind::Paragraph, String::new()),
-				b"w:pStyle" => {
-					if let Some(level) = attribute(&tag, b"w:val").as_deref().and_then(heading_level) {
+				"w:p" => (kind, text) = (Kind::Paragraph, String::new()),
+				"w:pStyle" => {
+					if let Some(level) = attribute(&tag, "w:val").as_deref().and_then(heading_level) {
 						kind = Kind::Heading(level);
 					}
 				}
-				b"w:numPr" if kind == Kind::Paragraph => kind = Kind::Item,
-				b"w:t" => in_text = true,
-				b"w:tab" | b"w:br" => text.push(' '),
+				"w:numPr" if kind == Kind::Paragraph => kind = Kind::Item,
+				"w:t" => in_text = true,
+				"w:tab" | "w:br" => text.push(' '),
 				_ => {}
 			},
-			Ok(Event::Text(t)) if in_text => text.push_str(&t.decode().unwrap_or_default()),
+			Ok(Event::Text(t)) if in_text => text.push_str(&t.xml10_content()),
 			Ok(Event::GeneralRef(r)) if in_text => text.push_str(&entity(&r)),
 			Ok(Event::End(tag)) => match tag.name().as_ref() {
-				b"w:t" => in_text = false,
-				b"w:p" => {
+				"w:t" => in_text = false,
+				"w:p" => {
 					blocks.push(kind, &text);
 					if blocks.full() {
 						break;
@@ -207,28 +207,28 @@ fn parse_open_document(xml: &str) -> Option<Vec<Block>> {
 	loop {
 		match reader.read_event() {
 			Ok(Event::Start(tag)) => match tag.name().as_ref() {
-				b"text:h" => {
+				"text:h" => {
 					let level =
-						attribute(&tag, b"text:outline-level").and_then(|l| l.parse().ok()).unwrap_or(1);
+						attribute(&tag, "text:outline-level").and_then(|l| l.parse().ok()).unwrap_or(1);
 					(kind, text, depth) = (Kind::Heading(level), String::new(), 1);
 				}
-				b"text:p" if depth == 0 => {
+				"text:p" if depth == 0 => {
 					let item = if listed > 0 { Kind::Item } else { Kind::Paragraph };
 					(kind, text, depth) = (item, String::new(), 1);
 				}
-				b"text:list-item" => listed += 1,
+				"text:list-item" => listed += 1,
 				_ if depth > 0 => depth += 1,
 				_ => {}
 			},
 			Ok(Event::Empty(tag)) if depth > 0 => {
-				if matches!(tag.name().as_ref(), b"text:s" | b"text:tab" | b"text:line-break") {
+				if matches!(tag.name().as_ref(), "text:s" | "text:tab" | "text:line-break") {
 					text.push(' ');
 				}
 			}
-			Ok(Event::Text(t)) if depth > 0 => text.push_str(&t.decode().unwrap_or_default()),
+			Ok(Event::Text(t)) if depth > 0 => text.push_str(&t.xml10_content()),
 			Ok(Event::GeneralRef(r)) if depth > 0 => text.push_str(&entity(&r)),
 			Ok(Event::End(tag)) => {
-				if tag.name().as_ref() == b"text:list-item" {
+				if tag.name().as_ref() == "text:list-item" {
 					listed -= 1;
 				} else if depth > 0 {
 					depth -= 1;
@@ -249,8 +249,8 @@ fn parse_open_document(xml: &str) -> Option<Vec<Block>> {
 
 /// The five entities XML predefines, and a character reference; anything else is left as written.
 fn entity(reference: &quick_xml::events::BytesRef) -> String {
-	let name = String::from_utf8_lossy(reference);
-	let character = match name.as_ref() {
+	let name: &str = reference;
+	let character = match name {
 		"amp" => Some('&'),
 		"lt" => Some('<'),
 		"gt" => Some('>'),
