@@ -15,6 +15,7 @@ from __future__ import annotations
 import pathlib
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -28,6 +29,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "ui" / "icon.rs"
 ASSETS = ROOT / "assets"
 PATH = re.compile(r'"(lucide/[a-z0-9-]+\.svg)"')
+# A network that drops one request is retried, up to three times, a second, two and four apart: a
+# reset connection on a CI runner failed a whole nightly that the other three systems had built. A
+# missing icon is a 404 and is not retried, since asking again cannot change the answer.
+RETRIES = 3
 
 
 def declared() -> list[str]:
@@ -38,11 +43,21 @@ def declared() -> list[str]:
 
 
 def fetch(url: str, target: pathlib.Path) -> None:
-	try:
-		with urllib.request.urlopen(url, timeout=20) as response:
-			target.write_bytes(response.read())
-	except urllib.error.HTTPError as error:
-		raise SystemExit(f"error: {url} -> {error.code}; is the icon named as Lucide names it?") from error
+	for attempt in range(RETRIES + 1):
+		try:
+			with urllib.request.urlopen(url, timeout=20) as response:
+				target.write_bytes(response.read())
+			return
+		except urllib.error.HTTPError as error:
+			if error.code < 500 and error.code != 429:
+				raise SystemExit(f"error: {url} -> {error.code}; is the icon named as Lucide names it?") from error
+			failure: Exception = error
+		except (urllib.error.URLError, OSError) as error:
+			failure = error
+		if attempt == RETRIES:
+			raise SystemExit(f"error: {url} failed {RETRIES + 1} times, last with {failure}") from failure
+		print(f"  {failure}; trying again ({attempt + 1} of {RETRIES})")
+		time.sleep(2**attempt)
 
 
 def main(argv: list[str]) -> int:
