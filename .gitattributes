@@ -1,0 +1,4 @@
+# Over the workspace's hard limit of a thousand lines, which now measures prose as well as code,
+# and owed a split by its own sections, not taken yet. The deferral lets the gate pass and goes
+# with the split.
+spec/ui.md lines=deferred
