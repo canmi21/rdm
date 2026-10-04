@@ -87,8 +87,8 @@ joins it.
 
 **Every file has two addresses, and where the reader is picks the first to try.** GitHub's
 own, `github.com/canmi21/rdm/releases/download/<tag>/<file>`, and the author's CDN,
-`cdn.ffoni.com/github/release/rdm/<tag>/<file>`. Before the first check the window asks
-Cloudflare's trace on two of the author's hosts, `canmi.net` then `cdn.ffoni.com`, each the
+`cdn.monoflake.com/proxy/github/release/rdm/<tag>/<file>`. Before the first check the window asks
+Cloudflare's trace on two of the author's hosts, `canmi.net` then `cdn.monoflake.com`, each the
 other's backup, and reads `loc`: `CN` puts the CDN first, anywhere else -- and no answer --
 puts GitHub first. The other address is the fallback either way, since GitHub has its outages
 and a CDN its gaps. The region is asked once per run. The manifest is not read through

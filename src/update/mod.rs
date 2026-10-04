@@ -105,7 +105,10 @@ pub fn routes(channel: Channel, region: Region, file: &str) -> [String; 2] {
 	let tag = channel.tag();
 	let github =
 		format!("https://github.com/{}/releases/download/{tag}/{file}", identity::REPOSITORY);
-	let cdn = format!("https://cdn.ffoni.com/github/release/{}/{tag}/{file}", identity::APPLICATION);
+	let cdn = format!(
+		"https://cdn.monoflake.com/proxy/github/release/{}/{tag}/{file}",
+		identity::APPLICATION
+	);
 	match region {
 		Region::China => [cdn, github],
 		Region::Elsewhere => [github, cdn],
@@ -115,7 +118,7 @@ pub fn routes(channel: Channel, region: Region, file: &str) -> [String; 2] {
 /// The addresses that say where the reader is: Cloudflare's trace on the author's two hosts,
 /// each a backup for the other.
 pub const TRACES: [&str; 2] =
-	["https://canmi.net/cdn-cgi/trace", "https://cdn.ffoni.com/cdn-cgi/trace"];
+	["https://canmi.net/cdn-cgi/trace", "https://cdn.monoflake.com/cdn-cgi/trace"];
 
 /// Reads `loc=XX` out of a trace. Anything that is not China is elsewhere, including a trace
 /// with no location in it.
@@ -350,7 +353,10 @@ mod tests {
 	#[test]
 	fn china_goes_to_the_cdn_first_and_everywhere_else_to_github() {
 		let [first, second] = routes(Channel::Nightly, Region::China, "latest.json");
-		assert!(first.starts_with("https://cdn.ffoni.com/github/release/rdm/nightly/"), "{first}");
+		assert!(
+			first.starts_with("https://cdn.monoflake.com/proxy/github/release/rdm/nightly/"),
+			"{first}"
+		);
 		assert!(
 			second.starts_with("https://github.com/canmi21/rdm/releases/download/nightly/"),
 			"{second}"
