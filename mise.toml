@@ -62,7 +62,11 @@ flag "--major" help="Cross the ranges Cargo.toml declares"
 run = '''
 n=${usage_dry_run:+--dry-run}
 # Its own [tools] first, then the Zed tag no resolver moves, then cargo; see spec/framework.md.
-mise upgrade --local $n
+# mise follows an upgrade with advice to `upgrade --bump` past the pins, naming the workspace's
+# too; following it can take a prerelease, so it is dropped -- the workspace's spec/toolchain.md,
+# "Stable means the publisher's channel".
+out=$(mise upgrade --local $n 2>&1) || { echo "$out"; exit 1; }
+echo "$out" | grep -v -e 'do not match the configured version ranges' -e ' → .* (.*)$' -e 'upgrade --bump' || true
 .mise/tasks/zed $n
 if [ -n "${usage_major:-}" ]; then cargo upgrade --incompatible $n; fi
 cargo update $n
