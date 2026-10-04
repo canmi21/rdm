@@ -32,11 +32,12 @@ Two other alternatives, still rejected:
   history at the time was three versions, two of them yanked, on a number that collides with the
   official crate's.
 
-**What the tag costs is that cargo never moves it**, so `.mise/tasks/update` does what the mirror's
+**What the tag costs is that cargo never moves it**, so `.mise/tasks/zed` does what the mirror's
 `version = "1"` did: it asks the remote for Zed's stable tags, rewrites every Zed tag in
 `Cargo.toml` to the newest of the same major, and names a newer major without taking it -- a
-major here means a Zed 2.0. The workspace's `mise run update` runs it before `cargo update`, so a
-release that breaks the build is reverted like any other; see
+major here means a Zed 2.0. This repository's `update` runs it before `cargo update`, and the
+workspace's `mise run update` runs that, so a release that breaks the build is reverted like any
+other; see
 [spec/toolchain.md](../../../spec/toolchain.md), "Dependency policy". A stable tag is exactly
 `vX.Y.Z`; the `-pre` tags are prereleases and are never taken.
 

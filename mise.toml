@@ -48,3 +48,51 @@ run = "watchexec --restart --project-origin . --watch src --watch-non-recursive 
 description = "Build the release binary and wrap it as the .app under target/bundle"
 depends = ["icons", "icon"]
 run = ["cargo build --release", ".mise/tasks/bundle"]
+
+# The verbs the workspace one directory up dispatches to: `mise run update|clean|fmt [name]`.
+# Each takes --dry-run and keeps the promises the workspace's spec/architecture/repos.md lists
+# under "What a repository's task owes the verb"; the revert after a failed verify is the
+# workspace's, so `update` neither verifies nor reverts.
+[tasks.update]
+description = "Move its own tools, the Zed tag and the crates within their bounds, and name what waits beyond: `update [--dry-run] [--major]`"
+usage = '''
+flag "-n --dry-run" help="Say what would move and write nothing"
+flag "--major" help="Cross the ranges Cargo.toml declares"
+'''
+run = '''
+n=${usage_dry_run:+--dry-run}
+# Its own [tools] first, then the Zed tag no resolver moves, then cargo; see spec/framework.md.
+mise upgrade --local $n
+.mise/tasks/zed $n
+if [ -n "${usage_major:-}" ]; then cargo upgrade --incompatible $n; fi
+cargo update $n
+[ -z "${usage_major:-}" ] || exit 0
+echo
+echo "Beyond the ranges Cargo.toml declares:"
+if ! cargo upgrade --version >/dev/null 2>&1; then
+	echo "  cargo upgrade is missing, so no crate's major was checked; cargo-edit supplies it"
+	exit 0
+fi
+beyond=$(cargo upgrade --incompatible --dry-run 2>/dev/null)
+echo "${beyond:-  nothing; every dependency is at the top of its range}"
+'''
+
+[tasks.clean]
+description = "Remove what cargo built: `clean [--dry-run]`"
+usage = 'flag "-n --dry-run" help="Say what would go and remove nothing"'
+run = "cargo clean ${usage_dry_run:+--dry-run}"
+
+# The file set is jj.toml's, so `fmt` and the formatting a commit gets agree.
+[tasks.fmt]
+description = "Format the Rust and the prose beside it, with jj.toml's formatters: `fmt [--dry-run]`"
+usage = 'flag "-n --dry-run" help="List the files that would change and write nothing"'
+run = '''
+files='**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx,css,json,jsonc,md,svelte}'
+if [ -n "${usage_dry_run:-}" ]; then
+	cargo fmt --all --check --message-format short || true
+	oxfmt --list-different --no-error-on-unmatched-pattern "$files" || true
+else
+	cargo fmt --all
+	oxfmt --no-error-on-unmatched-pattern "$files"
+fi
+'''

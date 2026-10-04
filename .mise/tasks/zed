@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#MISE description="Move the Zed tag gpui is taken at to Zed's newest stable release of the same major: `update [--dry-run]`"
+#MISE description="Move the Zed tag gpui is taken at to Zed's newest stable release of the same major: `zed [--dry-run]`"
 """gpui is a git dependency on Zed at a release tag, and cargo never moves a tag; this does.
 
 `cargo update` reads a tag as one fixed commit, so on its own the framework would stay wherever it
@@ -9,8 +9,9 @@ left alone, because crossing one is an edit somebody decides on. The reasoning i
 spec/framework.md, "Where the crates come from".
 
 Every Zed tag in Cargo.toml is rewritten together; gpui and gpui_platform have to be one release.
-The lockfile follows at the next cargo command. Run inside `mise run update`, the workspace's
-verify-and-revert covers the rewrite like any other manifest change.
+The lockfile follows at the next cargo command. This repository's `update` runs it before
+`cargo update`, and the workspace's revert after a failed verify covers the rewrite like any
+other manifest change.
 """
 
 from __future__ import annotations

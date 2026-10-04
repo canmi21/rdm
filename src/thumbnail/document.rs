@@ -144,11 +144,7 @@ fn xml_in_zip(path: &Path, name: &str) -> Option<String> {
 }
 
 fn attribute(tag: &quick_xml::events::BytesStart, name: &str) -> Option<String> {
-	tag
-		.attributes()
-		.flatten()
-		.find(|a| a.key.as_ref() == name)
-		.map(|a| a.value.into_owned())
+	tag.attributes().flatten().find(|a| a.key.as_ref() == name).map(|a| a.value.into_owned())
 }
 
 /// A style id that is a heading: `Title`, or `Heading` and a level, as Word names its built-in
