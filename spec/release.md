@@ -17,9 +17,13 @@ renamed.
 
 ## The nightly is one moving release
 
-`.github/workflows/nightly.yml` runs on every push to `main`. Its concurrency group cancels a
-run still building when the next push lands: only the newest commit is worth a nightly, and two
-publishing at once would race for the tag. Four builds run as a matrix, each on the system it
+`.github/workflows/nightly.yml` runs on every push to `main`. Its concurrency group queues
+rather than cancels -- `queue: max`, up to a hundred runs waiting in order -- so a push that lands
+while the last is still building waits behind it, and every commit is built and tested. One run
+at a time is what keeps two from racing for the tag. It used to cancel the run in progress, on
+the reasoning that only the newest commit is worth a nightly; what that bought was a commit
+nobody had compiled whenever two pushes were close together, and a cancelled run reported as a
+failure on every one of them. Four builds run as a matrix, each on the system it
 is for -- macOS on arm64, Windows on x64, Linux on x64 and arm64 -- with `fail-fast` off, so one
 system failing to build leaves the other three to finish and keep their files as artifacts;
 publishing waits for all four, since a `latest.json` naming one build with another's file
@@ -35,8 +39,9 @@ Linux links glibc, not musl, because GPUI opens Vulkan with `dlopen`, which stat
 does not have.
 
 The publish job downloads every artifact and first checks that its own run number is above
-the build already published, reading the nightly's `latest.json`; a run cancelled late, or
-one that ran long, must not overwrite a newer one's files. Then it writes `latest.json`, moves
+the build already published, reading the nightly's `latest.json`; a run that leaves the queue
+out of order -- GitHub does not promise the order -- or one started again by hand must not
+overwrite a newer one's files. Then it writes `latest.json`, moves
 the `nightly` tag to the commit with force, uploads every file with `--clobber`, and points the
 release at the commit. The release itself was created once by hand, marked prerelease and given
 its one paragraph of notes -- left empty, GitHub shows the commit message there instead -- and

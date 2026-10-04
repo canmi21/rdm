@@ -9,11 +9,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A push while the last one is still building cancels it: only the newest commit is worth a
-# nightly, and two publishing at once would race for the tag.
+# A push while the last one is still building waits behind it, up to a hundred deep, rather than
+# cancelling it: every commit is built and tested, and one run at a time is what keeps two from
+# racing for the tag. See spec/release.md.
 concurrency:
   group: nightly
-  cancel-in-progress: true
+  queue: max
 
 permissions:
   contents: write
@@ -104,8 +105,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # A run that was cancelled late, or that ran long, must not overwrite a newer one's
-      # files: the build number only moves forward.
+      # A run that leaves the queue out of order, or one started again by hand, must not
+      # overwrite a newer one's files: the build number only moves forward.
       - name: Only forward
         env:
           GH_TOKEN: ${{ github.token }}
